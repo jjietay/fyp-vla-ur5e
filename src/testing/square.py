@@ -87,7 +87,7 @@ rtde_c = rtde_control.RTDEControlInterface(URSIM_IP)
 rtde_r = rtde_receive.RTDEReceiveInterface(URSIM_IP)
 
 # Initial pose in terms of metres
-initial_pose = [0.0, -0.2329, 1.0794, 0.0, 2.221, -2.221]
+initial_pose = rtde_r.getActualTCPPose()
 initial_transform = pose_to_T(initial_pose)
 
 # Side length of the square
@@ -103,11 +103,12 @@ speed = 0.25
 acceleration = 0.5
 
 print("Moving to starting Position.")
-rtde_c.moveJ(p1, speed, acceleration)
+rtde_c.moveL(p1, speed, acceleration)
 rtde_c.moveL(p2, speed, acceleration)
 rtde_c.moveL(p3, speed, acceleration)
 rtde_c.moveL(p4, speed, acceleration)
 rtde_c.moveL(p1, speed, acceleration)
+rtde_c.moveL(p2, speed, acceleration)
 print("Square drawn. Exiting...")
 
 # Clear exit
