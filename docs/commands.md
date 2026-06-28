@@ -4,3 +4,7 @@ URSIM=~/Documents/NTU/Y4S1/FYP/ursim/URSim_Linux-5.25.2.130406/ursim-5.25.2.1304
 cd "$URSIM"
 
 ./start-ursim.sh UR5e
+
+
+## Unrestricted starting pose values
+pose = [0.44489, -0.24078, -0.23421, 3.075, 0.679, -0.002]

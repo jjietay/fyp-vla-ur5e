@@ -103,12 +103,10 @@ speed = 0.25
 acceleration = 0.5
 
 print("Moving to starting Position.")
-rtde_c.moveL(p1, speed, acceleration)
-rtde_c.moveL(p2, speed, acceleration)
-rtde_c.moveL(p3, speed, acceleration)
-rtde_c.moveL(p4, speed, acceleration)
-rtde_c.moveL(p1, speed, acceleration)
-rtde_c.moveL(p2, speed, acceleration)
+print("p2:", rtde_c.moveL(p2, speed, acceleration))
+print("p3:", rtde_c.moveL(p3, speed, acceleration))
+print("p4:", rtde_c.moveL(p4, speed, acceleration))
+print("p1:", rtde_c.moveL(p1, speed, acceleration))
 print("Square drawn. Exiting...")
 
 # Clear exit
