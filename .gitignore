@@ -1,0 +1,14 @@
+ursim/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+.vscode/
+.idea/
+*.swp
+.DS_Store
+*.log
+docs/

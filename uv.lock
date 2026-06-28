@@ -1,0 +1,25 @@
+version = 1
+revision = 3
+requires-python = ">=3.12"
+
+[[package]]
+name = "universalrobot"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "ur-rtde" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "ur-rtde", specifier = ">=1.6.3" }]
+
+[[package]]
+name = "ur-rtde"
+version = "1.6.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/97/b14f774cfd63a46ca80cfadd2c24704a7eae2b4d26fc18cc7c8783c4ca8e/ur_rtde-1.6.3.tar.gz", hash = "sha256:30bbbb5b9c98c49a3b53be2819b80f00c1f76dc08b99e3ed064e6a190d29bf81", size = 2820425, upload-time = "2026-03-13T13:41:04.05Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/ed/b6ee131f29a12d6a4b49d7a14f69905fb81dbae1fc9fe4b48f860c214f08/ur_rtde-1.6.3-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:d6985014db08e0c43d7b64db95bdad14349dd39b9bdbcaf88f3b40596c549544", size = 4992312, upload-time = "2026-03-13T13:40:09.316Z" },
+    { url = "https://files.pythonhosted.org/packages/55/3c/18013fc90305c3aad66db84db97736fc9af5603589948049a75137ec9c59/ur_rtde-1.6.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b075ae3cb4aae5c93d7a1ba2d31890dfad5ed2da7458a3e78037e4bb88bc23e8", size = 4920152, upload-time = "2026-03-13T13:40:11.97Z" },
+    { url = "https://files.pythonhosted.org/packages/82/d8/f66f030d0487e1221580ac969be20d3aa1b182fee15502cacd4e0a59e6e0/ur_rtde-1.6.3-cp312-cp312-win_amd64.whl", hash = "sha256:b19a2d4564290398673f5040bd0e84e5f4de96920577dbe4cea02bf7351896ff", size = 2570841, upload-time = "2026-03-13T13:40:14.382Z" },
+]
