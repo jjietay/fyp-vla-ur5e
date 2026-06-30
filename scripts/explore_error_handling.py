@@ -24,4 +24,4 @@ if __name__ == "__main__":
         # robot moves
         print("TCP pose:", rtde_r.getActualTCPPose())
     finally:
-        rtde_c.stopScript()   # cleanup at the very end (not before moves!)
+        rtde_c.stopScript()   # cleanup at the end
