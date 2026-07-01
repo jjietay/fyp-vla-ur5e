@@ -2,10 +2,10 @@ import sys
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 
-ROBOT_IP = "127.0.0.1"   # localhost for URSim native
+ROBOT_IP = "127.0.0.1"
 
 def connect(ip: str, timeout_msg: bool = True):
-    """Connect to UR controller, return (rtde_c, rtde_r) or exit cleanly."""
+    '''Connect to UR controller, return (rtde_c, rtde_r) or exit cleanly.'''
     try:
         rtde_c = RTDEControlInterface(ip)
         rtde_r = RTDEReceiveInterface(ip)
@@ -17,11 +17,10 @@ def connect(ip: str, timeout_msg: bool = True):
         sys.exit(1)
     return rtde_c, rtde_r
 
-
 if __name__ == "__main__":
     rtde_c, rtde_r = connect(ROBOT_IP)
     try:
-        # robot moves
-        print("TCP pose:", rtde_r.getActualTCPPose())
+        # robot movements
+        print(f"TCP pose: {rtde_r.getActualTCPPose()}")
     finally:
-        rtde_c.stopScript()   # cleanup at the end
+        rtde_c.stopScript() # runs even if getActualTCPPose() fails to run
