@@ -1,0 +1,11 @@
+robot:
+  host: "192.168.1.10"   # or "localhost" for URSim
+  port: 30004
+
+motion:
+  default_speed: 0.25
+  default_accel: 0.5
+
+paths:
+  data_dir: "data/"
+  logs_dir: "data/logs/"

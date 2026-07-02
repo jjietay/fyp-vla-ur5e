@@ -6,7 +6,7 @@ from rtde_receive import RTDEReceiveInterface
 ROBOT_IP = "127.0.0.1"
 SAMPLE_RATE_HZ = 100
 DURATION_SEC = 5
-OUTPUT_CSV = "../logs/joint_log.csv"
+OUTPUT_CSV = "../data/logs/joint_log.csv"
 
 # CUSTOM RECIPE
 def connect_with_recipe(ip: str, variables: list[str]) -> RTDEReceiveInterface:
