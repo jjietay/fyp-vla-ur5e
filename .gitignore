@@ -23,8 +23,6 @@ venv/
 # Logs
 *.log
 
-# Videos
-videos
+# Media
+media
 
-# Copyrighted reference material
-docs/MR.pdf
