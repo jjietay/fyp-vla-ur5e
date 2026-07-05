@@ -26,3 +26,8 @@ venv/
 # Media
 media
 
+ursim/
+__pycache__/
+*.pyc
+data/*.h5
+data/*.gif

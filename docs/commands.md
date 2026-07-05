@@ -14,3 +14,14 @@ uv run pytest --name-of-file.py
 ## Run MuJoCo
 XDG_SESSION_TYPE=x11 uv run python -m mujoco.viewer --mjcf assets/mujoco/ur5e/ur5e.xml
 
+
+## Start MuJoCo Server
+XDG_SESSION_TYPE=x11 uv run python -m fyp.sim.sim_server
+
+## Start Client
+uv run python
+
+from fyp.sim.sim_client import SimClient
+c = SimClient()
+c.get_state()
+c.move_joints([-1.0, -1.5, 1.5, -1.5, -1.5, 0.0], speed=1.0)

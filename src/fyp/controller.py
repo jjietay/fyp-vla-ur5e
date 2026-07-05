@@ -13,7 +13,7 @@ controller.py will perform the following:
 - move_joints(q, speed, acc) using moveJ
 - get_state() returns a dict: joint_pos, tcp_pose, gripper_state
 - gripper_start(default pin_power = 1, default pin_control = 2)
-- gripper_toggle(state = open/close)
+- gripper_toggle(state = 0 or 1, where 0 is closed and 1 is open)
 - close()
 
 '''
@@ -53,11 +53,11 @@ class URController:
         acc = acc if acc is not None else self.default_acc
         return self.rtde_c.moveJ(q, speed, acc)
     
-    def gripper_toggle(self, state: str):
-        if state == "open":
+    def gripper_toggle(self, state: int):
+        if state == 1:      # OPEN
             self.rtde_io.setStandardDigitalOut(self.pin_control, False)
             time.sleep(0.1)
-        elif state == "close":
+        elif state == 0:    # CLOSE
             self.rtde_io.setStandardDigitalOut(self.pin_control, True)
             time.sleep(0.1)
         else:
@@ -67,7 +67,7 @@ class URController:
         return {
         "joint_pos": self.rtde_r.getActualQ(),
         "tcp_pose": self.rtde_r.getActualTCPPose(),
-        "gripper_state": "close" if self.rtde_r.getDigitalOutState(self.pin_control) else "open"
+        "gripper_state": 0 if self.rtde_r.getDigitalOutState(self.pin_control) else 1
         }
     
     def close(self):
