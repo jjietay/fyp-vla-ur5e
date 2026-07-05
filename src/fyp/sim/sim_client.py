@@ -52,3 +52,9 @@ class SimClient:
 
     def home(self) -> dict:
         return self._send({"cmd": "home"})
+    
+    def start_recording(self) -> dict:
+        return self._send({"cmd": "start_recording"})
+
+    def stop_and_save(self, path: str) -> dict:
+        return self._send({"cmd": "stop_and_save", "path": path})

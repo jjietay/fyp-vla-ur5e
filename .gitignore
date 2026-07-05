@@ -17,17 +17,17 @@ venv/
 .idea/
 *.swp
 
-#OS
+# OS
 .DS_Store
 
 # Logs
 *.log
 
 # Media
-media
+media/
 
-ursim/
-__pycache__/
-*.pyc
+# Data outputs
 data/*.h5
 data/*.gif
+data/*.mp4
+data/*.png

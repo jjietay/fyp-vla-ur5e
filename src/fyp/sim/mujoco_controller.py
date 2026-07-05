@@ -4,6 +4,7 @@ Sim-only. Drives the UR5e in MuJoCo so that DemoRecorder, scripted primitives,
 and other downstream code can run identically against sim or the real robot.
 
 Gripper convention: 0 = closed, 1 = open (matches DemoRecorder / real controller).
+The Robotiq 2F-85 actuator (index 6) takes ctrl 0..255: 0 = open, 255 = closed.
 TCP pose format: [x, y, z, rx, ry, rz] (axis-angle), matching RTDE.
 Interpolation: constant-velocity, capped at `speed` (rad/s); `acc` accepted
 but ignored (B1).
@@ -15,6 +16,11 @@ import numpy as np
 import mujoco
 
 from fyp.sim.ik import solve_ik
+
+# Gripper actuator control values (Robotiq 2F-85 fingers_actuator, ctrlrange 0..255)
+_GRIPPER_OPEN_CTRL = 0.0
+_GRIPPER_CLOSE_CTRL = 255.0
+_GRIPPER_ACT_IDX = 6  # actuator index after the 6 arm joints
 
 
 class URControllerMuJoCo:
@@ -34,6 +40,9 @@ class URControllerMuJoCo:
         if self._tcp_site_id == -1:
             raise RuntimeError("Site 'attachment_site' not found in model.")
 
+        # Does this scene have a gripper actuator? (7 actuators = 6 arm + gripper)
+        self._has_gripper = self.model.nu > 6
+
         self._gripper_state = 0
         self.default_speed = default_speed
         self.default_acc = default_acc
@@ -42,6 +51,10 @@ class URControllerMuJoCo:
         # Snap to home keyframe (id 0) and compute derived quantities.
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         self.data.ctrl[:6] = self.data.qpos[:6]
+        # Start with the gripper open, if present.
+        if self._has_gripper:
+            self.data.ctrl[_GRIPPER_ACT_IDX] = _GRIPPER_OPEN_CTRL
+            self._gripper_state = 1
         mujoco.mj_forward(self.model, self.data)
 
     # ---- state reads -------------------------------------------------------
@@ -70,17 +83,25 @@ class URControllerMuJoCo:
             "gripper_state": self._gripper_state,
         }
 
-    # ---- gripper (stubbed — no physical gripper in the MJCF) ---------------
+    # ---- gripper -----------------------------------------------------------
 
     def gripper_start(self, pin_power: int | None = 1, pin_control: int | None = 2):
         """No-op in sim. Kept for API parity with the real controller."""
         return "Gripper initialized (sim stub)."
 
     def gripper_toggle(self, state: int):
-        if state in (0, 1):
-            self._gripper_state = state
-        else:
+        """0 = close, 1 = open. Writes to the gripper actuator if present."""
+        if state not in (0, 1):
             return "Unable to control gripper."
+
+        self._gripper_state = state
+        if self._has_gripper:
+            self.data.ctrl[_GRIPPER_ACT_IDX] = (
+                _GRIPPER_OPEN_CTRL if state == 1 else _GRIPPER_CLOSE_CTRL
+            )
+            # Step so the fingers actually move to the commanded position.
+            for _ in range(100):
+                mujoco.mj_step(self.model, self.data)
 
     # ---- motion ------------------------------------------------------------
 
