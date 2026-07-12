@@ -27,7 +27,10 @@ venv/
 media/
 
 # Data outputs
-data/*.h5
-data/*.gif
-data/*.mp4
-data/*.png
+data/
+
+# Documents
+docs/fyp_vault/.obsidian
+
+# MuJoCo
+MUJOCO_LOG.TXT
