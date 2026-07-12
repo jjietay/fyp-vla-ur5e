@@ -27,7 +27,7 @@ venv/
 media/
 
 # Data outputs
-data
+data/
 
 # Documents
 docs/fyp_vault/.obsidian
