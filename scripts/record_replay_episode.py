@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from fyp.config import get_config, resolve
 from fyp.sim.mujoco_controller import URControllerMuJoCo
 from fyp.sim.demo_recorder import DemoRecorder
+from typing import cast
+from h5py import Dataset
 
 _sim = get_config()["sim"]
 SCENE = resolve(_sim["scene_arm_only"])
@@ -78,9 +80,9 @@ def main() -> None:
 
     # ---- reload + replay ---------------------------------------------------
     with h5py.File(OUT, "r") as f:
-        timestamps = f["timestamps"][:]
-        tcp_poses = f["tcp_poses"][:]
-        images = f["images"][:]
+        timestamps = cast(Dataset, f["timestamps"])[:]
+        tcp_poses  = cast(Dataset, f["tcp_poses"])[:]
+        images     = cast(Dataset, f["images"])[:]
         n = len(timestamps)
 
     print(f"Reloaded {n} frames.")

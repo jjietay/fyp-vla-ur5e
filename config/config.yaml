@@ -1,8 +1,11 @@
-robot: # real UR5e via ur_rtde
+# =============== REAL UR5e ROBOT =====================
+robot:
   host: "127.0.0.1"
   gripper: { power_pin: 1, control_pin: 2 }
   motion: { default_speed: 0.25, default_acc: 0.5 }   # m/s, m/s^2 (moveL)
 
+
+# ================== SIMULATION IN MUJOCO ===================
 sim: # MuJoCo
   scene: "assets/mujoco/ur5e/scene_gripper.xml"
   scene_arm_only: "assets/mujoco/ur5e/scene.xml"
@@ -14,10 +17,12 @@ sim: # MuJoCo
   gripper: { open_ctrl: 0, close_ctrl: 255 }
   ik: { max_iters: 100, tol: 1.0e-4, damping: 1.0e-2 }
 
+# ================== SERVER FOR SIMULATION ===================
 server: # sim teleop socket — client AND server read this
   host: "127.0.0.1"
   port: 5555
 
+# ================== PATHS ===================
 paths:
   episodes_dir: "data/episodes/"
   logs_dir: "data/logs/"

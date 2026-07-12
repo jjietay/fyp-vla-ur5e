@@ -41,8 +41,8 @@ def _pose_error(
 
 
 def solve_ik(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
+    model: mujoco.MjModel, # it defines a tree and sites (attachment site, etc)
+    data: mujoco.MjData, # this contains joint position now, joint vel now, actuator commands, computed world pose of TCP site
     site_id: int,
     target_pos: np.ndarray,
     target_mat: np.ndarray,

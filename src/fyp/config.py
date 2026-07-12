@@ -12,7 +12,7 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
 _CONFIG = None
 
 def get_config(path=DEFAULT_CONFIG_PATH) -> dict:
-    global _CONFIG
+    global _CONFIG  # refers to the global _CONFIG variable above
     if _CONFIG is None:
         _CONFIG = load_config(path)
     return _CONFIG

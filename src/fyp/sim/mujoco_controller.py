@@ -72,7 +72,7 @@ class URControllerMuJoCo:
 
         mat = self.data.site_xmat[self._tcp_site_id].copy()  # (9,)
         quat = np.zeros(4)
-        mujoco.mju_mat2Quat(quat, mat)
+        mujoco.mju_mat2Quat(quat, mat) # mat is 3D rotation matrix
 
         angle = 2.0 * np.arccos(np.clip(quat[0], -1.0, 1.0))
         s = np.sqrt(max(1.0 - quat[0] ** 2, 1e-12))
