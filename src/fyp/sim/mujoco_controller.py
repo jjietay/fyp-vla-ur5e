@@ -15,18 +15,18 @@ from pathlib import Path
 import numpy as np
 import mujoco
 
-from fyp.sim.ik import solve_ik
+from fyp.sim.ik import solve_ik 
 
-# Gripper actuator control values (Robotiq 2F-85 fingers_actuator, ctrlrange 0..255)
-_GRIPPER_OPEN_CTRL = 0.0
-_GRIPPER_CLOSE_CTRL = 255.0
+# Gripper actuator control values (Robotiq 2F-85 fingers_actuator, ctrl range is 0-255)
+_GRIPPER_OPEN_CTRL = 0.0        # Gripper open is at 0.0
+_GRIPPER_CLOSE_CTRL = 255.0     # Gripper closed is defined as 255
 _GRIPPER_ACT_IDX = 6  # actuator index after the 6 arm joints
 
 
 class URControllerMuJoCo:
     def __init__(
         self,
-        scene_path: str | Path,
+        scene_path: str | Path,       # rmb to use main scene
         default_speed: float = 1.0,   # rad/s, joint velocity cap
         default_acc: float = 1.0,     # accepted for signature parity, ignored
         control_dt: float = 0.002,    # sim step for motion loop (500 Hz)
@@ -40,7 +40,7 @@ class URControllerMuJoCo:
         if self._tcp_site_id == -1:
             raise RuntimeError("Site 'attachment_site' not found in model.")
 
-        # Does this scene have a gripper actuator? (7 actuators = 6 arm + gripper)
+        # check if this scene has a gripper by checking the model
         self._has_gripper = self.model.nu > 6
 
         self._gripper_state = 0

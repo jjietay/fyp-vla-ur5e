@@ -1,4 +1,3 @@
-# Architecture
 
 **FYP: A Large Language Model-Based Interface for Robotics Systems using UR5e**
 
