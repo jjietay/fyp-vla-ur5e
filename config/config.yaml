@@ -1,11 +1,23 @@
-robot:
+robot: # real UR5e via ur_rtde
   host: "127.0.0.1"
-  port: 30004
+  gripper: { power_pin: 1, control_pin: 2 }
+  motion: { default_speed: 0.25, default_acc: 0.5 }   # m/s, m/s^2 (moveL)
 
-motion:
-  default_speed: 0.25
-  default_acc: 0.5
+sim: # MuJoCo
+  scene: "assets/mujoco/ur5e/scene_gripper.xml"
+  scene_arm_only: "assets/mujoco/ur5e/scene.xml"
+  tcp_site: "attachment_site"
+  control_dt: 0.002
+  motion: { default_speed: 1.0 } # rad/s joint cap — different unit to robot.motion
+  record_hz: 20
+  camera: { name: "fixed_cam", width: 320, height: 240 }
+  gripper: { open_ctrl: 0, close_ctrl: 255 }
+  ik: { max_iters: 100, tol: 1.0e-4, damping: 1.0e-2 }
+
+server: # sim teleop socket — client AND server read this
+  host: "127.0.0.1"
+  port: 5555
 
 paths:
-  data_dir: "data/"
+  episodes_dir: "data/episodes/"
   logs_dir: "data/logs/"

@@ -11,19 +11,24 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 
+from fyp.config import get_config, resolve
 from fyp.sim.mujoco_controller import URControllerMuJoCo
 from fyp.sim.ik import solve_ik
 from fyp.sim.demo_recorder import DemoRecorder
 
-HOST = "127.0.0.1"
-PORT = 5555
-SCENE = Path("assets/mujoco/ur5e/scene_gripper.xml")
+_cfg = get_config()
+_sim = _cfg["sim"]
 
-CAM_NAME = "fixed_cam"
-IMG_W, IMG_H = 320, 240
-RECORD_EVERY = 25          # every 25th tick at 500Hz control_dt -> ~20Hz
+HOST = _cfg["server"]["host"]
+PORT = _cfg["server"]["port"]
+SCENE = resolve(_sim["scene"])
+
+CAM_NAME = _sim["camera"]["name"]
+IMG_W, IMG_H = _sim["camera"]["width"], _sim["camera"]["height"]
+# Derived from record rate + sim step so they can never drift apart.
+RECORD_EVERY = round((1 / _sim["record_hz"]) / _sim["control_dt"])   # ~20 Hz
 GRIPPER_ACT_IDX = 6
-GRIPPER_MIDPOINT = 127.5   # ctrl[6] below -> open(1), above -> closed(0)
+GRIPPER_MIDPOINT = (_sim["gripper"]["open_ctrl"] + _sim["gripper"]["close_ctrl"]) / 2
 
 
 class _Job:
@@ -35,7 +40,7 @@ class _Job:
 
 class SimServer:
     def __init__(self, scene_path: Path = SCENE, host: str = HOST, port: int = PORT):
-        self.ctrl = URControllerMuJoCo(scene_path, default_speed=1.0)
+        self.ctrl = URControllerMuJoCo(scene_path)
         self.host = host
         self.port = port
         self._jobs: "queue.Queue[_Job]" = queue.Queue()
@@ -75,7 +80,7 @@ class SimServer:
                 if not self._recording:
                     return {"ok": False, "error": "not recording"}
                 self._recording = False
-                path = req.get("path", "data/episode.h5")
+                path = req.get("path") or str(resolve(_cfg["paths"]["episodes_dir"]) / "episode.h5")
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
                 n = len(self.recorder._buffer)
                 if n == 0:
@@ -106,6 +111,7 @@ class SimServer:
                     self.ctrl.model, self.ctrl.data, self.ctrl._tcp_site_id,
                     target_pos, target_mat,
                     q_init=self.ctrl.data.qpos[:6].copy(),
+                    **self.ctrl._ik_cfg,
                 )
                 if not ok:
                     return {"ok": False, "error": "IK did not converge."}

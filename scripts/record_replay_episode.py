@@ -4,20 +4,20 @@ Records a scripted joint-space trajectory via DemoRecorder, saves to HDF5,
 then reloads and replays: playback the camera images + plot the TCP trajectory.
 """
 
-from pathlib import Path
-
 import numpy as np
 import h5py
 import mujoco
 import matplotlib.pyplot as plt
 
+from fyp.config import get_config, resolve
 from fyp.sim.mujoco_controller import URControllerMuJoCo
-from fyp.sim.demo_recorder import DemoRecorder, RateControl
+from fyp.sim.demo_recorder import DemoRecorder
 
-SCENE = Path("assets/mujoco/ur5e/scene.xml")
-OUT = Path("data/mujoco_episode.h5")
-CAM_NAME = "fixed_cam"
-IMG_W, IMG_H = 320, 240
+_sim = get_config()["sim"]
+SCENE = resolve(_sim["scene_arm_only"])
+OUT = resolve(get_config()["paths"]["episodes_dir"]) / "mujoco_episode.h5"
+CAM_NAME = _sim["camera"]["name"]
+IMG_W, IMG_H = _sim["camera"]["width"], _sim["camera"]["height"]
 
 
 def render_frame(renderer: mujoco.Renderer, data: mujoco.MjData) -> np.ndarray:
@@ -38,7 +38,7 @@ def waypoints() -> list[np.ndarray]:
 
 
 def main() -> None:
-    ctrl = URControllerMuJoCo(SCENE, default_speed=1.0)
+    ctrl = URControllerMuJoCo(SCENE)
     recorder = DemoRecorder()
     renderer = mujoco.Renderer(ctrl.model, height=IMG_H, width=IMG_W)
 
@@ -55,7 +55,7 @@ def main() -> None:
         duration = max_move / ctrl.default_speed
         n_steps = max(int(np.ceil(duration / ctrl.control_dt)), 1)
 
-        record_every = max(int(round(0.05 / ctrl.control_dt)), 1)  # ~20 Hz
+        record_every = max(round((1 / _sim["record_hz"]) / ctrl.control_dt), 1)  # from sim.record_hz
 
         for i in range(1, n_steps + 1):
             alpha = i / n_steps
@@ -105,8 +105,8 @@ def main() -> None:
     ax2.set_title("TCP path (3D)")
 
     plt.tight_layout()
-    plt.savefig("data/tcp_trajectory.png", dpi=120)
-    print("Saved plot to data/tcp_trajectory.png")
+    plt.savefig(str(OUT.parent / "tcp_trajectory.png"), dpi=120)
+    print(f"Saved plot to {OUT.parent / 'tcp_trajectory.png'}")
 
     # Replay 2: image playback as a GIF
     import matplotlib.animation as animation
@@ -123,8 +123,8 @@ def main() -> None:
     ani = animation.FuncAnimation(
         fig2, update, frames=n, interval=50, blit=True
     )
-    ani.save("data/episode_playback.gif", writer="pillow", fps=20)
-    print("Saved playback to data/episode_playback.gif")
+    ani.save(str(OUT.parent / "episode_playback.gif"), writer="pillow", fps=20)
+    print(f"Saved playback to {OUT.parent / 'episode_playback.gif'}")
 
 
 if __name__ == "__main__":

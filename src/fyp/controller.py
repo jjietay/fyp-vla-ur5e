@@ -2,7 +2,7 @@ import rtde_control
 import rtde_receive
 import rtde_io
 import time
-from fyp.config import load_config, DEFAULT_CONFIG_PATH
+from fyp.config import get_config, DEFAULT_CONFIG_PATH
 from pathlib import Path
 
 '''
@@ -20,23 +20,23 @@ controller.py will perform the following:
 
 class URController:
     def __init__(self, path: str | Path = DEFAULT_CONFIG_PATH, ):
-        self.cfg = load_config(path)
+        self.cfg = get_config(path)
         ursim_ip = self.cfg["robot"]["host"]
-        self.default_speed = self.cfg["motion"]["default_speed"]
-        self.default_acc = self.cfg["motion"]["default_acc"]
+        self.default_speed = self.cfg["robot"]["motion"]["default_speed"]
+        self.default_acc = self.cfg["robot"]["motion"]["default_acc"]
         self.rtde_r = rtde_receive.RTDEReceiveInterface(ursim_ip)
         self.rtde_c = rtde_control.RTDEControlInterface(ursim_ip)
         self.rtde_io = rtde_io.RTDEIOInterface(ursim_ip)
         self.pin_power = None
         self.pin_control = None
     
-    def gripper_start(self, pin_power : int | None = 1, pin_control : int | None = 2):
-        """Assuming the gripper is default connected to digital output pin 1 for power,
-        and digital output pin 2 for control"""
+    def gripper_start(self, pin_power : int | None = None, pin_control : int | None = None):
+        """Gripper digital-output pins default from config (robot.gripper)."""
         
-        self.pin_power = pin_power if pin_power is not None else 1
-        self.pin_control = pin_control if pin_control is not None else 2
-        self.rtde_io.setStandardDigitalOut(pin_power, True)
+        grip = self.cfg["robot"]["gripper"]
+        self.pin_power = pin_power if pin_power is not None else grip["power_pin"]
+        self.pin_control = pin_control if pin_control is not None else grip["control_pin"]
+        self.rtde_io.setStandardDigitalOut(self.pin_power, True)
         time.sleep(0.1)
         if self.rtde_r.getDigitalOutState(self.pin_power):
             return "Gripper initialized."

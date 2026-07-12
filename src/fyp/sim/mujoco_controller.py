@@ -15,45 +15,52 @@ from pathlib import Path
 import numpy as np
 import mujoco
 
-from fyp.sim.ik import solve_ik 
+from fyp.config import get_config, resolve
+from fyp.sim.ik import solve_ik
 
-# Gripper actuator control values (Robotiq 2F-85 fingers_actuator, ctrl range is 0-255)
-_GRIPPER_OPEN_CTRL = 0.0        # Gripper open is at 0.0
-_GRIPPER_CLOSE_CTRL = 255.0     # Gripper closed is defined as 255
-_GRIPPER_ACT_IDX = 6  # actuator index after the 6 arm joints
+# Actuator index of the gripper, after the 6 arm joints (a model-structure fact).
+_GRIPPER_ACT_IDX = 6
 
 
 class URControllerMuJoCo:
     def __init__(
         self,
-        scene_path: str | Path,       # rmb to use main scene
-        default_speed: float = 1.0,   # rad/s, joint velocity cap
-        default_acc: float = 1.0,     # accepted for signature parity, ignored
-        control_dt: float = 0.002,    # sim step for motion loop (500 Hz)
+        scene_path: str | Path | None = None,   # defaults to sim.scene from config
+        default_speed: float | None = None,     # rad/s joint cap; default from config
+        control_dt: float | None = None,        # sim step for motion loop
     ):
+        cfg = get_config()["sim"]
+        if scene_path is None:
+            scene_path = resolve(cfg["scene"])
+
         self.model = mujoco.MjModel.from_xml_path(str(scene_path))
         self.data = mujoco.MjData(self.model)
 
+        self._tcp_site = cfg["tcp_site"]
         self._tcp_site_id = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_SITE, "attachment_site"
+            self.model, mujoco.mjtObj.mjOBJ_SITE, self._tcp_site
         )
         if self._tcp_site_id == -1:
-            raise RuntimeError("Site 'attachment_site' not found in model.")
+            raise RuntimeError(f"Site '{self._tcp_site}' not found in model.")
 
         # check if this scene has a gripper by checking the model
         self._has_gripper = self.model.nu > 6
 
         self._gripper_state = 0
-        self.default_speed = default_speed
-        self.default_acc = default_acc
-        self.control_dt = control_dt
+        self.default_speed = (
+            default_speed if default_speed is not None else cfg["motion"]["default_speed"]
+        )
+        self.control_dt = control_dt if control_dt is not None else cfg["control_dt"]
+        self._open_ctrl = cfg["gripper"]["open_ctrl"]
+        self._close_ctrl = cfg["gripper"]["close_ctrl"]
+        self._ik_cfg = cfg["ik"]
 
         # Snap to home keyframe (id 0) and compute derived quantities.
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         self.data.ctrl[:6] = self.data.qpos[:6]
         # Start with the gripper open, if present.
         if self._has_gripper:
-            self.data.ctrl[_GRIPPER_ACT_IDX] = _GRIPPER_OPEN_CTRL
+            self.data.ctrl[_GRIPPER_ACT_IDX] = self._open_ctrl
             self._gripper_state = 1
         mujoco.mj_forward(self.model, self.data)
 
@@ -97,7 +104,7 @@ class URControllerMuJoCo:
         self._gripper_state = state
         if self._has_gripper:
             self.data.ctrl[_GRIPPER_ACT_IDX] = (
-                _GRIPPER_OPEN_CTRL if state == 1 else _GRIPPER_CLOSE_CTRL
+                self._open_ctrl if state == 1 else self._close_ctrl
             )
             # Step so the fingers actually move to the commanded position.
             for _ in range(100):
@@ -174,6 +181,7 @@ class URControllerMuJoCo:
             target_pos,
             target_mat,
             q_init=self.data.qpos[:6].copy(),
+            **self._ik_cfg,
         )
         if not ok:
             raise RuntimeError("IK did not converge for the requested pose.")

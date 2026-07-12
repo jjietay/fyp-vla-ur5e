@@ -3,25 +3,21 @@
 ### 1.1 Architecture Tree
 ```
 FYP/
-├── src/fyp/       # main package code (controllers and shared helpers)
+├── src/           # main package code for real and sim controller
 ├── scripts/       # testing scripts
 ├── assets/        # MuJoCo scene/robot/gripper XML + mesh files
-├── config/        # config.yaml (robot host, motion defaults)
+├── config/        # config.yaml (single source of truth for sim and real)
 ├── data/          # episodes/ and logs/ — recorded demonstrations
-├── docs/          # architecture notes, setup references, plan PDFs
-├── tests/         # unit tests — Pytest
+├── docs/          # architecture, commands references, working plan
+├── tests/         # unit tests - Pytests
 ├── notebooks/     # Jupyter explorations (future)
 ├── ursim/         # URSim source files
-├── media/
-├── main.py
-├── pyproject.toml
-└── README.md
+└── media/         # Screen Recordings and screenshots of tests results, etc
 ```
 
-### 1.2 Here are 2 main paths
+### 1.2 Here are 2 main paths for recreating UR5e Movement in Sim
 1) Scripted path via `scripts/record_replay_eposide.py`
 2) Teleoperation via `sim_server.py` + `sim_client.py` + `demo_recorder.py`
-
 
 ### 1.3 More important files
 ```
@@ -33,6 +29,7 @@ FYP/
 - sim_server.py ()
 - sim_client.py
 ```
+
 
 ## 2 Files by file breakdown
 

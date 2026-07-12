@@ -14,8 +14,11 @@ from __future__ import annotations
 import json
 import socket
 
-HOST = "127.0.0.1"
-PORT = 5555
+from fyp.config import get_config
+
+_srv = get_config()["server"]
+HOST = _srv["host"]
+PORT = _srv["port"]
 
 
 class SimClient:
