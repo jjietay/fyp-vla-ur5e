@@ -49,3 +49,14 @@ plt.savefig('data/episodes/ep_001_check.png', dpi=100)
 print('gripper transitions at frames:', np.where(np.diff(grip) != 0)[0])
 print('TCP z range:', round(float(tcp[:,2].min()),3), '->', round(float(tcp[:,2].max()),3))
 "
+
+## Convert HDF5 episodes into a LeRobot Dataset
+PYTHONPATH=/home/jj/Documents/NTU/Y4S1/FYP/src \
+python /home/jj/Documents/NTU/Y4S1/FYP/scripts/hdf5_to_lerobot.py \
+  --episodes /home/jj/Documents/NTU/Y4S1/FYP/data/episodes \
+  --repo-id  jj/ur5e_pickplace \
+  --task     "pick and place the block" \
+  --camera   top
+  --root     /path_to_save_the_final_dataset
+
+
