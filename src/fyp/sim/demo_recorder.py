@@ -54,6 +54,12 @@ class DemoRecorder:
         images          = np.stack([snap.image for snap in self._buffer])
 
         # Write to HDF5
+        # timestamps --> float (0.00123)
+        # joint_positions --> ndarray (mujoco_controller calls it using mujoco.MJData(self.model) which contains joint angles)
+        # tcp_pose --> ndarray (use mujoco's xpos and xmat to calculate tcp_pose, pos gives position and mat gives rotation matrix)
+        # gripper_state --> int
+        # image --> ndarray (sim_server calls mjc's api and returns a np array of shape (H, W, 3) of dtype uint8)
+
         with h5py.File(path, "w") as f:
             f.create_dataset("timestamps",      data=timestamps)
             f.create_dataset("joint_positions", data=joint_positions)
