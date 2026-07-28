@@ -19,7 +19,6 @@ BLOCKS = ["block_red", "block_green", "block_blue", "block_yellow"]
 
 
 def load_scene(scene_key: str = "scene"):
-    """Load the configured scene and reset it to the `home` keyframe."""
     import mujoco
 
     model = mujoco.MjModel.from_xml_path(str(resolve(get_config()["sim"][scene_key])))
@@ -31,11 +30,6 @@ def load_scene(scene_key: str = "scene"):
 
 
 def camera_pose(model, data, camera: str):
-    """(position, 3x3 rotation) of a named camera, in the WORLD frame.
-
-    In sim this is exact. On hardware the equivalent quantity is the output of
-    hand-eye calibration and carries real uncertainty.
-    """
     import mujoco
 
     cid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
@@ -46,12 +40,10 @@ def camera_pose(model, data, camera: str):
 
 
 def world_to_camera(p_world, cam_pos, cam_mat) -> np.ndarray:
-    """World point -> camera frame. Columns of cam_mat are the camera axes in world."""
     return cam_mat.T @ (np.asarray(p_world, dtype=float) - cam_pos)
 
 
 def block_truth(model, data) -> dict:
-    """True top-face centre, centroid and half-height of each block, WORLD frame."""
     import mujoco
 
     out = {}
@@ -69,7 +61,6 @@ def block_truth(model, data) -> dict:
 
 
 def body_position(model, data, name: str) -> np.ndarray | None:
-    """World position of a named body, or None if it is not in the model."""
     import mujoco
 
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)

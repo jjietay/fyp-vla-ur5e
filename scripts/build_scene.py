@@ -20,7 +20,7 @@ ARM_SCENE = "assets/mujoco/ur5e/scene.xml"
 GRIPPER   = "assets/mujoco/robotiq_2f85/2f85.xml"
 OUT       = "assets/mujoco/ur5e/scene_gripper.xml"
 
-# Absolute mesh dirs so the composed file finds meshes regardless of its location.
+
 ARM_MESHDIR  = str((REPO / "assets/mujoco/ur5e/assets").resolve())
 GRIP_MESHDIR = str((REPO / "assets/mujoco/robotiq_2f85/assets").resolve())
 
@@ -29,7 +29,7 @@ def main() -> None:
     arm = mujoco.MjSpec.from_file(ARM_SCENE)
     grip = mujoco.MjSpec.from_file(GRIPPER)
 
-    # Force absolute mesh directories before composing.
+
     arm.meshdir = ARM_MESHDIR
     grip.meshdir = GRIP_MESHDIR
 

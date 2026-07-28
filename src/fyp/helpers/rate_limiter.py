@@ -14,15 +14,13 @@ import time
 
 class RateControl:
     def __init__(self, hz: float = 20.0):
-        self.dt = 1.0 / hz  # period in seconds (0.05 for 20Hz)
+        self.dt = 1.0 / hz
         self._next_tick: float | None = None
 
     def start(self) -> None:
-        """Call once before the loop begins."""
         self._next_tick = time.monotonic()
 
     def wait(self) -> None:
-        """Call at the end of each loop iteration to hold the rate."""
         if self._next_tick is None:
             raise RuntimeError("Call start() before wait().")
         self._next_tick += self.dt

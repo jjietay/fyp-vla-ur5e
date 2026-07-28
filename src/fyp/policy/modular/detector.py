@@ -15,15 +15,9 @@ from __future__ import annotations
 
 
 def detect(pil_img, queries, model_name, threshold=None):
-    """Run a zero-shot detector over `queries`. Returns sorted (query, score, box).
-
-    `threshold` is accepted and ignored — filtering is the caller's job (see
-    filters.apply_filters). It stays in the signature so existing call sites do
-    not break.
-    """
     import torch
-    # Generic zero-shot detection API: works for OWL-ViT, OWLv2, and GroundingDINO,
-    # so --model can be swapped without changing loader classes.
+
+
     from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 
     processor = AutoProcessor.from_pretrained(model_name)
@@ -35,13 +29,11 @@ def detect(pil_img, queries, model_name, threshold=None):
     with torch.no_grad():
         outputs = model(**inputs)
 
-    # target_sizes wants (height, width); PIL .size is (width, height).
+
     target_sizes = torch.tensor([pil_img.size[::-1]], device=device)
 
-    # transformers renamed this: newer builds expose post_process_grounded_object_detection
-    # (and may return text_labels instead of integer label indices). Handle both.
-    # Use a near-zero floor so we can SEE the raw scores; caller filters by threshold.
-    post = getattr(processor, "post_process_grounded_object_detection", None) \
+
+    post = getattr(processor, "post_process_grounded_object_detection", None)\
         or processor.post_process_object_detection
     try:
         results = post(outputs, threshold=0.0, target_sizes=target_sizes,
@@ -49,8 +41,8 @@ def detect(pil_img, queries, model_name, threshold=None):
     except TypeError:
         results = post(outputs, threshold=0.0, target_sizes=target_sizes)[0]
 
-    text_labels = results.get("text_labels")          # newer API: list[str] or None
-    int_labels = results.get("labels")                # older API: tensor of indices
+    text_labels = results.get("text_labels")
+    int_labels = results.get("labels")
 
     dets = []
     for i, (box, score) in enumerate(zip(results["boxes"], results["scores"])):

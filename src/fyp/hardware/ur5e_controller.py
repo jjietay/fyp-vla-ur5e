@@ -33,7 +33,6 @@ class URController:
         self.pin_control = None
 
     def gripper_start(self, pin_power : int | None = None, pin_control : int | None = None):
-        """Gripper digital-output pins default from config (robot.gripper)."""
 
         grip = self.cfg["robot"]["gripper"]
         self.pin_power = pin_power if pin_power is not None else grip["power_pin"]
@@ -56,10 +55,10 @@ class URController:
         return self.rtde_c.moveJ(q, speed, acc)
 
     def gripper_toggle(self, state: int):
-        if state == 1:      # OPEN
+        if state == 1:
             self.rtde_io.setStandardDigitalOut(self.pin_control, False)
             time.sleep(0.1)
-        elif state == 0:    # CLOSE
+        elif state == 0:
             self.rtde_io.setStandardDigitalOut(self.pin_control, True)
             time.sleep(0.1)
         else:

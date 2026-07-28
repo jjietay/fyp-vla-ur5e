@@ -29,13 +29,12 @@ DUPLICATE_SEPARATION_MM = 20.0
 
 @dataclass
 class LocatedObject:
-    """One detection resolved to a 3D point in the camera frame."""
 
     query: str
     score: float
     center_uv: tuple
     depth_m: float
-    p_cam: np.ndarray | None    # None when depth was unusable
+    p_cam: np.ndarray | None
 
     @property
     def valid(self) -> bool:
@@ -44,11 +43,6 @@ class LocatedObject:
 
 def locate(detections: list[dict], depth: np.ndarray, intr: CameraIntrinsics,
            max_depth: float | None = None, radius: int = 2) -> list[LocatedObject]:
-    """Back-project each detection's centre pixel to a camera-frame point.
-
-    `detections` are the JSON records written by `filters.to_json_records`
-    (each carrying `center_uv`), so this stage never recomputes box geometry.
-    """
     out: list[LocatedObject] = []
     for d in detections:
         u, v = d["center_uv"]
@@ -61,11 +55,6 @@ def locate(detections: list[dict], depth: np.ndarray, intr: CameraIntrinsics,
 
 def find_duplicates(located: list[LocatedObject],
                     separation_mm: float = DUPLICATE_SEPARATION_MM) -> list[tuple]:
-    """Pairs of valid detections closer together than `separation_mm`.
-
-    A duplicate that survived NMS shows up as two detections on one 3D point.
-    Returns (i, j, separation_mm) so the caller can report which queries clashed.
-    """
     pairs = []
     for i in range(len(located)):
         for j in range(i + 1, len(located)):
@@ -78,11 +67,6 @@ def find_duplicates(located: list[LocatedObject],
 
 
 def nearest_truth(p_cam: np.ndarray, truth_cam: dict) -> tuple:
-    """Closest ground-truth point to `p_cam`. SIM ONLY — returns (name, metres).
-
-    Used by the verification scripts to produce an error number. There is no
-    equivalent on real hardware, so nothing in the live pipeline may call this.
-    """
     near, dist = None, float("inf")
     for name, tc in truth_cam.items():
         e = float(np.linalg.norm(p_cam - tc))

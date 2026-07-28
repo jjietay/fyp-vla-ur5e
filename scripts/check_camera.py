@@ -29,11 +29,10 @@ from fyp.hardware.sim.scene import (BLOCKS, body_position, camera_pose,
                                     load_scene, world_to_camera)
 from fyp.helpers.pixel_to_depth import camera_to_pixel
 
-TOL = 3e-3      # 3 mm - generous next to a 40 mm cube, tight enough to catch sign errors
+TOL = 3e-3
 
 
 def colourise(depth: np.ndarray) -> np.ndarray:
-    """Map finite depth to 8-bit greyscale (near = bright). Eyeballing only."""
     finite = depth[np.isfinite(depth) & (depth > 0)]
     if finite.size == 0:
         return np.zeros(depth.shape, dtype=np.uint8)
@@ -43,14 +42,6 @@ def colourise(depth: np.ndarray) -> np.ndarray:
 
 
 def patch_median(depth: np.ndarray, u: float, v: float, r: int = 2) -> float:
-    """Median depth in a small window - robust to the odd edge pixel.
-
-    Deliberately NOT helpers.pixel_to_depth.depth_at: that one also rejects
-    non-finite, non-positive and beyond-max_depth samples. Those filters are
-    right for the live pipeline but wrong for a verification probe, which should
-    report whatever the buffer actually contains rather than quietly skipping
-    the very pixels a bug would show up in.
-    """
     h, w = depth.shape
     ui, vi = int(round(u)), int(round(v))
     if not (0 <= ui < w and 0 <= vi < h):
@@ -78,15 +69,13 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
     print(f"camera  pos={np.round(cam_pos, 4).tolist()}  fovy={model.cam_fovy[cam_id]:.1f}")
     print(f"depth   {depth.dtype}  range {depth.min():.4f}..{depth.max():.4f} m")
 
-    # -- 1. metric scale on a known flat surface -------------------------------
+
     print("\nmetric scale")
     table_z = 0.0
     check("bare table @ image centre", patch_median(depth, intr.cx, intr.cy),
           float(cam_pos[2]) - table_z)
 
-    # -- 2. every block, projected through the pinhole model -------------------
-    # If the projection is wrong the probe lands off the cube and reads table
-    # depth instead - so this tests the camera model, not just the depth scale.
+
     print("\nblock top faces (pinhole projection -> depth probe)")
     for name in BLOCKS:
         centre = body_position(model, data, name)
@@ -95,13 +84,13 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
             print(f"  [SKIP] {name}: not in model")
             continue
         half_z = float(model.geom_size[gid][2])
-        top = centre + np.array([0.0, 0.0, half_z])       # camera sees the top face
+        top = centre + np.array([0.0, 0.0, half_z])
         u, v, want = camera_to_pixel(world_to_camera(top, cam_pos, cam_mat), intr)
         in_frame = 0 <= u < w and 0 <= v < h
         check(f"{name} @ (u={u:6.1f}, v={v:6.1f})" + ("" if in_frame else " OUT OF FRAME"),
               patch_median(depth, u, v, r=1), float(want))
 
-    # -- 3. is the bin in frame at all? ---------------------------------------
+
     print("\nframing")
     bin_pos = body_position(model, data, "bin")
     if bin_pos is not None:
@@ -111,16 +100,7 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
         print(f"  [{'PASS' if inside else 'FAIL'}] bin centre at (u={u:.1f}, v={v:.1f}) "
               f"in a {w}x{h} image")
 
-    # -- 4. depth convention ---------------------------------------------------
-    # Same flat table, as far off-axis as possible: ray length grows with the
-    # off-axis angle, z-depth does not. Rather than guessing a bare-table pixel
-    # (the arm may occlude a hard-coded corner), find the table pixel furthest
-    # from the principal point. Under EITHER convention the table reads >= the
-    # camera height, so selecting on "close to camera height" cannot bias the
-    # test towards z-depth: a ray-length buffer simply has fewer such pixels,
-    # all of them near the centre, and the chosen point would then sit at small
-    # radius where the two predictions coincide - an inconclusive result, not a
-    # false pass.
+
     print("\nconvention")
     z_depth = float(cam_pos[2])
     vv, uu = np.mgrid[0:h, 0:w]
@@ -168,7 +148,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     Image.fromarray(rgb).save(out / f"{args.camera}_rgb.png")
     Image.fromarray(colourise(depth)).save(out / f"{args.camera}_depth.png")
-    np.save(out / f"{args.camera}_depth.npy", depth)   # raw metres; the PNG is lossy
+    np.save(out / f"{args.camera}_depth.npy", depth)
     print(f"saved {args.camera}_rgb.png / _depth.png / _depth.npy -> {out}")
 
     if args.verify:

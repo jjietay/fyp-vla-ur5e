@@ -18,7 +18,6 @@ import numpy as np
 
 
 def save_snapshots(snapshots: list, path: str | Path) -> None:
-    """Stack per-field arrays from a list of TimestepSnapshot and write HDF5."""
     if len(snapshots) == 0:
         raise RuntimeError("Nothing to save — buffer is empty.")
 
@@ -37,7 +36,6 @@ def save_snapshots(snapshots: list, path: str | Path) -> None:
 
 
 def load_episode(path: str | Path) -> dict:
-    """Read an episode back into plain numpy arrays."""
     with h5py.File(path, "r") as f:
         return {
             "timestamps":      f["timestamps"][:],
@@ -49,6 +47,5 @@ def load_episode(path: str | Path) -> dict:
 
 
 def episode_paths(episodes_dir: str | Path) -> list[Path]:
-    """Every .h5/.hdf5 episode in a directory, sorted."""
     d = Path(episodes_dir)
     return sorted(d.glob("*.h5")) + sorted(d.glob("*.hdf5"))

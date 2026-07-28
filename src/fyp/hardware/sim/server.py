@@ -33,21 +33,14 @@ SCENE = resolve(_sim["scene"])
 
 CAM_NAME = _sim["camera"]["name"]
 IMG_W, IMG_H = _sim["camera"]["width"], _sim["camera"]["height"]
-# Target recording period (seconds). Recording is gated on wall-clock elapsed
-# time, NOT on a sim-tick count, so the effective rate stays at record_hz no
-# matter how long each loop iteration actually takes (render/viewer/mj_step).
-RECORD_PERIOD = 1.0 / _sim["record_hz"]   # 0.05 s == 20 Hz
+
+
+RECORD_PERIOD = 1.0 / _sim["record_hz"]
 GRIPPER_ACT_IDX = 6
 GRIPPER_MIDPOINT = (_sim["gripper"]["open_ctrl"] + _sim["gripper"]["close_ctrl"]) / 2
 
 
 class _Job:
-    """Hand-off token between the listener thread and the main thread.
-
-    The listener creates it and waits on `done`; the main thread fills `result`
-    and sets the event. This is what lets the client block until its command has
-    actually been executed against the sim.
-    """
 
     def __init__(self, request: dict):
         self.request = request
@@ -63,21 +56,18 @@ class SimServer:
         self._jobs: "queue.Queue[_Job]" = queue.Queue()
         self._stop = threading.Event()
 
-        # Recording state
+
         self.recorder = DemoRecorder()
         self.renderer = mujoco.Renderer(self.ctrl.model, height=IMG_H, width=IMG_W)
         self._recording = False
-        self._next_record_time: float | None = None   # wall-clock gate
+        self._next_record_time: float | None = None
 
-    # ---- gripper state from the live slider command ------------------------
 
     def _gripper_from_ctrl(self) -> int:
-        """Derive 0/1 gripper state from the actual actuator command."""
         if self.ctrl.model.nu <= GRIPPER_ACT_IDX:
             return self.ctrl._gripper_state
         return 1 if self.ctrl.data.ctrl[GRIPPER_ACT_IDX] < GRIPPER_MIDPOINT else 0
 
-    # ---- command dispatch (runs on MAIN thread) ---------------------------
 
     def _execute(self, req: dict, viewer) -> dict:
         cmd = req.get("cmd")
@@ -171,18 +161,8 @@ class SimServer:
             time.sleep(self.ctrl.control_dt)
         self.ctrl.data.ctrl[:6] = q_target
 
-    # ---- recording ---------------------------------------------------------
 
     def _maybe_record(self) -> None:
-        """Called every sim tick; logs a snapshot once every RECORD_PERIOD of
-        wall-clock time.
-
-        Gating on the clock (not a tick count) keeps the effective rate locked
-        to record_hz regardless of how long each iteration takes. A transient
-        failure in state read / render can never propagate into the sim loop:
-        it is caught, logged, and the gate advances so we simply try again on
-        the next scheduled frame.
-        """
         if not self._recording or self._next_record_time is None:
             return
 
@@ -200,17 +180,14 @@ class SimServer:
                 gripper_state=self._gripper_from_ctrl(),
                 image=img,
             )
-        except Exception as e:  # never let a bad frame kill the sim loop
+        except Exception as e:
             print(f"[server] WARNING: skipped a frame ({type(e).__name__}: {e})")
 
-        # Advance the gate by whole periods. If the loop stalled and we fell
-        # more than one period behind, resync to 'now' instead of bursting a
-        # backlog of frames — this preserves a uniform cadence.
+
         self._next_record_time += RECORD_PERIOD
         if self._next_record_time <= now:
             self._next_record_time = now + RECORD_PERIOD
 
-    # ---- socket listener (BACKGROUND thread) ------------------------------
 
     def _serve(self) -> None:
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -246,7 +223,6 @@ class SimServer:
                         conn.sendall((json.dumps(job.result) + "\n").encode())
         srv.close()
 
-    # ---- main loop --------------------------------------------------------
 
     def run(self) -> None:
         listener = threading.Thread(target=self._serve, daemon=True)
@@ -268,7 +244,7 @@ class SimServer:
                     time.sleep(self.ctrl.control_dt)
         finally:
             self._stop.set()
-            self.renderer.close()   # close renderer before teardown (avoids free() crash)
+            self.renderer.close()
             print("[server] shut down.")
 
 

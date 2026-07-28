@@ -32,7 +32,7 @@ from fyp.helpers.pixel_to_depth import (camera_to_pixel, depth_at,
                                         pixel_to_camera, surface_to_centroid)
 from fyp.policy.modular.localiser import find_duplicates, locate, nearest_truth
 
-TOL_MM = 5.0        # sim has no sensor noise; anything above this is a real bug
+TOL_MM = 5.0
 
 
 def run_verify(depth, intr, model, data, camera: str, far: float) -> bool:
@@ -80,8 +80,8 @@ def run_verify(depth, intr, model, data, camera: str, far: float) -> bool:
 def run_detections(path: str, depth, intr, model, data, camera: str, far: float) -> bool:
     p = Path(path)
     if not p.exists():
-        # Almost always means the detector hasn't been run yet, and it lives in a
-        # different venv - so say exactly how to produce the file.
+
+
         print(f"\nno detections file at {p}\n"
               "Stage 2 has to run first, and it needs the lerobot venv (torch):\n\n"
               "  # 1. render the frame (FYP venv)\n"
@@ -116,7 +116,7 @@ def run_detections(path: str, depth, intr, model, data, camera: str, far: float)
     located = locate(dets, depth, intr, max_depth=far, radius=2)
 
     print(f"\n{len(dets)} detection(s) from {path}\n")
-    hdr = f"{'query':<14}{'score':>6}  {'u':>6} {'v':>6} {'depth':>7}   " \
+    hdr = f"{'query':<14}{'score':>6}  {'u':>6} {'v':>6} {'depth':>7}   "\
           f"{'camera-frame XYZ (m)':<30} nearest truth"
     print(hdr)
     print("-" * len(hdr))
@@ -136,7 +136,7 @@ def run_detections(path: str, depth, intr, model, data, camera: str, far: float)
         print(f"{obj.query:<14}{obj.score:>6.2f}  {u:>6.1f} {v:>6.1f} {obj.depth_m:>7.4f}   "
               f"({pt[0]:+.4f}, {pt[1]:+.4f}, {pt[2]:+.4f})   {tag}{flag}")
 
-    # A duplicate that survived NMS shows up as two detections on one 3D point.
+
     for i, j, sep in find_duplicates(located):
         print(f"\n  [WARN] '{located[i].query}' and '{located[j].query}' are "
               f"only {sep:.1f} mm apart - likely the same object; tighten NMS")
@@ -157,7 +157,7 @@ def main() -> None:
     model, data = load_scene()
     _rgb, depth, intr = render_rgbd(args.width, args.height, camera=args.camera,
                                     model=model, data=data)
-    # Anything at or beyond the floor is background, not an object on the table.
+
     far = float(depth.max()) - 1e-3
     print(f"{intr}\ndepth range {depth.min():.4f}..{depth.max():.4f} m  "
           f"(background rejected at >= {far:.4f})")

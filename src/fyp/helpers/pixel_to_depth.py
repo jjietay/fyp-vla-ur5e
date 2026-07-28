@@ -26,7 +26,6 @@ import numpy as np
 
 @dataclass(frozen=True)
 class CameraIntrinsics:
-    """Pinhole intrinsics in pixels."""
 
     fx: float
     fy: float
@@ -37,35 +36,17 @@ class CameraIntrinsics:
 
     @property
     def K(self) -> np.ndarray:
-        """3x3 camera matrix."""
         return np.array([[self.fx, 0.0, self.cx],
                          [0.0, self.fy, self.cy],
                          [0.0, 0.0, 1.0]], dtype=float)
 
-    def __repr__(self) -> str:  # keeps verification output readable
+    def __repr__(self) -> str:
         return (f"CameraIntrinsics(fx={self.fx:.2f}, fy={self.fy:.2f}, "
                 f"cx={self.cx:.1f}, cy={self.cy:.1f}, "
                 f"{self.width}x{self.height})")
 
 
 def intrinsics_from_fovy(fovy_deg: float, width: int, height: int) -> CameraIntrinsics:
-    """Derive pinhole intrinsics from a vertical field of view.
-
-    MuJoCo specifies only `fovy` (vertical field of view, degrees) and assumes
-    square pixels, so fx == fy and the horizontal FOV falls out of the aspect
-    ratio. The principal point sits at the image centre.
-
-        fy = (height / 2) / tan(fovy / 2)
-
-    Principal point uses (n - 1) / 2, not n / 2: pixel i is sampled at its
-    centre, so index 0 is coordinate 0.0 and the centre of a 480-row image is
-    239.5. The half-pixel matters once you back-project - at 0.85 m it is
-    ~0.8 mm of lateral error, small but free to get right.
-
-    NOTE this is a sim convenience. A real camera gives you fx, fy, cx, cy from
-    calibration and you build CameraIntrinsics directly - they are not equal
-    (real lenses have fx != fy and an off-centre principal point).
-    """
     if not (0.0 < fovy_deg < 180.0):
         raise ValueError(f"fovy must be in (0, 180) degrees, got {fovy_deg}")
     f = (height / 2.0) / np.tan(np.deg2rad(fovy_deg) / 2.0)
@@ -75,23 +56,6 @@ def intrinsics_from_fovy(fovy_deg: float, width: int, height: int) -> CameraIntr
 
 
 def pixel_to_camera(u, v, depth, intr: CameraIntrinsics) -> np.ndarray:
-    """Back-project pixel(s) + z-depth to camera-frame XYZ. Stage 3 of Arch A.
-
-    Accepts scalars or arrays; returns (3,) or (N, 3).
-
-        X = (u - cx) * Z / fx
-        Y = -(v - cy) * Z / fy        <- image rows run DOWN, camera +Y is UP
-        Z = -depth                     <- camera looks down its own -Z
-
-    The two sign flips are the whole subtlety. Verified empirically against
-    MuJoCo: the depth buffer is z-depth (perpendicular distance from the camera
-    plane), so `depth` divides in directly with no ray-length correction.
-
-    NOTE what this point physically IS: the camera sees an object's TOP SURFACE,
-    so back-projecting a detection's box centre gives a point on top of the
-    object, not its centroid. `pick()` must offset downward to get a grasp
-    centre - see `surface_to_centroid`.
-    """
     u = np.asarray(u, dtype=float)
     v = np.asarray(v, dtype=float)
     z = np.asarray(depth, dtype=float)
@@ -102,11 +66,6 @@ def pixel_to_camera(u, v, depth, intr: CameraIntrinsics) -> np.ndarray:
 
 
 def camera_to_pixel(p_cam, intr: CameraIntrinsics) -> tuple:
-    """Forward projection - the exact inverse of `pixel_to_camera`.
-
-    Kept beside it so the round-trip can be tested to machine precision; also
-    used to predict where a known world point should appear.
-    """
     p = np.asarray(p_cam, dtype=float)
     depth = -p[..., 2]
     if np.any(depth <= 0):
@@ -117,37 +76,13 @@ def camera_to_pixel(p_cam, intr: CameraIntrinsics) -> tuple:
 
 
 def surface_to_centroid(p_cam: np.ndarray, half_height: float) -> np.ndarray:
-    """Shift a top-surface point down to the centroid of an object of known height.
-
-    The camera only ever sees an object's top face, but a grasp wants its centre.
-    For a cube of half-size h resting on the table, the centroid sits h below the
-    observed top surface.
-
-    ASSUMES A TOP-DOWN CAMERA - specifically that the camera's Z axis is parallel
-    to world Z, which holds for the `workspace` camera (xyaxes "1 0 0 0 1 0").
-    Then "down in the world" is exactly -Z in camera coordinates and X, Y are
-    untouched. For a tilted camera you would instead rotate world -Z into the
-    camera frame and step along that, so revisit this when the real RGB-D camera
-    is mounted at an angle.
-    """
     out = np.array(p_cam, dtype=float, copy=True)
-    out[..., 2] -= half_height      # deeper = further from the camera = smaller Z
+    out[..., 2] -= half_height
     return out
 
 
 def depth_at(depth: np.ndarray, u: float, v: float, radius: int = 2,
              max_depth: float | None = None) -> float:
-    """Sample the depth map at (u, v), robustly.
-
-    Takes the median of a (2r+1)^2 patch rather than one pixel: a box centre can
-    land on an object edge, and a single reading there straddles the depth
-    discontinuity and lands halfway between the object and the table - a
-    plausible-looking value that is wrong by centimetres.
-
-    Returns NaN if the pixel is out of frame or the patch has no valid depth.
-    `max_depth` rejects background: MuJoCo returns the far-plane distance for
-    pixels that hit nothing near, which is a finite number, not inf.
-    """
     h, w = depth.shape
     ui, vi = int(round(u)), int(round(v))
     if not (0 <= ui < w and 0 <= vi < h):

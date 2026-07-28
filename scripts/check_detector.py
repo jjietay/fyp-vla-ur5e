@@ -61,9 +61,7 @@ def main() -> None:
 
     from PIL import Image, ImageDraw
 
-    # ---- get the frame ----
-    # Imported lazily and separately so --render-only never needs torch and
-    # --image never needs mujoco. That split is the whole point of this script.
+
     if args.image:
         img = np.array(Image.open(args.image).convert("RGB"))
     else:
@@ -77,14 +75,14 @@ def main() -> None:
         print(f"saved frame -> {args.out}  ({img.shape[1]}x{img.shape[0]})")
         return
 
-    # ---- detect + filter + overlay ----
+
     from fyp.policy.modular.detector import detect
     from fyp.policy.modular.filters import apply_filters, to_json_records
 
     pil = Image.fromarray(img)
-    all_dets = detect(pil, args.queries, args.model)  # sorted, all scores
+    all_dets = detect(pil, args.queries, args.model)
 
-    # Diagnostic: show the strongest raw candidates even if below threshold.
+
     print(f"top raw candidates (model={args.model}):")
     for q, s, box in all_dets[:8]:
         print(f"  {q:14s} score={s:.3f}  box(xyxy)={box}")
@@ -105,7 +103,7 @@ def main() -> None:
     for q, s, (x0, y0, x1, y1) in keep:
         cu, cv = (x0 + x1) / 2, (y0 + y1) / 2
         draw.rectangle([x0, y0, x1, y1], outline=(255, 0, 0), width=2)
-        # Mark the centre pixel: this is the exact (u,v) stage 3 will sample.
+
         draw.line([cu - 4, cv, cu + 4, cv], fill=(0, 255, 255), width=1)
         draw.line([cu, cv - 4, cu, cv + 4], fill=(0, 255, 255), width=1)
         draw.text((x0, max(0, y0 - 11)), f"{q} {s:.2f}", fill=(255, 255, 0))

@@ -23,7 +23,6 @@ from fyp.helpers.pixel_to_depth import CameraIntrinsics, intrinsics_from_fovy
 
 
 def intrinsics_for_camera(model, camera: str, width: int, height: int) -> CameraIntrinsics:
-    """Read `fovy` off a named MuJoCo camera and build its intrinsics."""
     import mujoco
 
     cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
@@ -40,17 +39,6 @@ def render_rgbd(
     data=None,
     model=None,
 ) -> tuple[np.ndarray, np.ndarray, CameraIntrinsics]:
-    """Render aligned RGB + depth from one MuJoCo camera.
-
-    Returns
-        rgb    (H, W, 3) uint8
-        depth  (H, W)    float32, metres, z-depth from the camera plane
-        intr   CameraIntrinsics matching this render size
-
-    Pass an existing (model, data) pair to capture the *live* scene during an
-    episode. With neither, the scene is loaded fresh and reset to the `home`
-    keyframe, which is what you want for static verification.
-    """
     import mujoco
 
     from fyp.helpers.config import get_config, resolve
@@ -72,7 +60,7 @@ def render_rgbd(
         renderer.update_scene(data, camera=cam)
         rgb = renderer.render().copy()
 
-        # Same scene, depth mode: guarantees the buffers correspond.
+
         renderer.enable_depth_rendering()
         depth = renderer.render().copy().astype(np.float32)
         renderer.disable_depth_rendering()

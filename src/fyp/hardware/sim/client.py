@@ -31,12 +31,6 @@ def next_episode_path(
     prefix: str = "ep_",
     digits: int = 3,
 ) -> str:
-    """Return the next free '<prefix>NNN.h5' path in the episodes dir.
-
-    Scans the folder for existing '<prefix>NNN.h5' files, takes the highest N,
-    and returns N+1 (zero-padded). Starts at 1 when the folder is empty. This
-    guarantees a new recording never overwrites an existing episode.
-    """
     d = Path(episodes_dir) if episodes_dir else resolve(get_config()["paths"]["episodes_dir"])
     d.mkdir(parents=True, exist_ok=True)
     pat = re.compile(rf"^{re.escape(prefix)}(\d+)\.h5$")
@@ -63,7 +57,6 @@ class SimClient:
             line = buf.split(b"\n", 1)[0]
             return json.loads(line.decode())
 
-    # ---- commands ---------------------------------------------------------
 
     def get_state(self) -> dict:
         return self._send({"cmd": "get_state"})
@@ -84,12 +77,6 @@ class SimClient:
         return self._send({"cmd": "start_recording"})
 
     def stop_and_save(self, path: str | None = None) -> dict:
-        """Stop recording and save.
-
-        path=None (default): auto-pick the next free ep_NNN.h5 so each new
-        recording gets a fresh name and never overwrites a previous episode.
-        Pass an explicit path to override (e.g. a descriptive task name).
-        """
         if path is None:
             path = next_episode_path()
         return self._send({"cmd": "stop_and_save", "path": path})
