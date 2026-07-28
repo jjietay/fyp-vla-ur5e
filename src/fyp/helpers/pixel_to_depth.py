@@ -1,24 +1,21 @@
-"""RGB-D rendering and pinhole intrinsics for the workspace camera.
+"""Pinhole camera model: pixels + depth <-> camera-frame 3D points.
 
-This is Architecture A stage 1 (frame) plus the camera model stage 3
-(depth-to-3D) needs. In simulation the frame comes from `mujoco.Renderer`; on
-hardware it comes from an RGB-D camera. Both produce the same two arrays -
-an (H,W,3) uint8 RGB image and an (H,W) float32 depth map in metres - so
-everything downstream is unchanged when the real camera arrives. The only
-thing that must be swapped is `intrinsics_*`: in sim we derive them from the
-MuJoCo camera's fovy, on hardware you read them off the camera's calibration.
+This is the maths half of Architecture A stage 3. It is deliberately free of
+MuJoCo: the same equations run against a real RGB-D camera, only the source of
+`CameraIntrinsics` changes (derived from fovy in sim, from a checkerboard
+calibration on hardware).
 
 DEPTH CONVENTION
-    MuJoCo's depth buffer is *z-depth*: the perpendicular distance from the
-    camera plane along the camera's viewing axis, NOT the length of the ray to
-    the surface. Those agree only at the principal point and diverge towards
-    the image edges, so the distinction matters for back-projection. The
-    pinhole model below assumes z-depth, which is what MuJoCo gives us.
+    Depth here is *z-depth*: the perpendicular distance from the camera plane
+    along the viewing axis, NOT the length of the ray to the surface. The two
+    agree only at the principal point and diverge towards the image edges.
+    MuJoCo's buffer is z-depth (measured, not assumed - see check_camera.py),
+    so it divides straight into the model below with no ray-length correction.
 
 CAMERA FRAME (MuJoCo / OpenGL convention)
     +X right, +Y UP, camera looks down its own -Z.
     Image rows run downward, so image +v maps to camera -Y. Back-projection
-    must flip that sign; see `pixel_to_camera` (added with stage 3).
+    must flip that sign; see `pixel_to_camera`.
 """
 from __future__ import annotations
 
@@ -52,7 +49,7 @@ class CameraIntrinsics:
 
 
 def intrinsics_from_fovy(fovy_deg: float, width: int, height: int) -> CameraIntrinsics:
-    """Derive pinhole intrinsics from a MuJoCo camera's vertical FOV.
+    """Derive pinhole intrinsics from a vertical field of view.
 
     MuJoCo specifies only `fovy` (vertical field of view, degrees) and assumes
     square pixels, so fx == fy and the horizontal FOV falls out of the aspect
@@ -64,6 +61,10 @@ def intrinsics_from_fovy(fovy_deg: float, width: int, height: int) -> CameraIntr
     centre, so index 0 is coordinate 0.0 and the centre of a 480-row image is
     239.5. The half-pixel matters once you back-project - at 0.85 m it is
     ~0.8 mm of lateral error, small but free to get right.
+
+    NOTE this is a sim convenience. A real camera gives you fx, fy, cx, cy from
+    calibration and you build CameraIntrinsics directly - they are not equal
+    (real lenses have fx != fy and an off-centre principal point).
     """
     if not (0.0 < fovy_deg < 180.0):
         raise ValueError(f"fovy must be in (0, 180) degrees, got {fovy_deg}")
@@ -71,16 +72,6 @@ def intrinsics_from_fovy(fovy_deg: float, width: int, height: int) -> CameraIntr
     return CameraIntrinsics(fx=float(f), fy=float(f),
                             cx=(width - 1) / 2.0, cy=(height - 1) / 2.0,
                             width=int(width), height=int(height))
-
-
-def intrinsics_for_camera(model, camera: str, width: int, height: int) -> CameraIntrinsics:
-    """Read `fovy` off a named MuJoCo camera and build its intrinsics."""
-    import mujoco
-
-    cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
-    if cam_id < 0:
-        raise ValueError(f"no camera named {camera!r} in the model")
-    return intrinsics_from_fovy(float(model.cam_fovy[cam_id]), width, height)
 
 
 def pixel_to_camera(u, v, depth, intr: CameraIntrinsics) -> np.ndarray:
@@ -169,57 +160,3 @@ def depth_at(depth: np.ndarray, u: float, v: float, radius: int = 2,
     if not valid.any():
         return float("nan")
     return float(np.median(patch[valid]))
-
-
-def render_rgbd(
-    width: int = 640,
-    height: int = 480,
-    camera: str | None = None,
-    scene: str | None = None,
-    data=None,
-    model=None,
-) -> tuple[np.ndarray, np.ndarray, CameraIntrinsics]:
-    """Render aligned RGB + depth from one MuJoCo camera.
-
-    Returns
-        rgb    (H, W, 3) uint8
-        depth  (H, W)    float32, metres, z-depth from the camera plane
-        intr   CameraIntrinsics matching this render size
-
-    RGB and depth come from the same `update_scene` call, so the two buffers are
-    pixel-aligned by construction - no registration step, unlike a real RGB-D
-    camera where the colour and depth sensors sit at different physical points.
-
-    Pass an existing (model, data) pair to capture the *live* scene during an
-    episode. With neither, the scene is loaded fresh and reset to the `home`
-    keyframe, which is what you want for static verification.
-    """
-    import mujoco
-    from fyp.config import get_config, resolve
-
-    sim = get_config()["sim"]
-    cam = camera or sim["camera"]["name"]
-
-    if model is None:
-        model = mujoco.MjModel.from_xml_path(str(resolve(scene or sim["scene"])))
-        data = None
-    if data is None:
-        data = mujoco.MjData(model)
-        if model.nkey > 0:
-            mujoco.mj_resetDataKeyframe(model, data, 0)
-        mujoco.mj_forward(model, data)
-
-    renderer = mujoco.Renderer(model, height=height, width=width)
-    try:
-        renderer.update_scene(data, camera=cam)
-        rgb = renderer.render().copy()
-
-        # Same scene, depth mode: guarantees the buffers correspond.
-        renderer.enable_depth_rendering()
-        depth = renderer.render().copy().astype(np.float32)
-        renderer.disable_depth_rendering()
-    finally:
-        renderer.close()
-
-    intr = intrinsics_for_camera(model, cam, width, height)
-    return rgb, depth, intr

@@ -2,9 +2,14 @@
 then save the composed model as a single scene_gripper.xml for normal use.
 
 Run from repo root:
-    uv run python scripts/attach_gripper.py
+    uv run python scripts/build_scene.py
 
 Produces: assets/mujoco/ur5e/scene_gripper.xml
+
+WARNING - this OVERWRITES scene_gripper.xml, which has since been hand-edited:
+it now includes props.xml, carries an extended `home` keyframe (nq=42) and the
+`workspace` camera. Re-running this script wipes all three. Make it props-aware
+before using it again.
 """
 
 from pathlib import Path

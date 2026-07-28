@@ -1,3 +1,11 @@
+"""Teleop server: owns the MuJoCo viewer, physics, recorder and command socket.
+
+Threading contract — the reason this file is structured the way it is:
+the listener thread NEVER touches the simulation. It wraps each incoming
+command in a `_Job`, puts it on a queue, and blocks on `job.done`. The main
+thread is the only place the sim is ever mutated. That is what makes a
+malformed command a returned error rather than a corrupted physics state.
+"""
 from __future__ import annotations
 
 import json
@@ -11,10 +19,10 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 
-from fyp.config import get_config, resolve
-from fyp.sim.mujoco_controller import URControllerMuJoCo
-from fyp.sim.ik import solve_ik
-from fyp.sim.demo_recorder import DemoRecorder
+from fyp.helpers.config import get_config, resolve
+from fyp.helpers.ik import solve_ik
+from fyp.hardware.sim.mujoco_controller import URControllerMuJoCo
+from fyp.demos.recorder import DemoRecorder
 
 _cfg = get_config()
 _sim = _cfg["sim"]
@@ -34,6 +42,13 @@ GRIPPER_MIDPOINT = (_sim["gripper"]["open_ctrl"] + _sim["gripper"]["close_ctrl"]
 
 
 class _Job:
+    """Hand-off token between the listener thread and the main thread.
+
+    The listener creates it and waits on `done`; the main thread fills `result`
+    and sets the event. This is what lets the client block until its command has
+    actually been executed against the sim.
+    """
+
     def __init__(self, request: dict):
         self.request = request
         self.result: dict | None = None
@@ -84,7 +99,7 @@ class SimServer:
                 self._recording = False
                 path = req.get("path") or str(resolve(_cfg["paths"]["episodes_dir"]) / "episode.h5")
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
-                n = len(self.recorder._buffer)
+                n = len(self.recorder)
                 if n == 0:
                     return {"ok": False, "error": "no frames recorded"}
                 self.recorder.save_episode(path)

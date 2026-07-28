@@ -16,12 +16,29 @@ uv run python scripts/explore_control.py
 
 ## Layout
 
-- `src/fyp/` : package code (controller, transforms)
-- `scripts/` : exploratory one-off scripts
-- `notebooks/` : Jupyter explorations
+Organised around the real FYP (real UR5e, Aug 2026 – May 2027), not around the
+simulation. MuJoCo is a development substrate and is quarantined in one folder
+that gets deleted when hardware arrives.
+
+```
+src/fyp/
+├── helpers/          pure, stateless maths — rotations, transforms,
+│                     pixel_to_depth, ik, config, rate_limiter
+├── hardware/         the physical cell
+│   ├── ur5e_controller.py    real arm (ur_rtde)
+│   └── sim/                  MuJoCo substrate — DELETABLE
+├── policy/modular/   Architecture A — detector, filters, localiser
+└── demos/            episode capture + LeRobot export (Architecture B data)
+```
+
+- `scripts/` : thin CLIs — `check_*` verify one stage each, `record_*`/`export_*` do work
 - `tests/` : unit tests
 - `data/` : logs and demonstration recordings
 - `docs/` : setup references, plan PDFs
+- `assets/` : MuJoCo scene/robot/gripper XML (dies with the sim)
+
+Only `policy/modular/detector.py` needs torch; everything else runs in the FYP
+venv. That split is visible in the tree rather than something you remember.
 
 ## Status
 

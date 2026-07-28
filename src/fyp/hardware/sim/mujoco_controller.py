@@ -1,9 +1,9 @@
 """MuJoCo backend for URController — same public API as the ur_rtde controller.
 
-Sim-only. Drives the UR5e in MuJoCo so that DemoRecorder, scripted primitives,
+Sim-only. Drives the UR5e in MuJoCo so that the recorder, scripted primitives,
 and other downstream code can run identically against sim or the real robot.
 
-Gripper convention: 0 = closed, 1 = open (matches DemoRecorder / real controller).
+Gripper convention: 0 = closed, 1 = open (matches the recorder / real controller).
 The Robotiq 2F-85 actuator (index 6) takes ctrl 0..255: 0 = open, 255 = closed.
 TCP pose format: [x, y, z, rx, ry, rz] (axis-angle), matching RTDE.
 Interpolation: constant-velocity, capped at `speed` (rad/s); `acc` accepted
@@ -15,8 +15,9 @@ from pathlib import Path
 import numpy as np
 import mujoco
 
-from fyp.config import get_config, resolve
-from fyp.sim.ik import solve_ik
+from fyp.helpers.config import get_config, resolve
+from fyp.helpers.ik import solve_ik
+from fyp.helpers.rotations import quat_to_rotvec
 
 # Actuator index of the gripper, after the 6 arm joints (a model-structure fact).
 _GRIPPER_ACT_IDX = 6
@@ -72,14 +73,11 @@ class URControllerMuJoCo:
 
         mat = self.data.site_xmat[self._tcp_site_id].copy()  # (9,)
         quat = np.zeros(4)
-        mujoco.mju_mat2Quat(quat, mat) # mat is 3D rotation matrix
+        mujoco.mju_mat2Quat(quat, mat)  # mat is 3D rotation matrix
 
-        angle = 2.0 * np.arccos(np.clip(quat[0], -1.0, 1.0))
-        s = np.sqrt(max(1.0 - quat[0] ** 2, 1e-12))
-        if s < 1e-8:
-            rvec = np.zeros(3)
-        else:
-            rvec = (quat[1:] / s) * angle
+        # Was an inline copy of the quat->rotvec maths; now the shared helper,
+        # so the sim, the IK solver and transforms.py cannot drift apart.
+        rvec = quat_to_rotvec(quat)
 
         return [*pos.tolist(), *rvec.tolist()]
 

@@ -1,22 +1,17 @@
 """Damped least-squares inverse kinematics for the UR5e in MuJoCo.
 
-Sim-only. Solves for joint angles that place the TCP site at a target
-pose (position + orientation), using the site Jacobian.
+Sim-only, and the one module in helpers/ that imports mujoco. It exists purely
+because MuJoCo has no built-in IK; the real UR5e solves IK in firmware, so this
+leaves the project when the sim does.
+
+Solves for joint angles that place the TCP site at a target pose (position +
+orientation), using the site Jacobian.
 """
 
 import numpy as np
 import mujoco
 
-
-def _quat_to_axis_angle(quat: np.ndarray) -> np.ndarray:
-    """MuJoCo quat [w, x, y, z] -> rotation vector [rx, ry, rz]."""
-    quat = quat / np.linalg.norm(quat)
-    angle = 2.0 * np.arccos(np.clip(quat[0], -1.0, 1.0))
-    s = np.sqrt(max(1.0 - quat[0] ** 2, 1e-12))
-    if s < 1e-8:
-        return np.zeros(3)
-    axis = quat[1:] / s
-    return axis * angle
+from fyp.helpers.rotations import quat_to_rotvec
 
 
 def _pose_error(
@@ -35,14 +30,14 @@ def _pose_error(
     r_err_mat = target_mat @ cur_mat.T
     quat = np.zeros(4)
     mujoco.mju_mat2Quat(quat, r_err_mat.flatten())
-    rot_err = _quat_to_axis_angle(quat)
+    rot_err = quat_to_rotvec(quat)
 
     return np.concatenate([pos_err, rot_err])
 
 
 def solve_ik(
-    model: mujoco.MjModel, # it defines a tree and sites (attachment site, etc)
-    data: mujoco.MjData, # this contains joint position now, joint vel now, actuator commands, computed world pose of TCP site
+    model: mujoco.MjModel,  # it defines a tree and sites (attachment site, etc)
+    data: mujoco.MjData,  # this contains joint position now, joint vel now, actuator commands, computed world pose of TCP site
     site_id: int,
     target_pos: np.ndarray,
     target_mat: np.ndarray,

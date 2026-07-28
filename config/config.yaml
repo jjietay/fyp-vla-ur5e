@@ -18,7 +18,7 @@ sim: # MuJoCo
   ik: { max_iters: 100, tol: 1.0e-4, damping: 1.0e-2 }
 
 # ================== SERVER FOR SIMULATION ===================
-server: # sim teleop socket — client AND server read this
+server: # sim teleop socket for Client and Server
   host: "127.0.0.1"
   port: 5555
 

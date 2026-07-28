@@ -1,45 +1,30 @@
-"""Convert recorded HDF5 demonstration episodes into a LeRobot dataset.
+"""Convert recorded HDF5 episodes into a LeRobot dataset for SmolVLA.
 
-Bridges DemoRecorder writes each episode as an HDF5 file of
-ABSOLUTE states with AXIS-ANGLE orientation; SmolVLA / LeRobot want per-frame
-observations plus DELTA actions with orientation in EULER angles. This script is
-the only consumer of the recorded episodes, and it is format-agnostic: the same
+Bridges two formats. DemoRecorder writes ABSOLUTE states with AXIS-ANGLE
+orientation; SmolVLA / LeRobot want per-frame observations plus DELTA actions
+with orientation in EULER angles. Format-agnostic by construction: the same
 code converts sim-recorded and real-UR5e-recorded episodes, because both share
-the DemoRecorder schema.
-
-Recorded HDF5 schema (per episode, N timesteps) from DemoRecorder.save_episode:
-    timestamps       (N,)          float   seconds since episode start
-    joint_positions  (N, 6)        float   UR5e joint angles
-    tcp_poses        (N, 6)        float   [x, y, z, rx, ry, rz]  (axis-angle)
-    gripper_states   (N,)          int8    0 = closed, 1 = open
-    images           (N, H, W, 3)  uint8   fixed-camera RGB
+the recorder's schema (see hdf5_store.py).
 
 Output LeRobot features:
     observation.state         (7,)   float32  [x,y,z, roll,pitch,yaw, gripper]  ABSOLUTE, Euler
     action                    (7,)   float32  [dx,dy,dz, droll,dpitch,dyaw, gripper]  DELTA + gripper target
     observation.images.<cam>  (H,W,3) video   fixed-camera RGB
 
-Usage:
-    python scripts/hdf5_to_lerobot.py \
-        --episodes data/episodes \
-        --repo-id  <hf_user>/ur5e_pickplace \
-        --task     "pick and place the block" \
-        --camera   top
+The LeRobot import is deliberately inside `convert()` rather than at module
+level: the pure conversion maths above it then stays importable (and testable)
+from the FYP venv, which does not have lerobot installed.
 """
 
 from __future__ import annotations
-import argparse
+
 from pathlib import Path
 
 import h5py
 import numpy as np
 
-# LeRobot 0.6.1 (confirmed on this machine): v3.x dataset layout lives at
-# lerobot.datasets.lerobot_dataset.
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-# Reuse the frame-math layer you just built and verified (incl. rotvec_to_euler).
-from fyp.transforms import rotvec_to_euler, pose_inv, pose_trans
+from fyp.helpers.rotations import rotvec_to_euler
+from fyp.helpers.transforms import pose_inv, pose_trans
 
 
 def build_state(tcp_pose: np.ndarray, gripper: int) -> np.ndarray:
@@ -62,9 +47,9 @@ def compute_delta_action(pose_t: np.ndarray,
 
     Position delta is the base-frame difference p_next - p_t (correct for
     translation). Orientation delta is the RELATIVE rotation R_next @ R_t^T,
-    computed via the frame math in transforms.py (NOT naive Euler subtraction,
-    which is wrong near gimbal lock). Gripper term is the ABSOLUTE target at t+1
-    (0/1), a common convention for parallel-jaw grippers.
+    computed via the frame math in helpers/transforms.py (NOT naive Euler
+    subtraction, which is wrong near gimbal lock). Gripper term is the ABSOLUTE
+    target at t+1 (0/1), a common convention for parallel-jaw grippers.
 
     Both deltas are expressed in the base frame.
 
@@ -98,13 +83,19 @@ def convert(episodes_dir: str, repo_id: str, task: str,
             camera: str = "top", fps: int | None = None,
             root: str | None = None) -> None:
     """Convert every HDF5 episode in a directory into one LeRobot dataset."""
-    episode_paths = sorted(Path(episodes_dir).glob("*.h5")) + \
-                    sorted(Path(episodes_dir).glob("*.hdf5"))
-    if not episode_paths:
+    # LeRobot 0.6.1 (confirmed on this machine): v3.x dataset layout lives at
+    # lerobot.datasets.lerobot_dataset. Imported here, not at module level, so
+    # the maths above stays usable without lerobot installed.
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    from fyp.demos.hdf5_store import episode_paths
+
+    paths = episode_paths(episodes_dir)
+    if not paths:
         raise FileNotFoundError(f"No .h5/.hdf5 episodes found in {episodes_dir}")
 
     # Peek at the first episode to fix image size and (if not given) the fps.
-    with h5py.File(episode_paths[0], "r") as f:
+    with h5py.File(paths[0], "r") as f:
         H, W = f["images"].shape[1:3]
         fps = fps or infer_fps(f["timestamps"][:])
 
@@ -133,7 +124,7 @@ def convert(episodes_dir: str, repo_id: str, task: str,
         root=root,           # None -> ~/.cache/huggingface/lerobot/<repo_id>
     )
 
-    for ep_path in episode_paths:
+    for ep_path in paths:
         with h5py.File(ep_path, "r") as f:
             tcp = f["tcp_poses"][:]         # (N, 6) axis-angle
             grip = f["gripper_states"][:]   # (N,)
@@ -158,20 +149,4 @@ def convert(episodes_dir: str, repo_id: str, task: str,
         print(f"converted {ep_path.name}: {N} frames")
 
     dataset.finalize()   # 0.6.1: finalize() closes the writers (no consolidate() here)
-    print(f"done: {len(episode_paths)} episodes -> {repo_id}  (fps={fps})")
-
-
-def main() -> None:
-    p = argparse.ArgumentParser(description="Convert HDF5 demos to a LeRobot dataset.")
-    p.add_argument("--episodes", required=True, help="dir containing *.h5 episodes")
-    p.add_argument("--repo-id", required=True, help="HF dataset id, e.g. user/ur5e_pickplace")
-    p.add_argument("--task", required=True, help="natural-language task string")
-    p.add_argument("--camera", default="top", help="camera key name in observation.images.*")
-    p.add_argument("--fps", type=int, default=None, help="override; else inferred from timestamps")
-    p.add_argument("--root", default=None, help="output dir; else HF cache")
-    args = p.parse_args()
-    convert(args.episodes, args.repo_id, args.task, args.camera, args.fps, args.root)
-
-
-if __name__ == "__main__":
-    main()
+    print(f"done: {len(paths)} episodes -> {repo_id}  (fps={fps})")

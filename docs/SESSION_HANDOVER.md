@@ -55,6 +55,134 @@ Governing plan: `docs/FYP_Plan_V3_Week_5.pdf` (20 Jul–9 Aug 2026).
 
 # Session log
 
+## Session 3 — 2026-07-28: repo restructured around the real FYP
+
+### Why this happened now, not at Week 3
+
+The earlier plan (below) was to defer restructuring. That was reversed once the
+framing changed: **the sim is not the deliverable**, the real FYP starts in
+~2 weeks, and roughly half the repo dies with MuJoCo. Every day of new code
+written against a sim-shaped tree was work being thrown away, so the move was
+brought forward.
+
+### The organising idea
+
+The tree is laid out around the **real** robot cell, and all MuJoCo code is
+quarantined into `hardware/sim/` — one directory, deletable in one action, with
+a docstring listing exactly what does not survive the move to hardware.
+
+```
+src/fyp/
+├── helpers/          rotations, transforms, pixel_to_depth, ik, config, rate_limiter
+├── hardware/         ur5e_controller.py  +  sim/ (DELETABLE)
+├── policy/modular/   detector, filters, localiser
+└── demos/            recorder, hdf5_store, lerobot_export
+```
+
+`helpers/` has a hard admission rule (stateless, imports nothing else from
+`fyp`, liftable into another project) so it does not rot into a junk drawer.
+`ik.py` is the one member that stretches it — it needs mujoco — and it leaves
+with the sim.
+
+### File moves
+
+| Was | Now |
+|---|---|
+| `transforms.py` | `helpers/rotations.py` + `helpers/transforms.py` |
+| `config.py` | `helpers/config.py` |
+| `controller.py` | `hardware/ur5e_controller.py` |
+| `perception/camera.py` | `helpers/pixel_to_depth.py` (maths) + `hardware/sim/renderer.py` (mujoco) |
+| `sim/ik.py` | `helpers/ik.py` |
+| `sim/mujoco_controller.py` | `hardware/sim/mujoco_controller.py` |
+| `sim/sim_server.py` / `sim_client.py` | `hardware/sim/server.py` / `client.py` |
+| `sim/demo_recorder.py` | `demos/recorder.py` (buffer) + `demos/hdf5_store.py` (I/O) + `helpers/rate_limiter.py` |
+| `scripts/detect_objects.py` | `policy/modular/detector.py` (torch) + `filters.py` (pure) + `scripts/check_detector.py` |
+| `scripts/depth_to_3d.py` | `policy/modular/localiser.py` + `hardware/sim/scene.py` + `scripts/check_depth.py` |
+| `scripts/render_depth.py` | `scripts/check_camera.py` |
+| `scripts/hdf5_to_lerobot.py` | `demos/lerobot_export.py` + `scripts/export_lerobot.py` |
+| `scripts/record_replay_episode.py` | `scripts/record_episode.py` |
+| `scripts/attach_gripper.py` | `scripts/build_scene.py` |
+| `tests/pytest_controller.py` | `tests/test_ur5e_controller.py` |
+
+### Bugs and duplication this surfaced
+
+1. **`PROJECT_ROOT` would have silently broken.** `config.py` computed the repo
+   root as `Path(__file__).resolve().parents[2]`. Moving it one level deeper
+   into `helpers/` makes that resolve to `src/`, not the repo root — every
+   `resolve()` path would have been wrong. Now `parents[3]`, with a comment
+   tying the index to the file's depth. Verified: resolves to the repo root and
+   `sim.scene` still exists on disk.
+2. **quat -> rotvec existed in three copies** — `transforms.py`,
+   `ik.py::_quat_to_axis_angle`, and inline in `mujoco_controller._tcp_pose`.
+   All three now call `helpers/rotations.quat_to_rotvec`. The inline copy
+   skipped the normalisation step; on unit quaternions (which is all
+   `mju_mat2Quat` ever returns) the two agree to 2.5e-14 rad.
+3. **Two renderers.** `detect_objects.py::render_frame` duplicated
+   `camera.py::render_rgbd`, and predated the camera-recentring fix — so the
+   detector could have rendered a different view than the verifier. One
+   renderer now.
+4. **`sim_server` reached into `recorder._buffer`.** Replaced with `len(recorder)`.
+5. **`tests/pytest_controller.py` was never collected** — pytest's default
+   pattern is `test_*.py`. Renamed, so it runs now. **`test_gripper_state` fails,
+   pre-existing:** it passes `"open"`/`"close"` strings to `gripper_toggle`,
+   which takes int 0/1. Left as-is so the discrepancy stays visible; decide
+   whether the API or the test is wrong.
+
+### Verification (equivalence, not just "it imports")
+
+Old and new code were run side by side on identical inputs while the originals
+still existed:
+
+```
+rotations   500 random cases x4 fns          max diff 0.000e+00
+poses       500 random pose pairs x4 fns     max diff 0.000e+00
+camera      2000 px pixel_to_camera/         max diff 0.000e+00
+            camera_to_pixel/surface_to_centroid
+depth_at    incl. out-of-frame NaN paths     identical
+filters     300 random detection sets,       nms/top1/iou identical
+            per_query x thresholds
+lerobot     500 random poses, build_state    max diff 0.000e+00
+            + compute_delta_action
+recorder    HDF5 keys/shapes/dtypes/values   identical
+round-trip  NEW pixel->camera->pixel         max err 1.14e-13
+```
+
+Plus: 33 files parse, 36 internal imports resolve to real symbols, no stale
+references to old module paths, `helpers/` imports nothing upward, torch
+confined to `detector.py`, and all 25 modules import cleanly with heavy deps
+stubbed. `filters.py` was executed with no torch on the path, confirming the
+FYP venv can now use the filter chain.
+
+**Confirmed on JJ's machine (2026-07-28), post-restructure.** Both stage checks
+reproduce the session-2 numbers exactly — not merely "PASS", but the identical
+values, which is what rules out a silent shift:
+
+```
+check_camera.py --camera workspace --verify
+  bare table @ image centre   0.8500 m  (err +0.0 mm)
+  all four cube tops          0.8090 m  (err +0.0 mm)
+  bin centre                  in frame at (u=316.8, v=377.8)
+  convention                  z-depth (0.850 vs ray-length 1.1245 at the corner)
+
+check_depth.py --verify
+  round trip (2000 px)        max error 1.14e-13
+  back-projection, all 4      err (0.00, 0.00, 0.00) mm
+  top-surface -> centroid     err (0.00, 0.00, 0.00) mm
+```
+
+Still unexercised since the restructure (needs the lerobot venv):
+`check_detector.py`, `export_lerobot.py`, and the teleop server/client.
+
+### Still to do
+
+- `pyproject.toml` still says `description = "Add your description here"`.
+- `docs/fyp_vault/Repository Architecture.md` (12 Jul) is now two restructures
+  stale — it describes `src/`, `scripts/`, `sim/` and says `transforms.py` is empty.
+- Empty until the work reaches them: `contracts/`, `calibration/`, `evaluation/`,
+  `policy/vla/`, and the `hardware/` safety files.
+
+---
+
 ## Session 2 — 2026-07-27: detector NMS + depth-to-3D (stage 3 DONE)
 
 ### What changed, and why
@@ -206,6 +334,73 @@ camera→world. Verify that specifically rather than assuming they coincide.
 
 Then #6 pick/place primitives (+ `euler_to_rotvec` in `transforms.py`), #7 LLM
 planner (Anthropic tool-calling over primitives), #8 read OXE paper.
+
+---
+
+# Proposed repo layout (deferred to Week 3 consolidation)
+
+_Agreed 2026-07-28: recorded, not executed. Decide during Week 3's "consolidate
+repo" task. Nothing below has been moved._
+
+## What's confusing about the current layout
+
+1. **`scripts/` is four unrelated jobs in one flat folder** — per-stage verification
+   (`render_depth.py`, `depth_to_3d.py`), one-time asset generation
+   (`attach_gripper.py`), data conversion (`hdf5_to_lerobot.py`), and demo drivers
+   (`record_replay_episode.py`, `replay_episode.py`). Nothing in the names says which
+   kind a file is.
+2. **Stage 2 lives in `scripts/` while stages 1 and 3 live in `src/`.**
+   `detect_objects.py` holds genuinely reusable logic (`detect`, `nms`,
+   `top1_per_query`) trapped inside a CLI. It is the only pipeline stage not
+   importable as a library.
+3. **Real vs sim is asymmetric.** `controller.py` (real) is top-level while
+   `sim/mujoco_controller.py` is nested, even though the whole design claim is that
+   they are interchangeable behind one interface — and that interface is not written
+   down anywhere, it only exists as a convention.
+4. **No home for stages 5 and 6.** Nothing tells you where the planner or the
+   primitives are meant to go.
+
+## Target layout
+
+```
+src/fyp/
+├── config.py
+├── transforms.py            # used by every stage, stays top-level
+├── perception/              # stages 1-4
+│   ├── camera.py            # render_rgbd, pixel_to_camera        (1, 3)
+│   ├── detector.py          # detect, nms, top1_per_query  <- from scripts  (2)
+│   └── hand_eye.py          # camera->base                        (4)
+├── planning/
+│   └── planner.py           # LLM tool-calling                    (5)
+├── skills/
+│   └── pick_place.py        # primitives                          (6)
+└── robot/                   # one interface, two backends
+    ├── interface.py         # the shared API contract, written down
+    ├── real.py              # was controller.py
+    └── sim/                 # mujoco_controller, ik, server, client, demo_recorder
+
+scripts/
+├── verify_*.py              # one per stage
+├── demo_*.py                # record/replay, run_pipeline
+└── tools/                   # attach_gripper.py, hdf5_to_lerobot.py
+```
+
+## Why this shape, specifically
+
+`src/fyp/` is laid out **by pipeline stage**, so the folder tree *is* the
+Architecture A diagram; `scripts/verify_*.py` gives every stage its own isolated
+failure. Both make the per-stage-diagnosability claim **structural** rather than
+something argued in prose in the report. `robot/interface.py` does the same for the
+sim-is-a-substrate claim: the shared API stops being a convention and becomes a file.
+
+## Smaller fixes to fold in at the same time
+
+- `tests/pytest_controller.py` -> `tests/test_controller.py`. **pytest does not
+  auto-collect the current name** (default `python_files = test_*.py`), so that test
+  file is silently never run unless invoked by path.
+- `pyproject.toml` still has `description = "Add your description here"`.
+
+---
 
 ## Known caveats / TODO
 

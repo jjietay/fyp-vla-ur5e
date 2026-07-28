@@ -1,7 +1,10 @@
 """Client for the MuJoCo sim server. Use interactively from a second terminal.
 
+Holds no simulation state at all: it sends a newline-delimited JSON request over
+a TCP socket and returns whatever the server reports back.
+
 Example (in a REPL):
-    from fyp.sim.sim_client import SimClient
+    from fyp.hardware.sim.client import SimClient
     c = SimClient()
     c.get_state()
     c.move_joints([-1.0, -1.5, 1.5, -1.5, -1.5, 0.0], speed=1.0)
@@ -16,7 +19,7 @@ import re
 import socket
 from pathlib import Path
 
-from fyp.config import get_config, resolve
+from fyp.helpers.config import get_config, resolve
 
 _srv = get_config()["server"]
 HOST = _srv["host"]
@@ -76,7 +79,7 @@ class SimClient:
 
     def home(self) -> dict:
         return self._send({"cmd": "home"})
-    
+
     def start_recording(self) -> dict:
         return self._send({"cmd": "start_recording"})
 

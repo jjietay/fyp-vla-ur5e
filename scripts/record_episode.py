@@ -1,19 +1,20 @@
-"""Sunday deliverable: drive UR5e in MuJoCo, record an episode, save, replay.
+"""Drive the UR5e in MuJoCo along a scripted trajectory, record it, save, replay.
 
-Records a scripted joint-space trajectory via DemoRecorder, saves to HDF5,
-then reloads and replays: playback the camera images + plot the TCP trajectory.
+Records a scripted joint-space path via DemoRecorder, saves to HDF5, then
+reloads and replays: playback the camera images + plot the TCP trajectory.
+
+SIM ONLY - this is the scripted path, as opposed to teleop
+(hardware/sim/server.py + client.py).
 """
 
 import numpy as np
-import h5py
 import mujoco
 import matplotlib.pyplot as plt
 
-from fyp.config import get_config, resolve
-from fyp.sim.mujoco_controller import URControllerMuJoCo
-from fyp.sim.demo_recorder import DemoRecorder
-from typing import cast
-from h5py import Dataset
+from fyp.helpers.config import get_config, resolve
+from fyp.hardware.sim.mujoco_controller import URControllerMuJoCo
+from fyp.demos.recorder import DemoRecorder
+from fyp.demos.hdf5_store import load_episode
 
 _sim = get_config()["sim"]
 SCENE = resolve(_sim["scene_arm_only"])
@@ -86,15 +87,12 @@ def main() -> None:
     print(f"Saved episode to {OUT}")
 
     # ---- reload + replay ---------------------------------------------------
-    with h5py.File(OUT, "r") as f:
-        timestamps = cast(Dataset, f["timestamps"])[:]
-        tcp_poses  = cast(Dataset, f["tcp_poses"])[:]
-        images     = cast(Dataset, f["images"])[:]
-        n = len(timestamps)
-
+    ep = load_episode(OUT)
+    timestamps, tcp_poses, images = ep["timestamps"], ep["tcp_poses"], ep["images"]
+    n = len(timestamps)
     print(f"Reloaded {n} frames.")
 
-# Replay 1: TCP trajectory plots
+    # Replay 1: TCP trajectory plots
     fig = plt.figure(figsize=(12, 4))
 
     ax1 = fig.add_subplot(1, 2, 1)

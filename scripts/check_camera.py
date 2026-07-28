@@ -2,11 +2,10 @@
 
 Architecture A stage 3 (depth-to-3D) is only as good as this buffer, so nothing
 here is taken on trust. The checks read ground truth straight out of the model -
-camera pose from `data.cam_xpos/cam_xmat`, block positions from `data.xpos`,
-block sizes from `model.geom_size` - so they keep working if the camera or the
-props move.
+camera pose, block positions, block sizes - so they keep working if the camera
+or the props move.
 
-    uv run python scripts/render_depth.py --camera workspace --verify
+    uv run python scripts/check_camera.py --camera workspace --verify
 
 Three things are being established:
   1. the depth buffer is metric (metres, not normalised);
@@ -14,6 +13,9 @@ Three things are being established:
      back-projection assumes z-depth);
   3. the pinhole model actually predicts where objects land in the image, which
      is exactly the projection stage 3 will invert.
+
+SIM ONLY. On real hardware there is no ground truth to compare against and this
+becomes a repeatability check against a physical fixture instead.
 """
 from __future__ import annotations
 
@@ -22,11 +24,12 @@ from pathlib import Path
 
 import numpy as np
 
-from fyp.config import get_config, resolve
-from fyp.perception.camera import render_rgbd
+from fyp.hardware.sim.renderer import render_rgbd
+from fyp.hardware.sim.scene import (BLOCKS, body_position, camera_pose,
+                                    load_scene, world_to_camera)
+from fyp.helpers.pixel_to_depth import camera_to_pixel
 
 TOL = 3e-3      # 3 mm - generous next to a 40 mm cube, tight enough to catch sign errors
-BLOCKS = ["block_red", "block_green", "block_blue", "block_yellow"]
 
 
 def colourise(depth: np.ndarray) -> np.ndarray:
@@ -39,28 +42,15 @@ def colourise(depth: np.ndarray) -> np.ndarray:
     return (255 * (1.0 - np.clip(norm, 0, 1))).astype(np.uint8)
 
 
-def world_to_camera(p_world: np.ndarray, cam_pos: np.ndarray, cam_mat: np.ndarray) -> np.ndarray:
-    """World point -> camera frame. Columns of cam_mat are the camera axes in world."""
-    return cam_mat.T @ (np.asarray(p_world, dtype=float) - cam_pos)
-
-
-def project(p_cam: np.ndarray, intr) -> tuple[float, float, float]:
-    """Camera-frame point -> (u, v, depth).
-
-    MuJoCo/OpenGL camera frame: +X right, +Y UP, looking down -Z. Image rows run
-    downward, so the v axis is the NEGATIVE of camera +Y - hence the sign flip.
-    Depth is -Z (positive in front of the camera).
-    """
-    depth = -float(p_cam[2])
-    if depth <= 0:
-        raise ValueError("point is behind the camera")
-    u = intr.fx * (p_cam[0] / depth) + intr.cx
-    v = intr.cy - intr.fy * (p_cam[1] / depth)
-    return u, v, depth
-
-
 def patch_median(depth: np.ndarray, u: float, v: float, r: int = 2) -> float:
-    """Median depth in a small window - robust to the odd edge pixel."""
+    """Median depth in a small window - robust to the odd edge pixel.
+
+    Deliberately NOT helpers.pixel_to_depth.depth_at: that one also rejects
+    non-finite, non-positive and beyond-max_depth samples. Those filters are
+    right for the live pipeline but wrong for a verification probe, which should
+    report whatever the buffer actually contains rather than quietly skipping
+    the very pixels a bug would show up in.
+    """
     h, w = depth.shape
     ui, vi = int(round(u)), int(round(v))
     if not (0 <= ui < w and 0 <= vi < h):
@@ -69,11 +59,7 @@ def patch_median(depth: np.ndarray, u: float, v: float, r: int = 2) -> float:
 
 
 def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
-    import mujoco
-
-    cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
-    cam_pos = np.array(data.cam_xpos[cam_id], dtype=float)
-    cam_mat = np.array(data.cam_xmat[cam_id], dtype=float).reshape(3, 3)
+    cam_pos, cam_mat = camera_pose(model, data, camera)
 
     h, w = depth.shape
     ok = True
@@ -85,12 +71,14 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
         print(f"  [{'PASS' if good else 'FAIL'}] {label:<38} "
               f"{got:.4f} m  (want {want:.4f}, err {1000 * (got - want):+.1f} mm)")
 
+    import mujoco
+    cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
+
     print(f"\n{intr}")
     print(f"camera  pos={np.round(cam_pos, 4).tolist()}  fovy={model.cam_fovy[cam_id]:.1f}")
     print(f"depth   {depth.dtype}  range {depth.min():.4f}..{depth.max():.4f} m")
 
     # -- 1. metric scale on a known flat surface -------------------------------
-    # Image centre. Verified bare table for this camera placement.
     print("\nmetric scale")
     table_z = 0.0
     check("bare table @ image centre", patch_median(depth, intr.cx, intr.cy),
@@ -101,26 +89,25 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
     # depth instead - so this tests the camera model, not just the depth scale.
     print("\nblock top faces (pinhole projection -> depth probe)")
     for name in BLOCKS:
-        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+        centre = body_position(model, data, name)
         gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, f"{name}_geom")
-        if bid < 0 or gid < 0:
+        if centre is None or gid < 0:
             print(f"  [SKIP] {name}: not in model")
             continue
-        centre = np.array(data.xpos[bid], dtype=float)
         half_z = float(model.geom_size[gid][2])
         top = centre + np.array([0.0, 0.0, half_z])       # camera sees the top face
-        u, v, want = project(world_to_camera(top, cam_pos, cam_mat), intr)
+        u, v, want = camera_to_pixel(world_to_camera(top, cam_pos, cam_mat), intr)
         in_frame = 0 <= u < w and 0 <= v < h
         check(f"{name} @ (u={u:6.1f}, v={v:6.1f})" + ("" if in_frame else " OUT OF FRAME"),
-              patch_median(depth, u, v, r=1), want)
+              patch_median(depth, u, v, r=1), float(want))
 
     # -- 3. is the bin in frame at all? ---------------------------------------
     print("\nframing")
-    bin_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "bin")
-    if bin_id >= 0:
-        u, v, _ = project(world_to_camera(np.array(data.xpos[bin_id]), cam_pos, cam_mat), intr)
+    bin_pos = body_position(model, data, "bin")
+    if bin_pos is not None:
+        u, v, _ = camera_to_pixel(world_to_camera(bin_pos, cam_pos, cam_mat), intr)
         inside = 0 <= u < w and 0 <= v < h
-        ok &= inside
+        ok &= bool(inside)
         print(f"  [{'PASS' if inside else 'FAIL'}] bin centre at (u={u:.1f}, v={v:.1f}) "
               f"in a {w}x{h} image")
 
@@ -158,7 +145,7 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
     print(f"  [{'PASS' if is_z else 'FAIL'}] buffer is "
           f"{'z-depth (pinhole model valid as written)' if is_z else 'RAY LENGTH - back-projection must divide it out'}")
 
-    return ok
+    return bool(ok)
 
 
 def main() -> None:
@@ -171,15 +158,9 @@ def main() -> None:
     p.add_argument("--verify", action="store_true")
     args = p.parse_args()
 
-    import mujoco
     from PIL import Image
 
-    model = mujoco.MjModel.from_xml_path(str(resolve(get_config()["sim"]["scene"])))
-    data = mujoco.MjData(model)
-    if model.nkey > 0:
-        mujoco.mj_resetDataKeyframe(model, data, 0)
-    mujoco.mj_forward(model, data)
-
+    model, data = load_scene()
     rgb, depth, intr = render_rgbd(args.width, args.height, camera=args.camera,
                                    model=model, data=data)
 
