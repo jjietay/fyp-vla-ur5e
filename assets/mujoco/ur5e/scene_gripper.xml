@@ -117,6 +117,22 @@
     <geom name="floor" size="0 0 0.05" pos="0 0 -0.75" type="plane" material="groundplane"/>
     <geom name="table" size="1 1 0.375" pos="0 0 -0.375" type="box" material="table_wood"/>
     <camera name="fixed_cam" pos="3.313 2.06 0.873" quat="0.385897 0.303678 0.53872 0.684575"/>
+    <!-- Perception camera: top-down over the block workspace + bin.
+         xyaxes "1 0 0 0 1 0" -> camera +X = world +X, +Y = world +Y, so it looks
+         straight down world -z.
+
+         Centre and fovy are derived, not guessed. Content to cover:
+           blocks  x 0.43..0.60,  y -0.22..+0.22
+           bin     x 0.41..0.59,  y -0.49..-0.31
+         Union centre is (0.505, -0.145); the y half-extent needed is 0.345.
+         Vertical half-extent on the table = 0.85 * tan(fovy/2), so fovy=55 gives
+         0.4425 m -> ~8 cm of margin for randomised block placement. Horizontal
+         follows the 4:3 aspect (0.59 m half-extent), which is slack.
+
+         NOTE: at the previous "0.45 0 0.85" fovy=50 the frame stopped at y=-0.396
+         and the bin (to y=-0.49) was cut off - which is why detection only ever
+         reported the four cubes. The planner needs to see the bin to place into it. -->
+    <camera name="workspace" pos="0.505 -0.145 0.85" xyaxes="1 0 0 0 1 0" fovy="55"/>
     <light name="spotlight" target="wrist_2_link" pos="0 -1 2" dir="0 0 -1" mode="targetbodycom"/>
     <light pos="0 0 1.5" dir="0 0 -1" type="directional"/>
     <body name="base" childclass="ur5e" quat="0 0 0 -1">
@@ -254,6 +270,10 @@
     </body>
   </worldbody>
 
+  <!-- Graspable blocks + target bin. Placed after </worldbody> so their free-joint
+       qpos come AFTER the arm+gripper qpos; the home keyframe below is extended to match. -->
+  <include file="props.xml"/>
+
   <contact>
     <exclude body1="2f85_base" body2="2f85_right_driver"/>
     <exclude body1="2f85_base" body2="2f85_right_spring_link"/>
@@ -287,6 +307,9 @@
   </actuator>
 
   <keyframe>
-    <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0 0 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0"/>
+    <!-- 14 arm+gripper qpos, then 7 per block (pos xyz + quat wxyz): red, green, blue, yellow. -->
+    <key name="home"
+         qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0 0 0 0.45 0.20 0.021 1 0 0 0 0.45 0.00 0.021 1 0 0 0 0.45 -0.20 0.021 1 0 0 0 0.58 0.10 0.021 1 0 0 0"
+         ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0"/>
   </keyframe>
 </mujoco>

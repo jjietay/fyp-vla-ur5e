@@ -46,8 +46,15 @@ def main() -> None:
 
     recorder.start_episode()
 
-    # Drive through waypoints; record a snapshot after each sim step chunk.
-    # We hook recording into the motion by stepping manually here.
+    # This is an OFFLINE generator: it steps the sim as fast as the CPU allows,
+    # NOT in real time. So we sample on SIMULATED time — one mj_step advances the
+    # sim by exactly control_dt — and stamp each frame with sim-time. The step
+    # counter is GLOBAL across waypoints so the cadence stays uniform at the
+    # waypoint boundaries (a per-waypoint counter would drift there).
+    record_every = max(round((1 / _sim["record_hz"]) / ctrl.control_dt), 1)  # sim-steps per frame
+    step = 0
+
+    # Drive through waypoints; record a snapshot every record_every sim steps.
     for wp in waypoints():
         q_start = ctrl.data.qpos[:6].copy()
         delta = wp - q_start
@@ -57,14 +64,13 @@ def main() -> None:
         duration = max_move / ctrl.default_speed
         n_steps = max(int(np.ceil(duration / ctrl.control_dt)), 1)
 
-        record_every = max(round((1 / _sim["record_hz"]) / ctrl.control_dt), 1)  # from sim.record_hz
-
         for i in range(1, n_steps + 1):
             alpha = i / n_steps
             ctrl.data.ctrl[:6] = q_start + alpha * delta
             mujoco.mj_step(ctrl.model, ctrl.data)
+            step += 1
 
-            if i % record_every == 0:
+            if step % record_every == 0:
                 st = ctrl.get_state()
                 img = render_frame(renderer, ctrl.data)
                 recorder.record(
@@ -72,6 +78,7 @@ def main() -> None:
                     tcp_pose=np.asarray(st["tcp_pose"]),
                     gripper_state=st["gripper_state"],
                     image=img,
+                    timestamp=step * ctrl.control_dt,   # sim-time, uniform 20 Hz
                 )
 
     OUT.parent.mkdir(parents=True, exist_ok=True)

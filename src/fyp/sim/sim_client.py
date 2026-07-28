@@ -12,13 +12,34 @@ Example (in a REPL):
 from __future__ import annotations
 
 import json
+import re
 import socket
+from pathlib import Path
 
-from fyp.config import get_config
+from fyp.config import get_config, resolve
 
 _srv = get_config()["server"]
 HOST = _srv["host"]
 PORT = _srv["port"]
+
+
+def next_episode_path(
+    episodes_dir: str | Path | None = None,
+    prefix: str = "ep_",
+    digits: int = 3,
+) -> str:
+    """Return the next free '<prefix>NNN.h5' path in the episodes dir.
+
+    Scans the folder for existing '<prefix>NNN.h5' files, takes the highest N,
+    and returns N+1 (zero-padded). Starts at 1 when the folder is empty. This
+    guarantees a new recording never overwrites an existing episode.
+    """
+    d = Path(episodes_dir) if episodes_dir else resolve(get_config()["paths"]["episodes_dir"])
+    d.mkdir(parents=True, exist_ok=True)
+    pat = re.compile(rf"^{re.escape(prefix)}(\d+)\.h5$")
+    nums = [int(m.group(1)) for f in d.glob(f"{prefix}*.h5") if (m := pat.match(f.name))]
+    n = max(nums) + 1 if nums else 1
+    return str(d / f"{prefix}{n:0{digits}d}.h5")
 
 
 class SimClient:
@@ -59,5 +80,13 @@ class SimClient:
     def start_recording(self) -> dict:
         return self._send({"cmd": "start_recording"})
 
-    def stop_and_save(self, path: str) -> dict:
+    def stop_and_save(self, path: str | None = None) -> dict:
+        """Stop recording and save.
+
+        path=None (default): auto-pick the next free ep_NNN.h5 so each new
+        recording gets a fresh name and never overwrites a previous episode.
+        Pass an explicit path to override (e.g. a descriptive task name).
+        """
+        if path is None:
+            path = next_episode_path()
         return self._send({"cmd": "stop_and_save", "path": path})

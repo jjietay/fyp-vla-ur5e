@@ -25,8 +25,10 @@ SCENE = resolve(_sim["scene"])
 
 CAM_NAME = _sim["camera"]["name"]
 IMG_W, IMG_H = _sim["camera"]["width"], _sim["camera"]["height"]
-# Derived from record rate + sim step so they can never drift apart.
-RECORD_EVERY = round((1 / _sim["record_hz"]) / _sim["control_dt"])   # ~20 Hz
+# Target recording period (seconds). Recording is gated on wall-clock elapsed
+# time, NOT on a sim-tick count, so the effective rate stays at record_hz no
+# matter how long each loop iteration actually takes (render/viewer/mj_step).
+RECORD_PERIOD = 1.0 / _sim["record_hz"]   # 0.05 s == 20 Hz
 GRIPPER_ACT_IDX = 6
 GRIPPER_MIDPOINT = (_sim["gripper"]["open_ctrl"] + _sim["gripper"]["close_ctrl"]) / 2
 
@@ -50,7 +52,7 @@ class SimServer:
         self.recorder = DemoRecorder()
         self.renderer = mujoco.Renderer(self.ctrl.model, height=IMG_H, width=IMG_W)
         self._recording = False
-        self._tick = 0
+        self._next_record_time: float | None = None   # wall-clock gate
 
     # ---- gripper state from the live slider command ------------------------
 
@@ -72,8 +74,8 @@ class SimServer:
 
             elif cmd == "start_recording":
                 self.recorder.start_episode()
+                self._next_record_time = time.monotonic()
                 self._recording = True
-                self._tick = 0
                 return {"ok": True, "recording": True}
 
             elif cmd == "stop_and_save":
@@ -157,21 +159,41 @@ class SimServer:
     # ---- recording ---------------------------------------------------------
 
     def _maybe_record(self) -> None:
-        """Called every sim tick; logs a snapshot every RECORD_EVERY ticks."""
-        if not self._recording:
+        """Called every sim tick; logs a snapshot once every RECORD_PERIOD of
+        wall-clock time.
+
+        Gating on the clock (not a tick count) keeps the effective rate locked
+        to record_hz regardless of how long each iteration takes. A transient
+        failure in state read / render can never propagate into the sim loop:
+        it is caught, logged, and the gate advances so we simply try again on
+        the next scheduled frame.
+        """
+        if not self._recording or self._next_record_time is None:
             return
-        self._tick += 1
-        if self._tick % RECORD_EVERY != 0:
+
+        now = time.monotonic()
+        if now < self._next_record_time:
             return
-        st = self.ctrl.get_state()
-        self.renderer.update_scene(self.ctrl.data, camera=CAM_NAME)
-        img = self.renderer.render()
-        self.recorder.record(
-            joint_positions=np.asarray(st["joint_pos"]),
-            tcp_pose=np.asarray(st["tcp_pose"]),
-            gripper_state=self._gripper_from_ctrl(),
-            image=img,
-        )
+
+        try:
+            st = self.ctrl.get_state()
+            self.renderer.update_scene(self.ctrl.data, camera=CAM_NAME)
+            img = self.renderer.render()
+            self.recorder.record(
+                joint_positions=np.asarray(st["joint_pos"]),
+                tcp_pose=np.asarray(st["tcp_pose"]),
+                gripper_state=self._gripper_from_ctrl(),
+                image=img,
+            )
+        except Exception as e:  # never let a bad frame kill the sim loop
+            print(f"[server] WARNING: skipped a frame ({type(e).__name__}: {e})")
+
+        # Advance the gate by whole periods. If the loop stalled and we fell
+        # more than one period behind, resync to 'now' instead of bursting a
+        # backlog of frames — this preserves a uniform cadence.
+        self._next_record_time += RECORD_PERIOD
+        if self._next_record_time <= now:
+            self._next_record_time = now + RECORD_PERIOD
 
     # ---- socket listener (BACKGROUND thread) ------------------------------
 

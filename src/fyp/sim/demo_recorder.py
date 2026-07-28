@@ -25,16 +25,25 @@ class DemoRecorder:
     def record(
                 self,
                 joint_positions : np.ndarray,
-                tcp_pose: np.ndarray, 
+                tcp_pose: np.ndarray,
                 gripper_state: int,
                 image: np.ndarray,
+                timestamp: float | None = None,
                 ) -> None:
-        
+        """Append a snapshot.
+
+        timestamp: seconds since episode start. If None (default), wall-clock
+        elapsed time is used — correct for real-time recording (teleop server).
+        For offline / scripted generation that does not run in real time, pass
+        an explicit SIMULATED time (e.g. step_count * control_dt) so the stored
+        cadence reflects sim-time, not how fast the CPU happened to run.
+        """
         if self._start_time is None:
             raise RuntimeError("Call start_episode() before record().")
-        
+
+        ts = timestamp if timestamp is not None else (time.monotonic() - self._start_time)
         snapshot = TimestepSnapshot(
-            timestamp = time.monotonic() - self._start_time,
+            timestamp = ts,
             joint_positions = joint_positions,
             tcp_pose = tcp_pose,
             gripper_state = gripper_state,

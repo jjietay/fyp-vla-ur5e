@@ -29,7 +29,7 @@ uv run python
 from fyp.sim.sim_client import SimClient
 c = SimClient()
 c.start_recording()
-c.stop_and_save("data/episodes/ep_001.h5")
+c.stop_and_save()
 exit()
 
 ## Inspect the MP4 Video
@@ -50,13 +50,60 @@ print('gripper transitions at frames:', np.where(np.diff(grip) != 0)[0])
 print('TCP z range:', round(float(tcp[:,2].min()),3), '->', round(float(tcp[:,2].max()),3))
 "
 
+## Architecture A — render RGB + depth and verify against MuJoCo truth (FYP venv)
+uv run python scripts/render_depth.py --camera workspace --verify
+# writes data/frames/workspace_{rgb.png,depth.png,depth.npy}
+# use the .npy for maths — the PNG is normalised for eyeballing only
+
+## Architecture A — render a frame for the detector (FYP venv)
+uv run python scripts/detect_objects.py --render-only --camera workspace \
+  --out data/frames/frame_top.png
+
+## Architecture A — detect, with NMS + per-query top-1 (lerobot venv)
+cd ~/lerobot
+uv run python /home/jj/Documents/NTU/Y4S1/FYP/scripts/detect_objects.py \
+  --image /home/jj/Documents/NTU/Y4S1/FYP/data/frames/frame_top.png \
+  --queries "red cube" "green cube" "blue cube" "yellow cube" "bin" \
+  --model google/owlv2-base-patch16-ensemble --threshold 0.3 \
+  --nms-iou 0.5 --top1-per-query \
+  --out  /home/jj/Documents/NTU/Y4S1/FYP/data/frames/detections_owlv2.png \
+  --json /home/jj/Documents/NTU/Y4S1/FYP/data/frames/detections.json
+# NMS is class-agnostic by default: OWLv2 fires two labels on one cube and
+# per-query suppression would keep both. Drop --top1-per-query once the scene
+# can hold more than one instance of a query.
+
+## Architecture A — depth-to-3D (FYP venv)
+uv run python scripts/depth_to_3d.py --verify
+uv run python scripts/depth_to_3d.py --detections data/frames/detections.json
+# --verify isolates the geometry (no detector). --detections runs the real chain.
+# Output is CAMERA frame; stage 4 (hand-eye) converts to the robot base frame.
+
+## Lerobot Initial Sync
+cd ~/lerobot && uv sync --extra dataset --extra training --extra smolvla
+
+
 ## Convert HDF5 episodes into a LeRobot Dataset
+cd ~/lerobot
 PYTHONPATH=/home/jj/Documents/NTU/Y4S1/FYP/src \
-python /home/jj/Documents/NTU/Y4S1/FYP/scripts/hdf5_to_lerobot.py \
+uv run --extra dataset --with h5py python /home/jj/Documents/NTU/Y4S1/FYP/scripts/hdf5_to_lerobot.py \
   --episodes /home/jj/Documents/NTU/Y4S1/FYP/data/episodes \
   --repo-id  jj/ur5e_pickplace \
   --task     "pick and place the block" \
-  --camera   top
-  --root     /path_to_save_the_final_dataset
+  --camera   top \
+  --root     /home/jj/Documents/NTU/Y4S1/FYP/data/lerobot_ur5e
 
+
+## Train SmolVLA2 Base
+  cd ~/lerobot && uv run --extra dataset --extra training lerobot-train \
+  --policy.path=lerobot/smolvla_base \
+  --dataset.repo_id=jj/ur5e_pickplace \
+  --dataset.root=/home/jj/Documents/NTU/Y4S1/FYP/data/lerobot_ur5e \
+  --rename_map='{"observation.images.top": "observation.images.camera1"}' \
+  --policy.push_to_hub=false \
+  --batch_size=2 \
+  --steps=1 \
+  --output_dir=outputs/train/dryrun_smolvla \
+  --job_name=dryrun \
+  --policy.device=cuda \
+  --wandb.enable=false
 
