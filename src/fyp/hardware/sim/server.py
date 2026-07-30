@@ -136,7 +136,8 @@ class SimServer:
                 mujoco.mj_resetDataKeyframe(self.ctrl.model, self.ctrl.data, 0)
                 self.ctrl.data.ctrl[:6] = self.ctrl.data.qpos[:6]
                 if self.ctrl._has_gripper:
-                    self.ctrl.data.ctrl[GRIPPER_ACT_IDX] = 0.0
+                    self.ctrl.data.ctrl[GRIPPER_ACT_IDX] = self.ctrl._open_ctrl
+                    self.ctrl._gripper_state = 1
                 mujoco.mj_forward(self.ctrl.model, self.ctrl.data)
                 return {"ok": True, "state": self.ctrl.get_state()}
 
@@ -220,7 +221,21 @@ class SimServer:
                         line, buf = buf.split(b"\n", 1)
                         if not line.strip():
                             continue
-                        req = json.loads(line.decode())
+                        try:
+                            req = json.loads(line.decode())
+                        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                            # must not escape: an exception here unwinds the whole
+                            # listener thread, and the client blocks forever on a
+                            # reply that will never be sent
+                            reply = {"ok": False, "error": f"bad request: {e}"}
+                            conn.sendall((json.dumps(reply) + "\n").encode())
+                            continue
+
+                        if not isinstance(req, dict):
+                            reply = {"ok": False, "error": "request must be a JSON object"}
+                            conn.sendall((json.dumps(reply) + "\n").encode())
+                            continue
+
                         job = _Job(req)
                         self._jobs.put(job)
                         job.done.wait()

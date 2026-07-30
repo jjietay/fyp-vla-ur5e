@@ -32,19 +32,7 @@ from pathlib import Path
 
 import numpy as np
 
-
-def transform_point(T: np.ndarray, p: np.ndarray) -> np.ndarray:
-    """
-    It takes a 4x4 transform and a 3D point (or an (N,3) stack of them) and
-    gives you that point expressed in the other frame.
-
-    Points are not poses. A pose carries an orientation and needs the full
-    matrix product; a point only gets rotated and shifted, hence R @ p + t.
-    """
-    T = np.asarray(T, dtype=float)
-    p = np.asarray(p, dtype=float)
-    R, t = T[:3, :3], T[:3, 3]
-    return p @ R.T + t if p.ndim > 1 else R @ p + t
+from fyp.helpers.transforms import transform_point
 
 
 def solve_rigid_transform(p_cam: np.ndarray, p_base: np.ndarray) -> np.ndarray:

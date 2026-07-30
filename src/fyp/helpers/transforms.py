@@ -5,6 +5,7 @@ This file contains the conversions between:
 2) Transform to Pose
 3) Pose Transformation (T @ T)
 4) Finding the inverse of a Pose
+5) Moving a POINT into another frame (transform_point)
 
 Pose:
 - stands for the 6-vector (x,y,z,rx,ry,rz)
@@ -56,6 +57,24 @@ def pose_trans(pose_current: np.ndarray, pose_change: np.ndarray) -> np.ndarray:
     """
     T = pose_to_T(pose_current) @ pose_to_T(pose_change)
     return T_to_pose(T)
+
+
+def transform_point(T: np.ndarray, p: np.ndarray) -> np.ndarray:
+    """
+    This function takes a 4x4 transform and a 3D point (or an (N,3) stack of
+    points) and gives you that point expressed in the other frame.
+
+    Points are not poses. A pose carries an orientation, so it needs the full
+    4x4 matrix product. A point has no orientation to carry, so it only gets
+    rotated and shifted: R @ p + t.
+
+    Note it takes a TRANSFORM (4x4), not a pose, unlike everything else in this
+    file. Use pose_to_T first if what you have is a pose.
+    """
+    T = np.asarray(T, dtype=float)
+    p = np.asarray(p, dtype=float)
+    R, t = T[:3, :3], T[:3, 3]
+    return p @ R.T + t if p.ndim > 1 else R @ p + t
 
 
 def pose_inv(pose: np.ndarray) -> np.ndarray:
