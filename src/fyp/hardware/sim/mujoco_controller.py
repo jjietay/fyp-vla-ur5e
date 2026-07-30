@@ -68,6 +68,26 @@ class URControllerMuJoCo:
         mujoco.mj_forward(self.model, self.data)
 
 
+    def step(self) -> None:
+        """Advance physics one control_dt with gravity compensation.
+
+        The XML's position servos are PD only (kp=2000), so holding the arm up
+        requires a standing position error of gravity_torque/kp - about 10 mm at
+        the TCP. The real UR controller adds gravity feedforward internally, so
+        cancelling qfrc_bias here is what makes sim match hardware rather than
+        baking a systematic droop into every recorded demo.
+        """
+        self.data.qfrc_applied[:6] = self.data.qfrc_bias[:6]
+        mujoco.mj_step(self.model, self.data)
+
+    def settle(self, q_target, tol: float = 1e-4, max_steps: int = 2000) -> bool:
+        """Step until the joints reach q_target, or give up. True if reached."""
+        for _ in range(max_steps):
+            if float(np.abs(self.data.qpos[:6] - q_target).max()) < tol:
+                return True
+            self.step()
+        return False
+
     def _tcp_pose(self) -> list[float]:
         pos = self.data.site_xpos[self._tcp_site_id].copy()
 
@@ -102,7 +122,7 @@ class URControllerMuJoCo:
             )
 
             for _ in range(100):
-                mujoco.mj_step(self.model, self.data)
+                self.step()
 
 
     def move_joints(
@@ -128,14 +148,11 @@ class URControllerMuJoCo:
             alpha = i / n_steps
             q_cmd = q_start + alpha * delta
             self.data.ctrl[:6] = q_cmd
-            mujoco.mj_step(self.model, self.data)
+            self.step()
 
 
         self.data.ctrl[:6] = q_target
-        for _ in range(50):
-            mujoco.mj_step(self.model, self.data)
-
-        return True
+        return self.settle(q_target)
 
     def move_to_pose(
         self,

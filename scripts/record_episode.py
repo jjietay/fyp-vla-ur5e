@@ -68,7 +68,7 @@ def main() -> None:
         for i in range(1, n_steps + 1):
             alpha = i / n_steps
             ctrl.data.ctrl[:6] = q_start + alpha * delta
-            mujoco.mj_step(ctrl.model, ctrl.data)
+            ctrl.step()
             step += 1
 
             if step % record_every == 0:

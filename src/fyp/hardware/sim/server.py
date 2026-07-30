@@ -158,11 +158,12 @@ class SimServer:
         for i in range(1, n_steps + 1):
             alpha = i / n_steps
             self.ctrl.data.ctrl[:6] = q_start + alpha * delta
-            mujoco.mj_step(self.ctrl.model, self.ctrl.data)
+            self.ctrl.step()
             self._maybe_record()
             viewer.sync()
             time.sleep(self.ctrl.control_dt)
         self.ctrl.data.ctrl[:6] = q_target
+        self.ctrl.settle(q_target)
 
 
     def _maybe_record(self) -> None:
@@ -244,7 +245,7 @@ class SimServer:
                             job.done.set()
                     except queue.Empty:
                         pass
-                    mujoco.mj_step(self.ctrl.model, self.ctrl.data)
+                    self.ctrl.step()
                     self._maybe_record()
                     viewer.sync()
                     time.sleep(self.ctrl.control_dt)

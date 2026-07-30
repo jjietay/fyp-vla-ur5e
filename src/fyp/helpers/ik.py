@@ -3,6 +3,11 @@
 Inverse Kinematics calculations only for Sim.
 It takes in out target TCP Pose, returns 6 ABSOLUTE joints angles,
 along with a flag to state if it succeeded or not.
+
+solve_ik searches by writing guesses into `data.qpos`, but it restores the
+original qpos before returning on every path (success, failure, exception).
+Callers can rely on `data` being untouched, which is what lets move_to_pose
+interpolate from where the arm actually is.
 """
 
 import numpy as np
@@ -57,23 +62,30 @@ def solve_ik(
     jacp = np.zeros((3, model.nv))
     jacr = np.zeros((3, model.nv))
 
-    for _ in range(max_iters):
-        data.qpos[:6] = q
+    qpos_backup = data.qpos.copy()
+
+    try:
+        for _ in range(max_iters):
+            data.qpos[:6] = q
+            mujoco.mj_forward(model, data)
+
+            err = _pose_error(model, data, site_id, target_pos, target_mat)
+            if np.linalg.norm(err) < tol:
+                return q, True
+
+            mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
+            J = np.vstack([jacp[:, :6], jacr[:, :6]])
+
+
+            JJt = J @ J.T
+            dq = J.T @ np.linalg.solve(JJt + (damping ** 2) * np.eye(6), err)
+            q = q + step_scale * dq
+
+
+            q = np.clip(q, model.jnt_range[:6, 0], model.jnt_range[:6, 1])
+
+        return q, False
+
+    finally:
+        data.qpos[:] = qpos_backup
         mujoco.mj_forward(model, data)
-
-        err = _pose_error(model, data, site_id, target_pos, target_mat)
-        if np.linalg.norm(err) < tol:
-            return q, True
-
-        mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
-        J = np.vstack([jacp[:, :6], jacr[:, :6]])
-
-
-        JJt = J @ J.T
-        dq = J.T @ np.linalg.solve(JJt + (damping ** 2) * np.eye(6), err)
-        q = q + step_scale * dq
-
-
-        q = np.clip(q, model.jnt_range[:6, 0], model.jnt_range[:6, 1])
-
-    return q, False
