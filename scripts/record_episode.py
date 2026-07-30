@@ -1,10 +1,9 @@
-"""Drive the UR5e in MuJoCo along a scripted trajectory, record it, save, replay.
+""" record_episode.py
 
-Records a scripted joint-space path via DemoRecorder, saves to HDF5, then
-reloads and replays: playback the camera images + plot the TCP trajectory.
+This moves the UR5e in MuJoCo along a scripted trajectory, record it, save to HDF5 and
+replay back the camera images and plot the TCP trajectory.
 
-SIM ONLY - this is the scripted path, as opposed to teleop
-(hardware/sim/server.py + client.py).
+Note: Sim only + Scripted Path.
 """
 
 import numpy as np
@@ -24,11 +23,17 @@ IMG_W, IMG_H = _sim["camera"]["width"], _sim["camera"]["height"]
 
 
 def render_frame(renderer: mujoco.Renderer, data: mujoco.MjData) -> np.ndarray:
+    """
+    This renders a frame.
+    """
     renderer.update_scene(data, camera=CAM_NAME)
     return renderer.render()
 
 
 def waypoints() -> list[np.ndarray]:
+    """
+    This creates an ndarray of 5 fixed waypoints, from home to point 1,2,3 and back to home.
+    """
     home = np.array([-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0])
     return [
         home,

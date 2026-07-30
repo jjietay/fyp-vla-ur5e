@@ -1,4 +1,6 @@
-"""Replay a recorded episode as a video.
+""" replay_episode.py
+
+Replay a recorded episode as a video.
 
 Usage: python scripts/replay_episode.py data/episodes/ep_001.h5
 """

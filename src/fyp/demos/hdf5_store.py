@@ -1,7 +1,6 @@
-"""HDF5 persistence for recorded episodes.
+"""Using HDF5 for storing of recorded episodes.
 
-Episode schema (N timesteps) — this is the contract the LeRobot exporter and
-any future consumer read against, so changing it is a breaking change:
+Episode format (N timesteps) which LeRobot exporter is built upon:
 
     timestamps       (N,)          float   seconds since episode start
     joint_positions  (N, 6)        float   UR5e joint angles
@@ -18,6 +17,12 @@ import numpy as np
 
 
 def save_snapshots(snapshots: list, path: str | Path) -> None:
+    """
+    This takes the recorder's list of snapshots and writes them to one HDF5 file.
+
+    It pivots the data on the way, where a list of N snapshots (each with the same 5 fields)
+    becomes 5 arrays of length N, one dataset each.
+    """
     if len(snapshots) == 0:
         raise RuntimeError("Nothing to save — buffer is empty.")
 
@@ -36,6 +41,10 @@ def save_snapshots(snapshots: list, path: str | Path) -> None:
 
 
 def load_episode(path: str | Path) -> dict:
+    """
+    This takse a path to an episode file and gives back all of its arrays in a dict.
+    In other words, it returns every frame.
+    """
     with h5py.File(path, "r") as f:
         return {
             "timestamps":      f["timestamps"][:],
@@ -47,5 +56,10 @@ def load_episode(path: str | Path) -> dict:
 
 
 def episode_paths(episodes_dir: str | Path) -> list[Path]:
+    """
+    Takes a folder and gives every episode file in it, .h5 then .hdf5.
+    It is sorted within each extension, where all .h5 files come before all .hdf5 files
+    regardless of name.
+    """
     d = Path(episodes_dir)
     return sorted(d.glob("*.h5")) + sorted(d.glob("*.hdf5"))

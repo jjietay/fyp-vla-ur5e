@@ -1,28 +1,24 @@
-"""RGB-D frame source backed by MuJoCo. Architecture A stage 1.
+""" renderer.py
 
-This is the sim half of the camera. The pinhole maths it feeds
-(`helpers/pixel_to_depth.py`) is hardware-agnostic and survives the move to a
-real RGB-D camera; everything in THIS file does not:
+This file renders the image and captures the scene using camera in MuJoCo.
+Captured format include both RGB and depth as shown:
 
-  - `render_rgbd` becomes a RealSense frame grab
-  - `intrinsics_for_camera` becomes a checkerboard calibration read off disk
-
-Both produce the same two arrays — an (H,W,3) uint8 RGB image and an (H,W)
-float32 depth map in metres — so nothing downstream changes.
-
-Note that in sim the RGB and depth buffers come from a single `update_scene`
-call and are therefore pixel-aligned by construction. A real RGB-D camera has
-its colour and depth sensors at different physical points and needs an explicit
-registration step, so do not assume alignment on hardware.
+1) (H,W,3) uint8 RGB image
+2) (H,W) float32 depth image in metres
 """
 from __future__ import annotations
 
 import numpy as np
 
-from fyp.helpers.pixel_to_depth import CameraIntrinsics, intrinsics_from_fovy
+from fyp.helpers.pixel_to_3d import CameraIntrinsics, intrinsics_from_fovy
 
 
 def intrinsics_for_camera(model, camera: str, width: int, height: int) -> CameraIntrinsics:
+    """
+    This function only reads fovy from the model (mjc's compiled scene including
+    arms gripper cubes bin camera actuators, and passes them to
+    the CameraIntrinsics class's method intrinsics_from_fovy.
+    """
     import mujoco
 
     cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
@@ -39,6 +35,13 @@ def render_rgbd(
     data=None,
     model=None,
 ) -> tuple[np.ndarray, np.ndarray, CameraIntrinsics]:
+    """
+    This function is takes a photograph of the MuJoCo scene from a named camera
+    and returns 3 things:
+    - colour image
+    - depth map in metres
+    - intrinsics for that particular render
+    """
     import mujoco
 
     from fyp.helpers.config import get_config, resolve
@@ -57,12 +60,10 @@ def render_rgbd(
 
     renderer = mujoco.Renderer(model, height=height, width=width)
     try:
-        renderer.update_scene(data, camera=cam)
-        rgb = renderer.render().copy()
-
-
-        renderer.enable_depth_rendering()
-        depth = renderer.render().copy().astype(np.float32)
+        renderer.update_scene(data, camera=cam) # 1 snapshot of everything
+        rgb = renderer.render().copy() # read that snapshot as colour
+        renderer.enable_depth_rendering() # enable depth
+        depth = renderer.render().copy().astype(np.float32) # read as depth
         renderer.disable_depth_rendering()
     finally:
         renderer.close()

@@ -1,12 +1,10 @@
-"""Open-vocabulary object detection. Architecture A stage 2.
+""" detector.py
 
-Model inference ONLY — the filtering logic lives in `filters.py` so it stays
-free of torch. This is the only module in `policy/modular/` that needs the
-lerobot venv.
+Open Vocabulary Object Detection Model (OWLv2) inference on a single image.
+Detections are returned as: (query, score, [x0, y0, x1, y1])
 
-Returns detections as `(query, score, [x0, y0, x1, y1])` triples in pixel
-coordinates, sorted by descending score, with NO thresholding applied: the
-caller filters, so the raw scores stay inspectable.
+It is sorted by descending score with no thresholding applied, meaning its
+completely raw.
 
 Model note: OWLv2 (`google/owlv2-base-patch16-ensemble`) at threshold 0.3 is
 what works on this scene. OWL-ViT base was too weak.
@@ -15,25 +13,29 @@ from __future__ import annotations
 
 
 def detect(pil_img, queries, model_name, threshold=None):
+    """
+    This function takes a photo and a list of text descriptions, and the model
+    will output the bounding boxes that matches our description.
+
+    We are supposed to input the model name, in this case we are using OWLv2.
+    """
     import torch
-
-
     from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 
-    processor = AutoProcessor.from_pretrained(model_name)
+    processor = AutoProcessor.from_pretrained(model_name) # converts to tensor
     model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device).eval()
+    model = model.to(device).eval() # switch to evaluation mode
 
     inputs = processor(text=[queries], images=pil_img, return_tensors="pt").to(device)
-    with torch.no_grad():
+    with torch.no_grad(): # no need to calculate gradient for backpropagation
         outputs = model(**inputs)
 
 
     target_sizes = torch.tensor([pil_img.size[::-1]], device=device)
 
 
-    post = getattr(processor, "post_process_grounded_object_detection", None)\
+    post = getattr(processor, "post_process_grounded_object_detection", None) \
         or processor.post_process_object_detection
     try:
         results = post(outputs, threshold=0.0, target_sizes=target_sizes,

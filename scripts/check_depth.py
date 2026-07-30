@@ -28,7 +28,7 @@ import numpy as np
 from fyp.hardware.sim.renderer import render_rgbd
 from fyp.hardware.sim.scene import (block_truth, camera_pose, load_scene,
                                     world_to_camera)
-from fyp.helpers.pixel_to_depth import (camera_to_pixel, depth_at,
+from fyp.helpers.pixel_to_3d import (camera_to_pixel, depth_at,
                                         pixel_to_camera, surface_to_centroid)
 from fyp.policy.modular.localiser import find_duplicates, locate, nearest_truth
 

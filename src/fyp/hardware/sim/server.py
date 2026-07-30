@@ -1,9 +1,12 @@
-"""Teleop server: owns the MuJoCo viewer, physics, recorder and command socket.
+""" server.py
 
-Threading contract — the reason this file is structured the way it is:
-the listener thread NEVER touches the simulation. It wraps each incoming
-command in a `_Job`, puts it on a queue, and blocks on `job.done`. The main
-thread is the only place the sim is ever mutated. That is what makes a
+This is the teleop server that owns the MuJoCo viewer, physics, recorder and command socket.
+
+We need threading because MuJoCo's requirements is that the main thread has to be driving the viewer.
+Therefore, we need another thread to be able to socket listener.
+
+server.py wraps each incoming command in a `_Job`, puts it on a queue, and blocks on `job.done`.
+The main thread is the only place the sim is ever mutated. That is what makes a
 malformed command a returned error rather than a corrupted physics state.
 """
 from __future__ import annotations
@@ -225,6 +228,9 @@ class SimServer:
 
 
     def run(self) -> None:
+        """
+        Here we start the Listener Thread. While True loop to perform requests.
+        """
         listener = threading.Thread(target=self._serve, daemon=True)
         listener.start()
         try:

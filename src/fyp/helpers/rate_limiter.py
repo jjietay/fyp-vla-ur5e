@@ -1,4 +1,6 @@
-"""Drift-free fixed-rate loop helper.
+""" rate_limiter.py
+
+This is a Drift-free fixed-rate loop helper.
 
 Holds a loop at a target frequency using deadline-based sleeping: the next
 deadline advances by a fixed period rather than being measured from "now", so
@@ -13,6 +15,9 @@ import time
 
 
 class RateControl:
+    """
+    This class's main purpose is to ensure a specific rate is followed for control loop.
+    """
     def __init__(self, hz: float = 20.0):
         self.dt = 1.0 / hz
         self._next_tick: float | None = None

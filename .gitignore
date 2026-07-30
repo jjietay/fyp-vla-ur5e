@@ -34,5 +34,7 @@ docs/fyp_vault/.obsidian
 
 # MuJoCo
 MUJOCO_LOG.TXT
-# learning scratch copies
-learn/
+
+# Typings
+typings/
+

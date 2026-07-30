@@ -1,13 +1,15 @@
-"""MuJoCo backend for URController — same public API as the ur_rtde controller.
+"""mujoco_controller.py
+
+MuJoCo backend for URController with the same public API as the ur_rtde controller.
 
 Sim-only. Drives the UR5e in MuJoCo so that the recorder, scripted primitives,
 and other downstream code can run identically against sim or the real robot.
 
-Gripper convention: 0 = closed, 1 = open (matches the recorder / real controller).
-The Robotiq 2F-85 actuator (index 6) takes ctrl 0..255: 0 = open, 255 = closed.
-TCP pose format: [x, y, z, rx, ry, rz] (axis-angle), matching RTDE.
-Interpolation: constant-velocity, capped at `speed` (rad/s); `acc` accepted
-but ignored (B1).
+Key points:
+* Gripper convention: 0 = closed, 1 = open (matches the recorder / real controller)
+* The Robotiq 2F-85 actuator (index 6) takes ctrl 0..255: 0 = open, 255 = closed
+* TCP pose format: [x, y, z, rx, ry, rz] (axis-angle), matching RTDE
+* Interpolation: constant-velocity, capped at `speed` (rad/s); `acc` accepted but ignored (B1)
 """
 
 from pathlib import Path

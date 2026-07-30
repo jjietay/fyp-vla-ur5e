@@ -1,18 +1,30 @@
-"""Rotation conversions: quaternion, rotation vector, matrix, Euler.
+""" rotations.py
 
-A rotation vector (axis-angle) [rx, ry, rz] is the project's canonical
-orientation format: it is what ur_rtde uses for tcp_pose, so keeping it as the
-hub minimises conversions on the real robot.
+This file contains only functions that are conversions between:
+1) quaternions to rotation vectors
+2) rotation vectors to rotation matrix (R)
+3) rotation matrix (R) to rotation vector
+4) rotation vector to euler
 
-This module is the single source of truth for these conversions. Three separate
-copies of quaternion -> rotation vector existed before (transforms.py, ik.py,
-mujoco_controller.py); they now all call `quat_to_rotvec` here.
+Difference between rotation vector and rotation matrix is:
+- rotation matrix is 3x3 that represents rotation in global coordinates
+- rotation vector is 3x1 that simply encodes rotation magnitude about an axis of rotation
+
+UR5e's ur_rtde uses axis-angle (x,y,z,rx,ry,rz) representation. (rx,ry,rz) is the rotation vector that
+encodes the axis of rotation and the angle of rotation about that axis,
+while (x,y,z) is the position in metres.
+
+This file is the single source of truth for these conversions.
 """
 
 import numpy as np
 
 
 def quat_to_rotvec(quat: np.ndarray) -> np.ndarray:
+    """
+    This function convert quaternions to rotation vectors
+    """
+
     quat = quat / np.linalg.norm(quat)
     angle = 2.0 * np.arccos(np.clip(quat[0], -1.0, 1.0))
     s = np.sqrt(max(1.0 - quat[0] ** 2, 1e-12))
@@ -23,6 +35,10 @@ def quat_to_rotvec(quat: np.ndarray) -> np.ndarray:
 
 
 def rotvec_to_R(rotvec: np.ndarray) -> np.ndarray:
+    """
+    This function convert rotation vector to rotation matrix
+    """
+
     rotvec = np.asarray(rotvec, dtype=float)
     theta = np.linalg.norm(rotvec)
 
@@ -43,6 +59,10 @@ def rotvec_to_R(rotvec: np.ndarray) -> np.ndarray:
 
 
 def R_to_rotvec(R: np.ndarray) -> np.ndarray:
+    """
+    This function convert rotation matrix to rotation vector
+    """
+
     R = np.asarray(R, dtype=float)
 
     cos_theta = (np.trace(R) - 1.0) / 2.0
@@ -78,6 +98,10 @@ def R_to_rotvec(R: np.ndarray) -> np.ndarray:
 
 
 def rotvec_to_euler(rotvec: np.ndarray) -> np.ndarray:
+    """
+    This function convert rotation vector to euler representation
+    """
+
     R = rotvec_to_R(rotvec)
     cy = np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2)
     if cy > 1e-6:

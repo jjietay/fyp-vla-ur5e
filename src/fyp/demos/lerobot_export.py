@@ -1,4 +1,6 @@
-"""Convert recorded HDF5 episodes into a LeRobot dataset for SmolVLA.
+""" lerobot_export.py
+
+Convert recorded HDF5 episodes into a LeRobot dataset for SmolVLA.
 
 Bridges two formats. DemoRecorder writes ABSOLUTE states with AXIS-ANGLE
 orientation; SmolVLA / LeRobot want per-frame observations plus DELTA actions

@@ -1,11 +1,8 @@
-"""Damped least-squares inverse kinematics for the UR5e in MuJoCo.
+"""ik.py
 
-Sim-only, and the one module in helpers/ that imports mujoco. It exists purely
-because MuJoCo has no built-in IK; the real UR5e solves IK in firmware, so this
-leaves the project when the sim does.
-
-Solves for joint angles that place the TCP site at a target pose (position +
-orientation), using the site Jacobian.
+Inverse Kinematics calculations only for Sim.
+It takes in out target TCP Pose, returns 6 ABSOLUTE joints angles,
+along with a flag to state if it succeeded or not.
 """
 
 import numpy as np
@@ -21,6 +18,11 @@ def _pose_error(
     target_pos: np.ndarray,
     target_mat: np.ndarray,
 ) -> np.ndarray:
+    """
+    takes where the tool is and where we want it to be, and gives a
+    6-number error: 3 for position + 3 for orientation. This is kinda
+    called twist.
+    """
     cur_pos = data.site_xpos[site_id]
     pos_err = target_pos - cur_pos
 
@@ -46,6 +48,7 @@ def solve_ik(
     damping: float = 1e-2,
     step_scale: float = 1.0,
 ) -> tuple[np.ndarray, bool]:
+    
     if q_init is None:
         q = data.qpos[:6].copy()
     else:

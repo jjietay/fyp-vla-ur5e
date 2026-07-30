@@ -1,9 +1,11 @@
-"""Client for the MuJoCo sim server. Use interactively from a second terminal.
+""" client.py
 
-Holds no simulation state at all: it sends a newline-delimited JSON request over
-a TCP socket and returns whatever the server reports back.
+This is the client for the MuJoCo sim server. Used from a second terminal.
 
-Example (in a REPL):
+client.py holds no simulation state at all, it just sends a newline-delimited JSON request
+over a TCP socket and returns whatever the server reports back.
+
+Example in REPL:
     from fyp.hardware.sim.client import SimClient
     c = SimClient()
     c.get_state()
@@ -31,6 +33,9 @@ def next_episode_path(
     prefix: str = "ep_",
     digits: int = 3,
 ) -> str:
+    """
+    this takes a folder and returns the next unused ep_004.h5-styled name.
+    """
     d = Path(episodes_dir) if episodes_dir else resolve(get_config()["paths"]["episodes_dir"])
     d.mkdir(parents=True, exist_ok=True)
     pat = re.compile(rf"^{re.escape(prefix)}(\d+)\.h5$")

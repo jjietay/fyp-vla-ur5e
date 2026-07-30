@@ -1,13 +1,7 @@
-"""Scene loading and MuJoCo ground truth.
+""" scene.py
 
-Sim-only, and worth being explicit about WHY: every function here answers
-"where is this object really?" by reading the model. On real hardware there is
-no such oracle — verification becomes repeatability and measurement against a
-physical fixture. So none of this transfers, and no downstream code should come
-to depend on ground truth being available.
-
-Reading truth from the model (rather than hardcoding numbers) does mean the
-checks keep working when the camera or the props move.
+Load scene by performing forward dynamics. Checking camera pose, block and object coordinates.
+This is only for MuJoCo's elements.
 """
 from __future__ import annotations
 
@@ -19,17 +13,23 @@ BLOCKS = ["block_red", "block_green", "block_blue", "block_yellow"]
 
 
 def load_scene(scene_key: str = "scene"):
+    """
+    This function loads the model and data performs forward dynamics
+    """
     import mujoco
 
     model = mujoco.MjModel.from_xml_path(str(resolve(get_config()["sim"][scene_key])))
     data = mujoco.MjData(model)
     if model.nkey > 0:
-        mujoco.mj_resetDataKeyframe(model, data, 0)
-    mujoco.mj_forward(model, data)
+        mujoco.mj_resetDataKeyframe(model, data, 0) # load save file #0 into data
+    mujoco.mj_forward(model, data) # forward dynamics
     return model, data
 
 
 def camera_pose(model, data, camera: str):
+    """
+    We input a camera name and this camera will give back its pose and which way
+    its pointing at wrt the world coordinates"""
     import mujoco
 
     cid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
@@ -40,10 +40,15 @@ def camera_pose(model, data, camera: str):
 
 
 def world_to_camera(p_world, cam_pos, cam_mat) -> np.ndarray:
+    """
+    finds the camera coordinates (a point) with respect to the world/global coordinates"""
     return cam_mat.T @ (np.asarray(p_world, dtype=float) - cam_pos)
 
 
 def block_truth(model, data) -> dict:
+    """
+    as the name implies, it is the single source of truth for the blocks.
+    It can read from the model, where each cube really is."""
     import mujoco
 
     out = {}
@@ -61,6 +66,8 @@ def block_truth(model, data) -> dict:
 
 
 def body_position(model, data, name: str) -> np.ndarray | None:
+    """
+    This function takes in an object's name and gives its current position"""
     import mujoco
 
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)

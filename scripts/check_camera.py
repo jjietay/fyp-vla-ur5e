@@ -1,21 +1,17 @@
-"""Render RGB + depth from the workspace camera and verify it against MuJoCo truth.
+""" check_camera.py
 
-Architecture A stage 3 (depth-to-3D) is only as good as this buffer, so nothing
-here is taken on trust. The checks read ground truth straight out of the model -
-camera pose, block positions, block sizes - so they keep working if the camera
-or the props move.
+This file renders RGB-D from the workspace camera and verify against MuJoCo's truth.
 
     uv run python scripts/check_camera.py --camera workspace --verify
 
-Three things are being established:
+Three things are checked here:
   1. the depth buffer is metric (metres, not normalised);
   2. it is z-depth, not ray length (they differ off-axis, and the pinhole
      back-projection assumes z-depth);
   3. the pinhole model actually predicts where objects land in the image, which
      is exactly the projection stage 3 will invert.
 
-SIM ONLY. On real hardware there is no ground truth to compare against and this
-becomes a repeatability check against a physical fixture instead.
+This is only for Sim.
 """
 from __future__ import annotations
 
@@ -27,12 +23,16 @@ import numpy as np
 from fyp.hardware.sim.renderer import render_rgbd
 from fyp.hardware.sim.scene import (BLOCKS, body_position, camera_pose,
                                     load_scene, world_to_camera)
-from fyp.helpers.pixel_to_depth import camera_to_pixel
+from fyp.helpers.pixel_to_3d import camera_to_pixel
 
-TOL = 3e-3
+TOL = 3e-3 # this is the tolerance, how much it can get wrong before we say it doesn't work
 
 
 def colourise(depth: np.ndarray) -> np.ndarray:
+    """
+    This function takes the depth map (as an ndarray), and outputs as a greyscale image.
+    It normalizes the map such that each pixel contains a value from 0 to 255 (png image)
+    """
     finite = depth[np.isfinite(depth) & (depth > 0)]
     if finite.size == 0:
         return np.zeros(depth.shape, dtype=np.uint8)
@@ -42,6 +42,18 @@ def colourise(depth: np.ndarray) -> np.ndarray:
 
 
 def patch_median(depth: np.ndarray, u: float, v: float, r: int = 2) -> float:
+    """
+    This function takes a depth map and a pixel, and gives the medain depth of the small patch/square
+    of pixels around it. We use median instead of a single pixel because a single reading on an
+    object's corner will land between the object and the table.
+
+    This is not helpers/pixel_to_3d.depth_at. That throws away NaN, -ve and infinite values which
+    is correct for live inference. This is for verification so we wanna compute everything.
+
+    u - column
+    v - row
+    r - how many pixels per side that forms the patch of pixels for computation of median
+    """
     h, w = depth.shape
     ui, vi = int(round(u)), int(round(v))
     if not (0 <= ui < w and 0 <= vi < h):
@@ -50,13 +62,22 @@ def patch_median(depth: np.ndarray, u: float, v: float, r: int = 2) -> float:
 
 
 def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
+    """
+    This takes the rendered depth map and gives a
+    True if the camera is verified and working. False if it isn't.
+    """
     cam_pos, cam_mat = camera_pose(model, data, camera)
 
     h, w = depth.shape
     ok = True
 
-    def check(label: str, got: float, want: float, tol: float = TOL) -> None:
-        nonlocal ok
+    def compare(label: str, got: float, want: float, tol: float = TOL) -> None:
+        """
+        This is a Helper Function that does the actual checks, by acting as a
+        comparator. It compares 'got' and 'want' with a tolerance as a threshold for whether
+        the test has passed or not.
+        """
+        nonlocal ok # this gives fn check the rights to write (edit/change) fn verify's 'ok' value
         good = np.isfinite(got) and abs(got - want) <= tol
         ok &= bool(good)
         print(f"  [{'PASS' if good else 'FAIL'}] {label:<38} "
@@ -69,13 +90,13 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
     print(f"camera  pos={np.round(cam_pos, 4).tolist()}  fovy={model.cam_fovy[cam_id]:.1f}")
     print(f"depth   {depth.dtype}  range {depth.min():.4f}..{depth.max():.4f} m")
 
-
+    # CHECK 1 - Metric Scale to confirm that the depth buffer is in metres
     print("\nmetric scale")
     table_z = 0.0
-    check("bare table @ image centre", patch_median(depth, intr.cx, intr.cy),
+    compare("bare table @ image centre", patch_median(depth, intr.cx, intr.cy),
           float(cam_pos[2]) - table_z)
 
-
+    # CHECK 2 - Ensures that the block's top faces are at the correct distance
     print("\nblock top faces (pinhole projection -> depth probe)")
     for name in BLOCKS:
         centre = body_position(model, data, name)
@@ -87,10 +108,10 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
         top = centre + np.array([0.0, 0.0, half_z])
         u, v, want = camera_to_pixel(world_to_camera(top, cam_pos, cam_mat), intr)
         in_frame = 0 <= u < w and 0 <= v < h
-        check(f"{name} @ (u={u:6.1f}, v={v:6.1f})" + ("" if in_frame else " OUT OF FRAME"),
+        compare(f"{name} @ (u={u:6.1f}, v={v:6.1f})" + ("" if in_frame else " OUT OF FRAME"),
               patch_median(depth, u, v, r=1), float(want))
 
-
+    # CHECK 3 - Ensure the bin is in the image
     print("\nframing")
     bin_pos = body_position(model, data, "bin")
     if bin_pos is not None:
@@ -100,7 +121,7 @@ def verify(depth: np.ndarray, intr, model, data, camera: str) -> bool:
         print(f"  [{'PASS' if inside else 'FAIL'}] bin centre at (u={u:.1f}, v={v:.1f}) "
               f"in a {w}x{h} image")
 
-
+    # CHECK 4 - To find the pixel of the furthest end of the table from the principal point
     print("\nconvention")
     z_depth = float(cam_pos[2])
     vv, uu = np.mgrid[0:h, 0:w]

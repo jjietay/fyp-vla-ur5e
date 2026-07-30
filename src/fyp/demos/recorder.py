@@ -1,12 +1,14 @@
-"""In-memory capture of a demonstration episode.
+""" recorder.py
 
-The recorder moves nothing and reads nothing. Whatever is driving the robot
-hands it state via `record(...)`, which is what makes it identical against sim
-and the real UR5e.
+In-memory capture of a demonstration episode. Stored as a list in _buffer.
 
-Writing to disk lives in `hdf5_store.py`; this module only buffers. The split
-matters because the buffer is pure and testable with no h5py and no filesystem,
-while the writer is the part that has to change if the storage format ever does.
+The recorder doesn't read anything or move the arm. Whatever moving the robot will
+hand this file its state via record().
+
+Can be used interchangeably btw sim and real.
+
+Writing to disk lives in `hdf5_store.py`; this module only buffers. This matters because
+the buffer is pure (no h5py or filesystem dependencies) and testable.
 """
 
 from dataclasses import dataclass
@@ -18,6 +20,10 @@ import numpy as np
 
 @dataclass
 class TimestepSnapshot:
+    """
+    This is just a data class that temporarily stores the below information
+    at a given time.
+    """
 
     timestamp:          float
     joint_positions:    np.ndarray
@@ -28,10 +34,14 @@ class TimestepSnapshot:
 
 class DemoRecorder:
     def __init__(self):
+        """
+        Initialize as an empty list first"""
         self._buffer: list[TimestepSnapshot] = []
         self._start_time: float | None = None
 
     def __len__(self) -> int:
+        """
+        allows us to check the length of the buffer list"""
         return len(self._buffer)
 
     @property
@@ -50,6 +60,9 @@ class DemoRecorder:
                 image: np.ndarray,
                 timestamp: float | None = None,
                 ) -> None:
+        """
+        This simply takes in key recording values and append them into the buffer list
+        """
         if self._start_time is None:
             raise RuntimeError("Call start_episode() before record().")
 

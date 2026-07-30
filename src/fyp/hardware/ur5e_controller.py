@@ -1,4 +1,6 @@
-"""Real UR5e backend, driven over ur_rtde.
+"""ur5e_controller.py
+
+Real UR5e backend, driven over ur_rtde.
 
 Public API (mirrored exactly by hardware/sim/mujoco_controller.py):
 

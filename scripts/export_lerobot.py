@@ -1,4 +1,7 @@
-"""Convert recorded HDF5 demonstration episodes into a LeRobot dataset.
+""" export_lerobot.py
+
+Imports lerobot_export's convert function and actually does the conversion.
+Convert recorded HDF5 demonstration episodes into a LeRobot dataset.
 
 Thin CLI; the conversion lives in fyp.demos.lerobot_export. Needs the lerobot
 venv (torch + lerobot), not the FYP venv.
