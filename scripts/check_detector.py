@@ -11,7 +11,7 @@ Because MuJoCo and torch live in different venvs here, the safe workflow is to
 split them:
 
     # in the FYP venv (has mujoco):
-    uv run python scripts/check_detector.py --render-only --out data/frames/frame.png
+    uv run python scripts/check_detector.py --render-only --out data/cache/frame.png
 
     # in the lerobot venv (has torch + transformers):
     cd ~/lerobot && uv run python \
@@ -54,7 +54,7 @@ def main() -> None:
                    help="keep at most one box per query (scene has <=1 of each)")
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
-    p.add_argument("--out", default="data/frames/detections.png")
+    p.add_argument("--out", default="data/cache/detections.png")
     p.add_argument("--json", default=None,
                    help="also write the kept detections here as JSON (feeds stage 3)")
     args = p.parse_args()

@@ -155,7 +155,7 @@ def main() -> None:
     p.add_argument("--camera", default="workspace")
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
-    p.add_argument("--out-dir", default="data/frames")
+    p.add_argument("--out-dir", default="data/cache")
     p.add_argument("--verify", action="store_true")
     args = p.parse_args()
 

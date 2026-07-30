@@ -12,7 +12,7 @@ Two modes.
                   nearest true block. This is the number that matters.
 
     uv run python scripts/check_depth.py --verify
-    uv run python scripts/check_depth.py --detections data/frames/detections.json
+    uv run python scripts/check_depth.py --detections data/cache/detections.json
 
 Output is in the CAMERA frame. Stage 4 (hand-eye) converts to the robot base
 frame, which is what the primitives actually consume.
@@ -86,16 +86,16 @@ def run_detections(path: str, depth, intr, model, data, camera: str, far: float)
               "Stage 2 has to run first, and it needs the lerobot venv (torch):\n\n"
               "  # 1. render the frame (FYP venv)\n"
               "  uv run python scripts/check_detector.py --render-only \\\n"
-              "      --camera workspace --out data/frames/frame_top.png\n\n"
+              "      --camera workspace --out data/cache/frame_top.png\n\n"
               "  # 2. detect (lerobot venv)\n"
               "  cd ~/lerobot && uv run python "
               "/home/jj/Documents/NTU/Y4S1/FYP/scripts/check_detector.py \\\n"
-              "      --image /home/jj/Documents/NTU/Y4S1/FYP/data/frames/frame_top.png \\\n"
+              "      --image /home/jj/Documents/NTU/Y4S1/FYP/data/cache/frame_top.png \\\n"
               "      --queries \"red cube\" \"green cube\" \"blue cube\" \"yellow cube\" \"bin\" \\\n"
               "      --model google/owlv2-base-patch16-ensemble --threshold 0.3 \\\n"
               "      --nms-iou 0.5 --top1-per-query \\\n"
-              "      --out  /home/jj/Documents/NTU/Y4S1/FYP/data/frames/detections_owlv2.png \\\n"
-              "      --json /home/jj/Documents/NTU/Y4S1/FYP/data/frames/detections.json\n\n"
+              "      --out  /home/jj/Documents/NTU/Y4S1/FYP/data/cache/detections_owlv2.png \\\n"
+              "      --json /home/jj/Documents/NTU/Y4S1/FYP/data/cache/detections.json\n\n"
               "Meanwhile `--verify` needs no detector and tests the geometry on its own.")
         return False
 

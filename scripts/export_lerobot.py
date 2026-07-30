@@ -7,7 +7,7 @@ Thin CLI; the conversion lives in fyp.demos.lerobot_export. Needs the lerobot
 venv (torch + lerobot), not the FYP venv.
 
     python scripts/export_lerobot.py \
-        --episodes data/episodes \
+        --episodes data/raw/episodes \
         --repo-id  <hf_user>/ur5e_pickplace \
         --task     "pick and place the block" \
         --camera   top

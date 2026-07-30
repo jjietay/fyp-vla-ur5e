@@ -23,6 +23,18 @@ server: # sim teleop socket for Client and Server
   port: 5555
 
 # ================== PATHS ===================
+# Split by whether a script can rebuild it:
+#   raw/       captures that cannot be regenerated. Nothing writes here except
+#              the recorder. Back this up.
+#   cache/     depth maps, rendered frames, detector JSON. Delete freely.
+#   processed/ the dataset you train on, rebuilt from raw/ by export_lerobot.py
+#   reports/   pictures for looking at. Not data, not inputs to anything.
+#   config/calibration/  git-tracked, because you must know which calibration
+#                        produced which result
 paths:
-  episodes_dir: "data/episodes/"
-  logs_dir: "data/logs/"
+  episodes_dir: "data/raw/episodes/"
+  cache_dir: "data/cache/"
+  processed_dir: "data/processed/"
+  figures_dir: "reports/figures/"
+  logs_dir: "logs/"
+  calibration_dir: "config/calibration/"

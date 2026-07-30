@@ -26,8 +26,12 @@ venv/
 # Media
 media/
 
-# Data outputs
+# Data outputs. Calibration is deliberately NOT here - it lives in
+# config/calibration/ and is tracked, because you have to know which
+# calibration produced which result.
 data/
+logs/
+reports/
 
 # Documents
 docs/fyp_vault/.obsidian

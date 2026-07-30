@@ -18,6 +18,7 @@ from fyp.demos.hdf5_store import load_episode
 _sim = get_config()["sim"]
 SCENE = resolve(_sim["scene_arm_only"])
 OUT = resolve(get_config()["paths"]["episodes_dir"]) / "mujoco_episode.h5"
+FIGURES = resolve(get_config()["paths"]["figures_dir"])
 CAM_NAME = _sim["camera"]["name"]
 IMG_W, IMG_H = _sim["camera"]["width"], _sim["camera"]["height"]
 
@@ -112,8 +113,9 @@ def main() -> None:
     ax2.set_title("TCP path (3D)")
 
     plt.tight_layout()
-    plt.savefig(str(OUT.parent / "tcp_trajectory.png"), dpi=120)
-    print(f"Saved plot to {OUT.parent / 'tcp_trajectory.png'}")
+    FIGURES.mkdir(parents=True, exist_ok=True)
+    plt.savefig(str(FIGURES / "tcp_trajectory.png"), dpi=120)
+    print(f"Saved plot to {FIGURES / 'tcp_trajectory.png'}")
 
 
     import matplotlib.animation as animation
@@ -130,8 +132,9 @@ def main() -> None:
     ani = animation.FuncAnimation(
         fig2, update, frames=n, interval=50, blit=True
     )
-    ani.save(str(OUT.parent / "episode_playback.gif"), writer="pillow", fps=20)
-    print(f"Saved playback to {OUT.parent / 'episode_playback.gif'}")
+    ani.save(str(FIGURES / "episode_playback.gif"), writer="pillow",
+             fps=_sim["record_hz"])
+    print(f"Saved playback to {FIGURES / 'episode_playback.gif'}")
 
 
 if __name__ == "__main__":
