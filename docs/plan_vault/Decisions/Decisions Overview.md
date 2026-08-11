@@ -10,6 +10,7 @@ Choices that shape the project, each with the reasoning attached. These become t
 |---|---|
 | [[Camera Setup]] | decided, procurement pending |
 | [[Speech Stack]] | decided |
+| [[Detector Query Format]] | decided, forced by how OWLv2 works |
 | [[Teleoperation Method]] | decided, hardware pending |
 | [[Action Space]] | pending, needed by W5 |
 | [[Calibration Marker]] | **pending since July, blocking W3** |

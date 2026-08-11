@@ -12,9 +12,9 @@ Runs in the lerobot venv, because it needs torch + transformers + pillow.
         --model google/owlv2-base-patch16-ensemble --threshold 0.3 \
         --json detections.json
 
-DEFAULTS ARE A TRAP: --model defaults to OWL-ViT base at threshold 0.1, but
-detector.py documents OWLv2 at 0.3 as the combination that actually works. Pass
-both explicitly until the defaults are fixed (a W1 task).
+--model and --threshold default to the values in config.yaml under
+architecture_a.detector, so this script and the pipeline always agree about what
+the detector is.
 
 Boxes are pixel xyxy (x0, y0, x1, y1).
 
@@ -32,13 +32,14 @@ import numpy as np
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--queries", nargs="+",
-                   default=["red block", "green block", "blue block", "yellow block", "bin"],
-                   help="open-vocab text prompts")
+    p.add_argument("--queries", nargs="+", required=True,
+                   help="open-vocab text prompts, e.g. \"red cube\" \"metal tray\"")
     p.add_argument("--image", required=True,
                    help="image to run detection on")
-    p.add_argument("--model", default="google/owlvit-base-patch32")
-    p.add_argument("--threshold", type=float, default=0.1)
+    p.add_argument("--model", default=None,
+                   help="detector checkpoint; defaults to architecture_a.detector.model in config")
+    p.add_argument("--threshold", type=float, default=None,
+                   help="score threshold; defaults to architecture_a.detector.threshold in config")
     p.add_argument("--nms-iou", type=float, default=0.5,
                    help="class-agnostic NMS IoU threshold; 0 disables NMS")
     p.add_argument("--per-query-nms", action="store_true",
@@ -49,6 +50,15 @@ def main() -> None:
     p.add_argument("--json", default=None,
                    help="also write the kept detections here as JSON (feeds stage 3)")
     args = p.parse_args()
+
+    # Defaults come from config rather than being hardcoded here. They used to
+    # disagree with detector.py's documented setup (OWL-ViT at 0.1 versus OWLv2
+    # at 0.3), so running with defaults exercised the combination already known
+    # not to work and made the detector look worse than it is.
+    from fyp.shared.helpers.config import get_config
+    det = get_config()["architecture_a"]["detector"]
+    model = args.model or det["model"]
+    threshold = args.threshold if args.threshold is not None else float(det["threshold"])
 
     from PIL import Image, ImageDraw
 
@@ -61,22 +71,22 @@ def main() -> None:
     from fyp.architecture_a.perception.filters import apply_filters, to_json_records
 
     pil = Image.fromarray(img)
-    all_dets = detect(pil, args.queries, args.model)
+    all_dets = detect(pil, args.queries, model)
 
 
-    print(f"top raw candidates (model={args.model}):")
+    print(f"top raw candidates (model={model}, threshold={threshold}):")
     for q, s, box in all_dets[:8]:
         print(f"  {q:14s} score={s:.3f}  box(xyxy)={box}")
 
     keep, (n_raw, n_thresh, n_nms, n_final) = apply_filters(
         all_dets,
-        threshold=args.threshold,
+        threshold=threshold,
         nms_iou=args.nms_iou,
         per_query_nms=args.per_query_nms,
         keep_top1=args.top1_per_query,
     )
 
-    print(f"\nfilter: {n_raw} raw -> {n_thresh} >= {args.threshold}"
+    print(f"\nfilter: {n_raw} raw -> {n_thresh} >= {threshold}"
           f" -> {n_nms} after NMS(iou={args.nms_iou})"
           f" -> {n_final} final")
 

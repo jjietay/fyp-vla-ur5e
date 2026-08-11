@@ -44,3 +44,14 @@ Architecture, tier, trial index, layout ID, spoken utterance, transcript, outcom
 Architecture A costs cents per command forever. Architecture B costs GPU hours once and nothing per command afterwards. That tradeoff is real, trivially measurable, and almost no student report includes it.
 
 Claims being tested are in [[Hypotheses]].
+
+## Built 11 Aug 2026
+
+Implemented in `src/fyp/evaluation/`, which imports neither architecture so it cannot grow an affordance for one of them.
+
+* `suite.py` holds the tiers, objects, utterances and success criteria, frozen with a changelog
+* utterances are split into a training set and a held out set, so phrasing robustness is measurable rather than assumed
+* layouts are seeded, so both architectures see the same 20 scenes in the same order
+* `harness.py` writes one CSV row per trial as it goes, and produces four tables: success by tier, failure stage for A, held out phrasing delta, and what B chose when the instruction was ambiguous
+
+Success is scored by a person against the written criterion, not self-reported by the system.

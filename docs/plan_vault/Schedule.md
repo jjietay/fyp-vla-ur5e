@@ -10,9 +10,9 @@ Nov 2026 is a **completion** deadline. Submission stays on the official dates in
 
 | Week | Dates | Focus | Milestone |
 |---|---|---|---|
-| 1 | 10 to 16 Aug | [[W1 Repo Reset]], chase lab access and procurement | sim quarantined, orders placed |
-| 2 | 17 to 23 Aug | [[W2 Architecture A Software]] skills and schemas, [[W2b Speech Front End]] | primitives callable, speech gives a transcript |
-| 3 | 24 to 30 Aug | planner and clarification loop | spoken command drives A against the sim fixture |
+| 1 | 10 to 16 Aug | [[W1 Repo Reset]], chase lab access and procurement | **done**, plus most of W2 and W4 pulled forward |
+| 2 | 17 to 23 Aug | [[W2b Speech Front End]], and the reading in [[Reading]] | speech gives a transcript |
+| 3 | 24 to 30 Aug | wire speech into the pipeline, Architecture B inference loop | spoken command drives A end to end |
 | 4 | 31 Aug to 6 Sep | [[W3 Camera and Calibration]] | `T_base_cam` validated, RMS reported |
 | 5 | 7 to 13 Sep | [[W4 Architecture A End to End]] | A passes [[Tier 0 Pick and Place]] |
 | 6 | 14 to 20 Sep | teleop rig, dataset conventions, **[[D1 Project Plan]] due 14 Sep** | D1 submitted |
@@ -39,3 +39,11 @@ The holding pattern to submission. The risk here is not the report, it is the de
 | 12 to 16 Apr 2027 | [[D5 Demonstration]] |
 | 10 to 12 May 2027 | [[D6 Oral Presentation]] |
 | 19 May 2027 | [[D7 Library Submission]] |
+
+## Ahead of schedule, 11 Aug 2026
+
+Weeks 2 and 3 were largely spent in week 1, because none of it needed the lab. Written already: Architecture A end to end, the safety envelope, the camera driver, the evaluation harness, and the paraphrase sets.
+
+That does not buy as much time as it looks like it does. The critical path runs through lab access, and nothing above shortens it. What it buys is slack later, and the freedom to spend weeks 2 and 3 on the two papers in [[Reading]] and on the speech front end, both of which were going to get squeezed.
+
+Weeks 4 onward are unchanged and still gated on the arm.

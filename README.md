@@ -29,12 +29,20 @@ Organised around the real UR5e. Every result comes from hardware.
 src/fyp/
 ├── shared/           the CONTROLLED VARIABLE - both architectures use these
 │   ├── helpers/      rotations, transforms, config, rate_limiter
-│   └── hardware/     ur5e_controller (the only path to the arm)
+│   └── hardware/     ur5e_controller, camera, safety, intrinsics
 ├── architecture_a/   modular pipeline, nothing trained
 │   ├── perception/   detector, filters, localiser, pixel_to_3d
-│   └── calibration/  hand_eye - A only, B never forms a 3D point
-└── architecture_b/   end-to-end SmolVLA, nothing hand-authored
-    └── demos/        recorder, hdf5_store, lerobot_export
+│   ├── calibration/  hand_eye - A only, B never forms a 3D point
+│   ├── skills.py     pick / place / pour / open_drawer
+│   ├── tools.py      the schemas the LLM sees
+│   ├── planner.py    LLM planning, plan validation, ask_user, query grounding
+│   ├── pipeline.py   the orchestrator
+│   └── trace.py      per-stage failure log
+├── architecture_b/   end-to-end SmolVLA, nothing hand-authored
+│   └── demos/        recorder, hdf5_store, lerobot_export
+└── evaluation/       the harness. Imports neither architecture, deliberately
+    ├── suite.py      tiers, utterances, layouts, success criteria. Frozen
+    └── harness.py    trial runner and results tables
 
 ```
 
@@ -58,5 +66,11 @@ venv. That split is visible in the tree rather than something you remember.
 
 ## Status
 
-Week 1 of the FYP proper, Aug 2026. Architecture A software not started. Lab
-access not yet confirmed, which is the blocker on everything downstream. Current tasks live in `docs/plan_vault/Reference/Open Actions.md`.
+Week 1 of the FYP proper, Aug 2026.
+
+Architecture A is written end to end, along with the safety envelope, the camera
+driver and the evaluation harness. **None of it has run against hardware**, because
+there is none yet. Architecture B is not started.
+
+Lab access is unconfirmed and is the blocker on everything downstream. Current
+tasks live in `docs/plan_vault/Reference/Open Actions.md`.

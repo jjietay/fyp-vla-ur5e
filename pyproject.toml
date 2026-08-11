@@ -5,6 +5,7 @@ description = "LLM-based interface for robotic systems: modular LLM pipeline vs 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.40.0",
     "h5py>=3.16.0",
     "imageio>=2.37.3",
     "imageio-ffmpeg>=0.6.0",
@@ -12,6 +13,7 @@ dependencies = [
     "numpy>=2.5.0",
     "pillow>=12.3.0",
     "pytest>=9.1.1",
+    "pyrealsense2>=2.55.0",
     "pyyaml>=6.0.3",
     "ur-rtde>=1.6.3",
 ]
@@ -22,6 +24,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fyp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs a reachable UR controller (URSim or the real arm)"]
 
 [tool.pyright]
 reportAttributeAccessIssue = false

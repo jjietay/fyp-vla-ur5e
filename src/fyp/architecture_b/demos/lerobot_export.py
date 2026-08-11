@@ -54,6 +54,76 @@ def infer_fps(timestamps: np.ndarray, fallback: float = 20.0) -> int:
     return int(round(1.0 / dt)) if dt > 0 else int(fallback)
 
 
+REQUIRED_DATASETS = ("tcp_poses", "gripper_states", "images", "timestamps")
+
+
+class MalformedEpisode(Exception):
+    """Raised when an episode is unusable. Never swallowed: a bad episode must not be exported."""
+
+
+def validate_episode(path, expect_shape: tuple | None = None,
+                     expect_fps: int | None = None, fps_tolerance: float = 0.15) -> dict:
+    """
+    It takes an episode file and gives you its vital statistics, or raises
+    MalformedEpisode explaining what is wrong with it.
+
+    Exporting a truncated episode does not fail. It produces a dataset that
+    trains, converges to something, and behaves oddly on the robot, and by then
+    the cause is twenty hours of lab time in the past. Every check here is
+    cheaper than that.
+    """
+    stats: dict = {"path": str(path)}
+    try:
+        with h5py.File(path, "r") as f:
+            missing = [k for k in REQUIRED_DATASETS if k not in f]
+            if missing:
+                raise MalformedEpisode(f"{path.name}: missing datasets {missing}")
+
+            lengths = {k: len(f[k]) for k in REQUIRED_DATASETS}
+            if len(set(lengths.values())) != 1:
+                raise MalformedEpisode(
+                    f"{path.name}: datasets disagree on length {lengths}. "
+                    "Usually means the recorder was killed mid-write.")
+
+            n = next(iter(lengths.values()))
+            if n < 2:
+                raise MalformedEpisode(f"{path.name}: only {n} frames, nothing to learn from")
+
+            tcp = f["tcp_poses"][:]
+            if tcp.ndim != 2 or tcp.shape[1] != 6:
+                raise MalformedEpisode(f"{path.name}: tcp_poses is {tcp.shape}, expected (N, 6)")
+            if not np.all(np.isfinite(tcp)):
+                bad = int(np.count_nonzero(~np.isfinite(tcp)))
+                raise MalformedEpisode(f"{path.name}: {bad} non-finite values in tcp_poses")
+
+            ts = f["timestamps"][:]
+            if np.any(np.diff(ts) <= 0):
+                raise MalformedEpisode(
+                    f"{path.name}: timestamps are not strictly increasing; "
+                    "the recorder wrote frames out of order")
+
+            shape = tuple(f["images"].shape[1:3])
+            if expect_shape is not None and shape != expect_shape:
+                raise MalformedEpisode(
+                    f"{path.name}: images are {shape}, but the dataset was created "
+                    f"for {expect_shape}. Mixing resolutions silently degrades training.")
+
+            actual_fps = infer_fps(ts)
+            if expect_fps is not None:
+                drift = abs(actual_fps - expect_fps) / float(expect_fps)
+                if drift > fps_tolerance:
+                    raise MalformedEpisode(
+                        f"{path.name}: recorded at ~{actual_fps} Hz but the dataset is "
+                        f"{expect_fps} Hz ({drift:.0%} off). Timestamps become wrong and "
+                        "the policy learns the wrong control rate.")
+
+            stats.update(frames=n, fps=actual_fps, shape=shape,
+                         duration_s=round(float(ts[-1] - ts[0]), 2))
+    except OSError as e:
+        raise MalformedEpisode(f"{path.name}: cannot be opened, likely truncated ({e})") from e
+    return stats
+
+
 def convert(episodes_dir: str, repo_id: str, task: str,
             camera: str = "top", fps: int | None = None,
             root: str | None = None) -> None:
@@ -68,9 +138,16 @@ def convert(episodes_dir: str, repo_id: str, task: str,
         raise FileNotFoundError(f"No .h5/.hdf5 episodes found in {episodes_dir}")
 
 
+    # Validate everything BEFORE creating the dataset. Failing on episode 47 of
+    # 50 leaves a half-written dataset directory that has to be cleaned up by
+    # hand, and the whole point is to fail before any of that exists.
     with h5py.File(paths[0], "r") as f:
         H, W = f["images"].shape[1:3]
-        fps = fps or infer_fps(f["timestamps"][:])
+        fps = int(fps or infer_fps(f["timestamps"][:]))
+
+    stats = [validate_episode(p, expect_shape=(H, W), expect_fps=fps) for p in paths]
+    total = sum(s["frames"] for s in stats)
+    print(f"validated {len(stats)} episodes, {total} frames, {H}x{W} at {fps} Hz")
 
 
     features = {
@@ -122,4 +199,4 @@ def convert(episodes_dir: str, repo_id: str, task: str,
         print(f"converted {ep_path.name}: {N} frames")
 
     dataset.finalize()
-    print(f"done: {len(paths)} episodes -> {repo_id}  (fps={fps})")
+    print(f"done: {len(paths)} episodes, {total} frames -> {repo_id}  (fps={fps})")

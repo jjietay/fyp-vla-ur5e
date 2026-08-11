@@ -57,9 +57,14 @@ def load_episode(path: str | Path) -> dict:
 
 def episode_paths(episodes_dir: str | Path) -> list[Path]:
     """
-    Takes a folder and gives every episode file in it, .h5 then .hdf5.
-    It is sorted within each extension, where all .h5 files come before all .hdf5 files
-    regardless of name.
+    It takes a folder and gives you every episode file in it, in one consistent
+    order across both extensions.
+
+    Sorted by filename stem, so ep_001.h5 comes before ep_002.hdf5 rather than
+    after it. The previous version returned sorted(*.h5) + sorted(*.hdf5), which
+    put every .h5 before every .hdf5 regardless of name. With mixed extensions
+    that silently reorders a dataset: frames stay intact, episode boundaries move,
+    and nothing raises. You would only notice it as a model that will not converge.
     """
     d = Path(episodes_dir)
-    return sorted(d.glob("*.h5")) + sorted(d.glob("*.hdf5"))
+    return sorted([*d.glob("*.h5"), *d.glob("*.hdf5")], key=lambda p: (p.stem, p.suffix))

@@ -16,14 +16,23 @@ is only what you need to not break things. If the two disagree, the plan wins.
 src/fyp/
 ├── shared/           CONTROLLED VARIABLE. Both architectures, at runtime.
 │   ├── helpers/      rotations, transforms, config, rate_limiter
-│   └── hardware/     ur5e_controller  <- the only path to the arm
+│   └── hardware/     ur5e_controller, camera, safety, intrinsics
 ├── architecture_a/   modular. Nothing trained.
 │   ├── perception/   detector, filters, localiser, pixel_to_3d
-│   └── calibration/  hand_eye  <- A only; B never forms a 3D point
-└── architecture_b/   end-to-end SmolVLA. Nothing hand-authored.
-    └── demos/        recorder, hdf5_store, lerobot_export
+│   ├── calibration/  hand_eye  <- A only; B never forms a 3D point
+│   ├── skills.py     pick/place/pour/open_drawer, the only things A can do
+│   ├── tools.py      schemas the LLM sees; must match skills.py signatures
+│   ├── planner.py    LLM + plan validation + ask_user + query grounding
+│   ├── pipeline.py   the orchestrator
+│   └── trace.py      per-stage failure log <- the H6 evidence
+├── architecture_b/   end-to-end SmolVLA. Nothing hand-authored.
+│   └── demos/        recorder, hdf5_store, lerobot_export
+└── evaluation/       the harness. Imports NEITHER architecture, on purpose.
+    ├── suite.py      tiers, utterances, layouts, success criteria. FROZEN.
+    └── harness.py    trial runner + results tables
 
-scripts/              thin CLIs only: check_detector, export_lerobot, replay_episode
+scripts/              thin CLIs: check_detector, export_lerobot, replay_episode,
+                      run_architecture_a, run_evaluation
 config/               config.yaml + calibration/ (tracked on purpose)
 docs/                 fyp_plan.md, plan_vault/, guidelines/ (NTU specs)
 ```
@@ -38,9 +47,15 @@ Violating this quietly destroys the fairness argument the whole FYP rests on.
 
 ```bash
 uv sync
-uv run pytest tests
-uv run python scripts/check_detector.py --image <png> --model google/owlv2-base-patch16-ensemble --threshold 0.3
+uv run pytest tests                                  # green without a robot
+
+uv run python scripts/run_architecture_a.py --instruction "put the red cube in the tray"
+uv run python scripts/run_evaluation.py --tier 0 --layouts-only   # no robot needed
+uv run python scripts/run_evaluation.py --architecture A --tier 0
 ```
+
+**`ANTHROPIC_API_KEY` must be set** or Architecture A cannot run a single instruction:
+the planner and the grounding step both need it.
 
 `uv run` for everything. Python 3.12+. There is a separate lerobot venv at `~/lerobot` for
 torch work. URSim (Universal Robots' own controller simulator) provides the
@@ -50,8 +65,9 @@ torch work. URSim (Universal Robots' own controller simulator) provides the
 
 Each of these has already cost time. Verified as of 11 Aug 2026.
 
-- **`pytest tests` is red by default.** All 5 `test_ur5e_controller` errors are URSim not
-  running on `127.0.0.1:30004`. Not a regression. There are no other tests.
+- **`pytest tests` should be GREEN.** Controller tests are marked `integration` and auto-skip
+  when nothing answers on `127.0.0.1:30004`. Force them with `--integration`. If you see 5
+  errors instead of 5 skips, `tests/conftest.py` is missing.
 - **Everything stays in base frame.** `get_state` reports the TCP in base frame and `moveL`
   expects targets in it. Do not invent a world frame or mix in coordinates measured against
   the table without converting first. See the `hand_eye.py` header.
@@ -63,18 +79,46 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   `data/` without saying so first.
 - **faster-whisper on the RTX 50-series** must use `compute_type="float16"`; the default int8
   crashes with `CUBLAS_STATUS_NOT_SUPPORTED` on sm_120.
-- **`detect()` reloads the model on every call.** Fine for `check_detector.py`, fatal for the
-  W4 orchestrator, which must load once and reuse.
+- **`detect()` reloads the model on every call.** Fine for `check_detector.py`, fatal in a
+  loop. `ArchitectureA` is built once and reused for exactly this reason.
+- **Four config values in `architecture_a` are placeholders and WILL misbehave on hardware:**
+  `workspace.{x,y,z}` bounds, `skills.down_rotvec` (measure by hand-guiding the arm and
+  reading `get_state()["tcp_pose"][3:]`), `robot.home_q` (absent entirely, `home()` fails
+  until added), and `open_drawer(pull_axis=...)`. Measure all four before the first run.
+- **Everything in `skills.py` goes through `WorkspaceEnvelope` first**, including intermediate
+  approach and retreat waypoints. Never add a motion path that skips it.
+- **OWLv2 takes short noun phrases, never sentences.** It encodes each query into ONE CLIP
+  embedding matched against image patches, so a sentence has no corresponding region and the
+  match is meaningless. This is why `planner.py::extract_queries` exists at all. The 77-token
+  CLIP limit is real but is not the binding constraint: a command fits and still fails.
+  Reasoning in `architecture_a/perception/detector.py` and `docs/plan_vault/Decisions/Detector Query Format.md`.
+- **Never pass `queries=` to `ArchitectureA` for a recorded trial.** It pins the detector
+  vocabulary and skips grounding, which hands A a list of what is on the table that B never
+  receives. Debugging aid only. `run_evaluation.py` deliberately passes nothing.
 
-## Known bugs, not yet fixed (these are W1 tasks, do not fix unasked)
+## What exists right now (11 Aug 2026)
 
-- `shared/helpers/config.py::get_config(path)` ignores `path` after the first call because of
-  a module-level singleton, so it looks configurable and is not
-- `architecture_b/demos/hdf5_store.py::episode_paths` returns `sorted(*.h5) + sorted(*.hdf5)`,
-  so mixed extensions give silently wrong episode order and corrupt a dataset without erroring
-- `scripts/check_detector.py` defaults to `google/owlvit-base-patch32` at threshold 0.1, but
-  `detector.py` documents OWLv2 at 0.3 as the thing that actually works. Defaults are a trap.
-  Its default queries are also the old sim objects, not the current task suite.
+**Written, never run against hardware:** Architecture A end to end (grounding, perception,
+skills, planner, clarification, tracing), `shared/hardware/{camera,safety}.py`, and the
+evaluation harness. 31 tests pass without a robot.
+
+**Not started:** Architecture B (`architecture_b/` has only the demo-capture path from
+earlier), and the speech front end (`shared/speech.py`, W2b).
+
+**Blocked on lab access:** calibration, all demonstration capture, every trial, every number.
+Two decisions must be made the moment access arrives: the calibration marker, and the action
+space. Both are open. See `docs/plan_vault/Reference/Open Actions.md`.
+
+## Evaluation harness
+
+`src/fyp/evaluation/suite.py` is the experimental design and it is **frozen**. It was written
+before either pipeline was tuned. Changing a tier, an utterance or a success criterion after
+tuning begins means the benchmark has been fitted to whichever architecture was built first.
+If a change is genuinely unavoidable, append to `CHANGELOG` at the bottom of that file with a
+date and a reason, and say so in the report.
+
+The harness must never import `architecture_a` or `architecture_b`. It talks to an agent
+through one method, `run(instruction) -> outcome`. A test enforces this.
 
 ## simulation/
 

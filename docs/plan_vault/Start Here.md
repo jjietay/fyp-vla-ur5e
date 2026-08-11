@@ -26,6 +26,7 @@ Doing the work:
 * [[Workstreams Overview]] for the build order
 * [[Task Tiers]] for what the robot has to accomplish
 * [[Decisions Overview]] for choices that are made or still pending
+* [[Detector Query Format]] for why the detector cannot be given a sentence
 
 Thinking:
 
@@ -35,4 +36,8 @@ Thinking:
 
 ## Status right now
 
-Week 1, Aug 2026. Architecture A software has not started and lab access is not confirmed. The two things that matter this week are in [[Open Actions]].
+Week 1, Aug 2026.
+
+Architecture A is written end to end: perception, grounding, skills, planner, clarification loop and per stage tracing. The [[Evaluation Protocol|evaluation harness]] is built. None of it has run against hardware, because there is none yet.
+
+Lab access is still unconfirmed and remains the blocker on everything downstream. The two decisions that will block work the moment access arrives, [[Calibration Marker]] and [[Action Space]], are both still open. See [[Open Actions]].

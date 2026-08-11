@@ -18,6 +18,11 @@ import pytest
 
 from fyp.shared.hardware.ur5e_controller import URController
 
+# Every test in this file constructs a real URController, which opens an RTDE
+# connection in __init__. There is no way to exercise them without a controller,
+# so the marker goes on the whole module rather than test by test.
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def controller():

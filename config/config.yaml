@@ -21,3 +21,57 @@ paths:
   figures_dir: "reports/figures/"
   logs_dir: "logs/"
   calibration_dir: "config/calibration/"
+
+# ================== WORKSPACE SAFETY ==================
+# Base-frame axis-aligned box that every commanded pose is checked against
+# BEFORE it reaches the controller. Numbers below are placeholders: measure the
+# real cell and replace them before the arm is ever driven from a plan.
+# A plan that reaches the controller unchecked is how an arm hits the table.
+workspace:
+  x: [-0.700, 0.700]      # metres, robot base frame
+  y: [-0.700, 0.700]
+  z: [ 0.005, 0.700]      # z min is just above the table surface
+  max_speed: 0.25         # m/s  ceiling applied to every skill
+  max_acc: 0.50           # m/s^2
+
+# ================== CAMERA ==================
+# Fixed RGB-D looking at the table. Intrinsics come from the SDK at runtime,
+# never hardcoded, because they change with resolution.
+camera:
+  width: 1280
+  height: 720
+  fps: 30
+  align_depth_to_color: true
+  max_depth: 2.0          # metres, readings beyond this are treated as invalid
+  depth_patch_radius: 2   # median over a (2r+1)^2 patch, robust to speckle
+
+# ================== ARCHITECTURE A ==================
+architecture_a:
+  detector:
+    model: "google/owlv2-base-patch16-ensemble"
+    threshold: 0.3
+    nms_iou: 0.5
+  grounding:
+    # Turns the instruction into detector queries. Same model as the planner by
+    # default: this is the planner reasoning about what to look for, not a new
+    # component, so it should not quietly become a different one.
+    model: null            # null means "use the planner model"
+    max_queries: 8         # more queries slows OWLv2 and adds false positives
+    max_tokens: 512
+  planner:
+    model: "claude-sonnet-4-5"
+    max_tokens: 2048
+    max_turns: 6          # planner/tool exchanges before the run is abandoned
+  skills:
+    approach_height: 0.12   # metres above the target before descending
+    retreat_height: 0.15
+    grasp_depth_offset: 0.0 # + lowers the grasp point, tune per gripper
+    speed: 0.10             # m/s during descent and transport
+    acc: 0.30
+    settle_s: 0.4           # pause after gripper actuation
+    # Tool orientation as a UR rotation vector, base frame. This is the
+    # "gripper pointing straight down" pose and must be measured on the real
+    # cell by hand-guiding the arm and reading get_state()["tcp_pose"][3:].
+    down_rotvec: [3.142, 0.0, 0.0]
+  trace:
+    dir: "logs/traces/"

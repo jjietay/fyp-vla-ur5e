@@ -35,13 +35,31 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
         return yaml.safe_load(f)
 
 
-_CONFIG = None  # fake private variable only used for get_config
+# Cached per resolved path, not globally. The previous version kept a single
+# module-level dict and returned it for every later call regardless of `path`,
+# so passing a different config file appeared to work and silently did nothing.
+# URController.__init__ takes a path argument, which made it look configurable.
+_CACHE: dict[Path, dict] = {}
 
-def get_config(path=DEFAULT_CONFIG_PATH) -> dict:
-    global _CONFIG  # calling the global variable
-    if _CONFIG is None:
-        _CONFIG = load_config(path)
-    return _CONFIG
+
+def get_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
+    """
+    It takes a config path and gives you the parsed config, reading each distinct
+    file at most once.
+
+    Caching is per path so two different configs can coexist in one process,
+    which is what the evaluation harness needs when it runs a trial against
+    modified workspace bounds.
+    """
+    key = Path(path).resolve()
+    if key not in _CACHE:
+        _CACHE[key] = load_config(key)
+    return _CACHE[key]
+
+
+def clear_config_cache() -> None:
+    """It takes nothing and gives you a cleared cache, so tests can reload from disk."""
+    _CACHE.clear()
 
 
 def resolve(rel_path) -> Path:

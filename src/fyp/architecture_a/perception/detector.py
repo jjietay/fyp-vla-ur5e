@@ -8,6 +8,24 @@ completely raw.
 
 Model note: OWLv2 (`google/owlv2-base-patch16-ensemble`) at threshold 0.3 is
 what works on this scene. OWL-ViT base was too weak.
+
+QUERY FORMAT IS NOT A STYLE CHOICE. Each query must be a short noun phrase
+("red cube"), never a sentence ("place that red cube into that metal tray").
+
+The reason is architectural rather than a length limit. OWLv2 encodes text with
+CLIP's text encoder, and every query becomes ONE embedding that is matched
+against the per-patch embeddings of the image. A sentence therefore produces a
+single embedding for the whole sentence, and no region of the image corresponds
+to it, so the match is meaningless. There is no mechanism inside the model for
+splitting a sentence into the several objects it mentions, and no mechanism for
+ignoring the verbs, articles and destinations it also contains. CLIP's 77-token
+context is a real limit but it is not the binding one here: a sentence fits
+comfortably and still fails.
+
+This is precisely why Architecture A needs a language model in front of the
+detector. Something has to turn "place that red cube into that metal tray" into
+["red cube", "metal tray"] before OWLv2 can be asked anything at all. See
+`architecture_a/planner.py::extract_queries`, which is that step.
 """
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 ---
-status: not started
+status: paraphrase sets done, speech not started
 needs_lab: false
 week: 2
 ---
@@ -18,9 +18,17 @@ ASR sits **outside both architectures** and is identical for both. One microphon
 - [ ] set `compute_type="float16"` explicitly, since the default int8 crashes on RTX 50 series
 - [ ] keep a `--text` flag so either architecture can be driven from the keyboard while debugging
 - [ ] log every transcript with the audio, timestamped
-- [ ] write the paraphrase sets, 5 to 10 phrasings per task, split into a record set and a held out set
+- [x] paraphrase sets written, living in `evaluation/suite.py` as `train_utterances` and `heldout_utterances` for all five tiers
 - [ ] optional text to speech for spoken clarification, if [[Tier 2 Ambiguity]] is working by W9
 
 ## The deadline hidden in here
 
 The paraphrase sets must exist **before** [[W5 Demonstration Capture]] starts. The instruction string is per episode metadata, so varying it during recording is free, but retrofitting it means re recording everything. Miss this and the phrasing robustness hypothesis becomes untestable.
+
+## Status 11 Aug 2026
+
+Nothing here is built except the paraphrase sets, which landed early because the [[Evaluation Protocol]] needed them anyway. Five training phrasings and three held out per tier.
+
+That ordering matters. The sets had to exist before recording starts, not before speech works, since the instruction string is per episode metadata and retrofitting it means re recording everything.
+
+One thing already changed downstream: the grounding step in [[W4 Architecture A End to End]] consumes the transcript, so when speech lands it feeds an interface that is already waiting for it.

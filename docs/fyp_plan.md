@@ -98,7 +98,7 @@ Each has a **definition of done** — a binary condition, checkable, no judgemen
 | **T2** | Architecture A, end to end | One command line turns a typed instruction into executed motion on the real arm, with per-stage logs; succeeds on Tier 0 at ≥70% over 20 trials |
 | **T3** | Demonstration dataset | ≥50 real UR5e episodes per trained task, exported to a LeRobot dataset that loads without error, with fps asserted against the configured record rate |
 | **T4** | Architecture B, trained and running | Fine-tuned SmolVLA checkpoint driving the arm through the same controller interface as T2, with a safety envelope on predicted actions; succeeds on Tier 0 at ≥50% over 20 trials |
-| **T5** | Evaluation harness | Tiered task suite fixed and written down **before** either pipeline is tuned; scripted trial protocol; per-trial outcome + failure-stage logged to a machine-readable file |
+| **T5** | Evaluation harness | **DONE 11 Aug 2026.** `src/fyp/evaluation/`, suite frozen before either pipeline was tuned, per-trial CSV, four results tables, imports neither architecture |
 | **T6** | Comparison result | The T5 harness run to completion on both architectures across all attempted tiers, with the results tables and figures that go into D4 |
 | **T7** | Repo consolidation | README and vault docs match the tree; no dead references |
 
@@ -132,6 +132,16 @@ Spoken: `"Place that red cube into that metal tray."` Single unambiguous target,
 ### Tier 4 — Generalisation *(unseen objects and phrasings)*
 Objects and instruction phrasings never seen in the demonstrations or the prompt examples. A's open-vocabulary detector should transfer; B should degrade.
 
+### Why Architecture A needs a language model in front of its detector
+
+Not a design preference. It falls out of how OWLv2 works, and it is worth a paragraph in the report because it is the clearest single statement of what "modular" actually costs.
+
+OWLv2 encodes each text query with CLIP's text encoder into **one embedding**, which is matched against the per-patch embeddings of the image. A full sentence therefore becomes a single embedding for the whole sentence, and no region of the image corresponds to it. The model has no mechanism for splitting a sentence into the objects it mentions, no mechanism for discarding the verbs and articles, and no way to represent a relation between two queries. CLIP's 77-token context is a real limit but not the binding one: a spoken command fits inside it comfortably and still fails.
+
+So *something* must convert `"place that red cube into that metal tray"` into `["red cube", "metal tray"]` before the detector can be asked anything. In this project that is `planner.py::extract_queries`, run as its own trace stage.
+
+**The comparison point.** Architecture A pays for this twice: an extra model call per instruction, and a new failure mode (H9) where the wrong noun phrase kills the run before perception begins. Architecture B pays nothing, because SmolVLA consumes the instruction string directly and never converts it into object names at all. The modular pipeline is not merely "more interpretable at a small cost" — it requires a translation step the end-to-end model does not, and that step is one of the places it breaks.
+
 ### Hypotheses to state up front
 
 | # | Hypothesis | Tier that tests it |
@@ -144,6 +154,7 @@ Objects and instruction phrasings never seen in the demonstrations or the prompt
 | H6 | A's failures are attributable to a specific stage; B's are not attributable at all | all |
 | H7 | A is robust to spoken phrasing that drifts from the training/prompt wording; B degrades as the transcript drifts from its training instruction strings | all, via §7.4 |
 | H8 | A grounds deictic reference ("*that* red cube") against detected scene context; B cannot | 0, 2 |
+| H9 | A has a failure mode B cannot have: choosing the wrong noun phrase for the detector, before perception even runs | all |
 
 H6 is the one that most cleanly separates the architectures and it costs nothing extra to test — it falls straight out of the per-stage logging in §8-W4. H7 is nearly as cheap: run each tier's trials with a **held-out set of spoken paraphrases never used during recording**, and report success rate against phrasing distance.
 
@@ -216,7 +227,7 @@ This is the **most underestimated risk in the whole project**, because it silent
 
 **Recommendation:** prove the recording loop with **freedrive in the first lab session** — it needs no purchase and no wiring — but **order a SpaceMouse now**, and record the real training set with it. Hands-in-frame is not a cosmetic issue; discovering it after 200 episodes costs the project. If you do end up shipping freedrive data, say so in the report and treat it as a named confound.
 
-**Separately, the recording path itself needs rewriting for hardware.** Real `moveJ`/`moveL` **block**; the sim recorder counts ticks inside a stepping loop. On hardware, poll `get_state` from a **separate thread on a clock-gated timer** at the configured rate, with camera frames captured in sync. Do not port `scripts/record_episode.py` — it still carries the tick-counting cadence bug that was fixed in `sim_server.py` and never back-ported. Write the hardware recorder fresh against `DemoRecorder`, which already takes an explicit `timestamp`.
+**Separately, the recording path itself needs rewriting for hardware.** Real `moveJ`/`moveL` **block**; the sim recorder counts ticks inside a stepping loop. On hardware, poll `get_state` from a **separate thread on a clock-gated timer** at the configured rate, with camera frames captured in sync. Write the hardware recorder **fresh** against `DemoRecorder`, which already takes an explicit `timestamp`. Do not resurrect the old sim recorder: it counted ticks rather than gating on a clock, which silently recorded at roughly a quarter of its configured rate.
 
 ### 7.3 Pouring rig — safety and mess
 
@@ -295,12 +306,13 @@ The user speaks; the system acts. `"Place that red cube into that metal tray."`
 
 Ordered by dependency, not by week. §9 places them in time.
 
-### W1 · Repo reset for hardware *(no hardware needed — start today)*
+### W1 · Repo reset for hardware — **DONE 11 Aug 2026**
 
-1. `shared/helpers/rotations.py`: add `euler_to_rotvec` and `euler_to_R` with round-trip tests against `rotvec_to_euler`. Nothing that commands an orientation can be written without these.
-3. Fix `shared/helpers/config.py::get_config(path)` — the module-level `_CONFIG` singleton silently ignores `path` after the first call, so `URController.__init__` looks configurable and is not. Either honour the path or drop the parameter.
-4. Fix `architecture_b/demos/hdf5_store.py::episode_paths` — it returns `sorted(*.h5) + sorted(*.hdf5)`, sorted within each extension but not across them. Mixed extensions give silently wrong episode order, which corrupts a dataset in a way you will not notice.
-5. `export_lerobot.py`: fail loudly on truncated or malformed episodes; assert reported fps matches the configured record rate.
+1. ~~`shared/helpers/rotations.py`: add `euler_to_rotvec` and `euler_to_R`.~~ Done. The round-trip tests also exposed a pre-existing bug: `R_to_rotvec` divided by `sin(theta)` and lost about seven digits as theta approached pi. That is not an edge case here, since the default tool orientation is the gripper pointing down at theta ≈ pi, so every grasp went through that branch. Replaced with a quaternion pivot method, now exact to 1e-15, with a regression test.
+3. ~~Fix `shared/helpers/config.py::get_config(path)`.~~ Done. Now caches per resolved path, so two configs can coexist in one process, which the evaluation harness needs.
+4. ~~Fix `architecture_b/demos/hdf5_store.py::episode_paths`.~~ Done. Sorts by filename stem across both extensions.
+5. ~~`export_lerobot.py`: fail loudly on malformed episodes.~~ Done. `validate_episode()` runs over every file **before** the dataset is created, rejecting truncation, length mismatch, non-finite poses, non-monotonic timestamps, resolution mismatch and fps drift.
+6. Also done, unplanned: controller tests marked `integration` and auto-skipped when nothing answers on port 30004, so `pytest tests` is green without a robot.
 
 ### W2 · Architecture A software *(no hardware needed)*
 

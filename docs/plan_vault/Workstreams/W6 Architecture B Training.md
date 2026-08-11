@@ -13,7 +13,7 @@ Fine tuning SmolVLA and driving the arm from it.
 - [ ] test a throwaway fine tune in W2 against the 2 existing episodes, batch size 1, purely to find out whether 12 GB is enough
 - [ ] fine tune on [[Tier 0 Pick and Place]] first, logging config, seed, wall clock and GPU hours
 - [ ] inference loop: checkpoint loads, observation in, action chunk out, chunk size 50
-- [ ] safety envelope on every predicted action **before** it reaches the controller, clamping workspace bounds and velocity
+- [~] safety envelope **already exists** in `shared/hardware/safety.py`, built for Architecture A and shared deliberately. It still has to be wired into B's inference loop
 - [ ] asynchronous inference so the arm is not idle during the forward pass
 - [ ] re train per tier as demonstrations land
 
@@ -30,3 +30,11 @@ The RTC paper on asynchronous inference and action chunking is directly about th
 ## VRAM
 
 12 GB is workable but not roomy. Weights, gradients and optimiser states come to roughly 7 GB before activations, with two camera streams on top. If it does not fit: smaller batch with gradient accumulation, gradient checkpointing, an 8 bit optimiser, or freeze the vision backbone.
+
+## Status 11 Aug 2026
+
+Nothing here is built, but one piece arrived early from the other side of the project.
+
+`WorkspaceEnvelope` lives in `shared/` rather than in Architecture A, because both architectures need the identical clamp: A on LLM generated poses, B on predicted action chunks. Having B import it from `architecture_a/` would have been worse, and having two envelopes would mean the two architectures were constrained differently, which quietly breaks the comparison.
+
+So when the inference loop is written, the clamp is already there and already tested. It is not optional: a VLA given a novel observation can emit a chunk that slams the arm into the table.
