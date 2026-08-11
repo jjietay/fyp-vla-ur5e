@@ -3,7 +3,7 @@
 Imports lerobot_export's convert function and actually does the conversion.
 Convert recorded HDF5 demonstration episodes into a LeRobot dataset.
 
-Thin CLI; the conversion lives in fyp.demos.lerobot_export. Needs the lerobot
+Thin CLI; the conversion lives in fyp.architecture_b.demos.lerobot_export. Needs the lerobot
 venv (torch + lerobot), not the FYP venv.
 
     python scripts/export_lerobot.py \
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import argparse
 
-from fyp.demos.lerobot_export import convert
+from fyp.architecture_b.demos.lerobot_export import convert
 
 
 def main() -> None:

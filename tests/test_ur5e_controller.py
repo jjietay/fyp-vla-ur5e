@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from fyp.hardware.ur5e_controller import URController
+from fyp.shared.hardware.ur5e_controller import URController
 
 
 @pytest.fixture

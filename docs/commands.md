@@ -11,7 +11,7 @@ pose = [0.44489, -0.24078, -0.23421, 3.075, 0.679, -0.002]
 ## Start MuJoCo
 XDG_SESSION_TYPE=x11 uv run python -c "
 import mujoco, mujoco.viewer
-m = mujoco.MjModel.from_xml_path('assets/mujoco/ur5e/scene_gripper.xml')
+m = mujoco.MjModel.from_xml_path('simulation/assets/mujoco/ur5e/scene_gripper.xml')
 d = mujoco.MjData(m)
 mujoco.mj_resetDataKeyframe(m, d, 0)
 mujoco.mj_forward(m, d)
@@ -22,11 +22,11 @@ mujoco.viewer.launch(m, d)
 uv run python scripts/build_scene.py
 
 ## Opens MuJoCo Server
-XDG_SESSION_TYPE=x11 uv run python -m fyp.hardware.sim.server
+XDG_SESSION_TYPE=x11 uv run python -m fyp_sim.server
 
 ## Opens Client
 uv run python
-from fyp.hardware.sim.client import SimClient
+from fyp_sim.client import SimClient
 c = SimClient()
 c.start_recording()
 c.stop_and_save()

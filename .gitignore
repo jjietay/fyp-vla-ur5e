@@ -1,44 +1,85 @@
-# UR Sim install
-ursim/
-
-# Python
+# ============================ PYTHON ============================
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
 
-# Secrets
-.env
-.env.local
+# Tool caches. These reappear every time you run pytest or the type checker,
+# so they need ignoring even though you delete them occasionally.
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
-# IDE
+
+# ============================ SECRETS ============================
+# The Anthropic key for the Architecture A planner lands here. Never commit it.
+.env
+.env.*
+!.env.example
+
+
+# ============================ EDITOR / OS ============================
 .vscode/
 .idea/
 *.swp
-
-# OS
 .DS_Store
 
-# Logs
-*.log
+# Obsidian per-vault state: window layout, plugin settings, themes. Churns on
+# every open and is machine specific. Matches any vault, so a third one is
+# covered automatically.
+.obsidian/
 
-# Media
-media/
 
-# Data outputs. Calibration is deliberately NOT here - it lives in
-# config/calibration/ and is tracked, because you have to know which
-# calibration produced which result.
-data/
+# ============================ DATA ============================
+# Split by whether a script can rebuild it:
+#   raw/       captures that CANNOT be regenerated. Nothing writes here except
+#              the recorder. BACK THIS UP SOMEWHERE THAT IS NOT THIS REPO.
+#   cache/     depth maps, frames, detector JSON. Delete freely.
+#   processed/ the dataset you train on, rebuilt from raw/ by export_lerobot.py
+#
+# Calibration is deliberately NOT ignored. It lives in config/calibration/ and
+# is tracked, because you have to know which calibration produced which result.
 logs/
 reports/
+media/
 
-# Documents
-docs/fyp_vault/.obsidian
+# Ignore data CONTENTS rather than the data DIRECTORY. Excluding `data/` outright
+# would stop git descending into it at all, which makes any later `!` rule dead.
+# The three lines below let the folder tree survive in git while the files do not,
+# so a fresh clone gets the directories instead of scripts failing on a missing path.
+data/**
+!data/**/
+!data/**/.gitkeep
 
-# MuJoCo
+
+# ============================ MODELS AND TRAINING ============================
+# SmolVLA checkpoints are hundreds of MB and GitHub rejects files over 100 MB.
+# Keep the checkpoint and its dataset version together OUTSIDE the repo, and
+# record the pairing in the write-up.
+checkpoints/
+outputs/
+wandb/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+
+
+# ============================ SIMULATION ============================
+# The whole frozen substrate is out of version control. It is 36 MB of
+# third-party Menagerie meshes plus code that will never change again, and no
+# simulation result is a deliverable.
+#
+# NOT LOST: every one of these files is still in git history at its pre-move
+# path (assets/ and src/fyp/hardware/sim/), so it is recoverable with
+#     git checkout 87e1ad1 -- assets src/fyp/hardware/sim
+# if the substrate is ever needed again.
+simulation/
+
+# MuJoCo scribbles this at whatever the working directory happens to be.
 MUJOCO_LOG.TXT
 
-# Typings
-typings/
 
+# ============================ MISC ============================
+*.log

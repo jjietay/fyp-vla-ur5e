@@ -65,7 +65,7 @@ def main() -> None:
     if args.image:
         img = np.array(Image.open(args.image).convert("RGB"))
     else:
-        from fyp.hardware.sim.renderer import render_rgbd
+        from fyp_sim.renderer import render_rgbd
         img, _depth, _intr = render_rgbd(args.width, args.height, camera=args.camera)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -76,8 +76,8 @@ def main() -> None:
         return
 
 
-    from fyp.policy.modular.detector import detect
-    from fyp.policy.modular.filters import apply_filters, to_json_records
+    from fyp.architecture_a.perception.detector import detect
+    from fyp.architecture_a.perception.filters import apply_filters, to_json_records
 
     pil = Image.fromarray(img)
     all_dets = detect(pil, args.queries, args.model)
