@@ -5,7 +5,7 @@ Convert recorded HDF5 episodes into a LeRobot dataset for SmolVLA.
 Bridges two formats. DemoRecorder writes ABSOLUTE states with AXIS-ANGLE
 orientation; SmolVLA / LeRobot want per-frame observations plus DELTA actions
 with orientation in EULER angles. Format-agnostic by construction: the same
-code converts sim-recorded and real-UR5e-recorded episodes, because both share
+code converts every episode regardless of how it was teleoperated, because all share
 the recorder's schema (see hdf5_store.py).
 
 Output LeRobot features:

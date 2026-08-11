@@ -6,7 +6,7 @@ week: 2
 
 # W2 Architecture A Software
 
-The whole modular pipeline except the camera. Buildable now, against the quarantined simulation as a test fixture.
+The whole modular pipeline except the camera. Buildable now, against saved PNGs as fixtures, so it does not wait on lab access.
 
 ## Steps
 
@@ -19,7 +19,7 @@ The whole modular pipeline except the camera. Buildable now, against the quarant
 
 ## Rules
 
-Primitives are written against the **shared controller interface only**. If a primitive reaches for a MuJoCo specific or ur_rtde specific attribute, it is wrong, and the comparison starts measuring plumbing instead of architectures.
+Primitives are written against the **shared controller interface only**. If a primitive reaches past the controller for a ur_rtde specific attribute, it is wrong, and the comparison starts measuring plumbing instead of architectures.
 
 Parameterise approach height, descent speed, grasp width, tilt angle and tilt rate. The planner will want to vary all of them.
 

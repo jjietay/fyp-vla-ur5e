@@ -1,7 +1,7 @@
 """ config.py
 
 - This file loads all configurations from config/config.yaml and resolve repo-relative paths
-- Single source of truth for both the sim and the real robot, so that the values stay consistent
+- Single source of truth for both architectures, so the values cannot drift apart
 """
 
 import yaml

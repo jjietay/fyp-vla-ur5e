@@ -10,7 +10,7 @@ The single biggest unblocker in the project. Nothing downstream can address a re
 
 ## Steps
 
-- [ ] real camera driver behind the same interface the MuJoCo renderer satisfies, with real intrinsics from the SDK replacing `intrinsics_from_fovy`
+- [ ] real camera driver, with intrinsics read straight from the RealSense SDK
 - [ ] decide the marker, see [[Calibration Marker]], and stop deferring it
 - [ ] collection script: move the arm to 15 to 20 poses across the workspace, recording TCP pose and marker centroid at each
 - [ ] solve and save `T_base_cam` using the existing `solve_rigid_transform` and `save`

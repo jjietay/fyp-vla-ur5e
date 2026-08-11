@@ -1,28 +1,25 @@
-"""Open-vocabulary object detection on a rendered frame (Architecture A, stage 2).
+"""Open-vocabulary object detection on an image (Architecture A, stage 2).
 
-Two halves that can run together or split across environments:
+It takes a PNG and a list of text prompts, and gives you an overlay image plus a
+JSON of kept boxes. That JSON is the handoff to stage 3, which samples depth at
+each `center_uv`.
 
-  1. RENDER  - needs MuJoCo (your FYP venv). Renders a camera view of the scene
-               at the home keyframe and saves a PNG.
-  2. DETECT  - needs torch + transformers + pillow (your lerobot venv). Runs the
-               detector, filters, draws boxes, saves overlay + JSON.
+Runs in the lerobot venv, because it needs torch + transformers + pillow.
 
-Because MuJoCo and torch live in different venvs here, the safe workflow is to
-split them:
-
-    # in the FYP venv (has mujoco):
-    uv run python scripts/check_detector.py --render-only --out data/cache/frame.png
-
-    # in the lerobot venv (has torch + transformers):
     cd ~/lerobot && uv run python \
-        /home/jj/Documents/NTU/Y4S1/FYP/scripts/check_detector.py \
-        --image .../frame.png --queries "red cube" ... --json .../detections.json
+        /path/to/scripts/check_detector.py \
+        --image frame.png --queries "red cube" "metal tray" \
+        --model google/owlv2-base-patch16-ensemble --threshold 0.3 \
+        --json detections.json
 
-If a single venv has BOTH mujoco and torch, just omit --image/--render-only and
-it renders + detects in one shot.
+DEFAULTS ARE A TRAP: --model defaults to OWL-ViT base at threshold 0.1, but
+detector.py documents OWLv2 at 0.3 as the combination that actually works. Pass
+both explicitly until the defaults are fixed (a W1 task).
 
-Boxes are pixel xyxy (x0, y0, x1, y1); the JSON also carries `center_uv`, which
-is exactly the pixel stage 3 samples depth at.
+Boxes are pixel xyxy (x0, y0, x1, y1).
+
+TODO (W3): --image is currently the only frame source. When the RealSense lands,
+add a live-grab branch here rather than a separate script.
 """
 from __future__ import annotations
 
@@ -38,12 +35,8 @@ def main() -> None:
     p.add_argument("--queries", nargs="+",
                    default=["red block", "green block", "blue block", "yellow block", "bin"],
                    help="open-vocab text prompts")
-    p.add_argument("--image", default=None,
-                   help="detect on this image instead of rendering (skips MuJoCo)")
-    p.add_argument("--render-only", action="store_true",
-                   help="render a frame and save it, then exit (skips torch)")
-    p.add_argument("--camera", default=None,
-                   help="MuJoCo camera to render from (default: config sim.camera.name)")
+    p.add_argument("--image", required=True,
+                   help="image to run detection on")
     p.add_argument("--model", default="google/owlvit-base-patch32")
     p.add_argument("--threshold", type=float, default=0.1)
     p.add_argument("--nms-iou", type=float, default=0.5,
@@ -52,8 +45,6 @@ def main() -> None:
                    help="only suppress boxes sharing the same query label")
     p.add_argument("--top1-per-query", action="store_true",
                    help="keep at most one box per query (scene has <=1 of each)")
-    p.add_argument("--width", type=int, default=640)
-    p.add_argument("--height", type=int, default=480)
     p.add_argument("--out", default="data/cache/detections.png")
     p.add_argument("--json", default=None,
                    help="also write the kept detections here as JSON (feeds stage 3)")
@@ -62,18 +53,8 @@ def main() -> None:
     from PIL import Image, ImageDraw
 
 
-    if args.image:
-        img = np.array(Image.open(args.image).convert("RGB"))
-    else:
-        from fyp_sim.renderer import render_rgbd
-        img, _depth, _intr = render_rgbd(args.width, args.height, camera=args.camera)
-
+    img = np.array(Image.open(args.image).convert("RGB"))
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-
-    if args.render_only:
-        Image.fromarray(img).save(args.out)
-        print(f"saved frame -> {args.out}  ({img.shape[1]}x{img.shape[0]})")
-        return
 
 
     from fyp.architecture_a.perception.detector import detect

@@ -35,4 +35,4 @@ Thinking:
 
 ## Status right now
 
-Week 1, Aug 2026. Simulation is quarantined, Architecture A software has not started, no lab access confirmed. The two things that matter this week are in [[Open Actions]].
+Week 1, Aug 2026. Architecture A software has not started and lab access is not confirmed. The two things that matter this week are in [[Open Actions]].

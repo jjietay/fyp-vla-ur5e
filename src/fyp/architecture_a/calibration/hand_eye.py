@@ -19,10 +19,11 @@ How it is solved:
 Needs at least 3 non-collinear points to be solvable at all; use 10-20 spread
 across the whole workspace or the fit will be accurate only where you sampled.
 
-CAREFUL: this solves camera -> BASE, not camera -> world. In the MuJoCo scene
-the arm base carries quat="0 0 0 -1", so base and world are NOT the same frame.
-Feeding world-frame targets into a base-frame transform gives an answer that
-looks plausible and is wrong.
+CAREFUL: this solves camera -> BASE. Everything downstream must stay in base
+frame, because that is the only frame the arm understands: get_state reports the
+TCP in base frame and moveL expects targets in it. There is no separate world
+frame on the real cell, so do not invent one, and do not mix in coordinates
+measured against the table or the room without converting them first.
 """
 
 from __future__ import annotations

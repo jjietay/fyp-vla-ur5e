@@ -84,7 +84,7 @@ Put a monthly recurring reminder on items 3 and 4 now, while you are thinking ab
 >
 > The two are evaluated on a four-tier task suite spanning static pick-and-place, unambiguous liquid pouring, **ambiguous instructions that require clarifying the user's intent**, and **dynamic tasks whose world state changes mid-execution**. The contribution is a like-for-like characterisation of where each architecture succeeds, where each fails, how each fails, and what each costs in data, compute, money and engineering effort.
 
-**Explicitly out of scope:** simulation results (see §10), mobile manipulation, multi-arm, learned grasp synthesis, training a VLA from scratch, training or fine-tuning any speech model (an off-the-shelf ASR system is used as-is), wake-word detection and always-on listening (push-to-talk, see §7.5).
+**Explicitly out of scope:** simulated results of any kind, mobile manipulation, multi-arm, learned grasp synthesis, training a VLA from scratch, training or fine-tuning any speech model (an off-the-shelf ASR system is used as-is), wake-word detection and always-on listening (push-to-talk, see §7.5).
 
 ---
 
@@ -100,7 +100,7 @@ Each has a **definition of done** — a binary condition, checkable, no judgemen
 | **T4** | Architecture B, trained and running | Fine-tuned SmolVLA checkpoint driving the arm through the same controller interface as T2, with a safety envelope on predicted actions; succeeds on Tier 0 at ≥50% over 20 trials |
 | **T5** | Evaluation harness | Tiered task suite fixed and written down **before** either pipeline is tuned; scripted trial protocol; per-trial outcome + failure-stage logged to a machine-readable file |
 | **T6** | Comparison result | The T5 harness run to completion on both architectures across all attempted tiers, with the results tables and figures that go into D4 |
-| **T7** | Repo consolidation | Simulation quarantined per §10; README, handover and vault docs match the tree; no dead references |
+| **T7** | Repo consolidation | README and vault docs match the tree; no dead references |
 
 ---
 
@@ -297,15 +297,14 @@ Ordered by dependency, not by week. §9 places them in time.
 
 ### W1 · Repo reset for hardware *(no hardware needed — start today)*
 
-1. Quarantine simulation per §10. One commit, no behaviour change.
-2. `shared/helpers/rotations.py`: add `euler_to_rotvec` and `euler_to_R` with round-trip tests against `rotvec_to_euler`. Nothing that commands an orientation can be written without these.
+1. `shared/helpers/rotations.py`: add `euler_to_rotvec` and `euler_to_R` with round-trip tests against `rotvec_to_euler`. Nothing that commands an orientation can be written without these.
 3. Fix `shared/helpers/config.py::get_config(path)` — the module-level `_CONFIG` singleton silently ignores `path` after the first call, so `URController.__init__` looks configurable and is not. Either honour the path or drop the parameter.
 4. Fix `architecture_b/demos/hdf5_store.py::episode_paths` — it returns `sorted(*.h5) + sorted(*.hdf5)`, sorted within each extension but not across them. Mixed extensions give silently wrong episode order, which corrupts a dataset in a way you will not notice.
 5. `export_lerobot.py`: fail loudly on truncated or malformed episodes; assert reported fps matches the configured record rate.
 
 ### W2 · Architecture A software *(no hardware needed)*
 
-1. **`architecture_a/skills.py`** — `pick(xyz, ...)`, `place(xyz, ...)`, `pour(source_xyz, target_xyz, tilt_profile)`, `open_drawer(handle_xyz)`. Written against the **shared controller interface only**. If a primitive touches a MuJoCo-specific or ur_rtde-specific attribute, it is wrong. Parameterise approach height, descent speed, grasp width, tilt angle and tilt rate — the planner will vary them.
+1. **`architecture_a/skills.py`** — `pick(xyz, ...)`, `place(xyz, ...)`, `pour(source_xyz, target_xyz, tilt_profile)`, `open_drawer(handle_xyz)`. Written against the **shared controller interface only**. If a primitive touches a ur_rtde-specific attribute directly instead of going through the controller, it is wrong. Parameterise approach height, descent speed, grasp width, tilt angle and tilt rate — the planner will vary them.
    *Note:* `server.py` currently reaches into five private controller attributes. The primitives will want some of the same. Promote what they need to a public API rather than adding a sixth reach-through.
 2. **Anthropic SDK + tool schemas** — hello-world call, then schemas matching the W2.1 signatures *exactly*, plus `ask_user(question, options)`. Record rate limits and per-call cost; they are a §6 metric.
 3. **`architecture_a/planner.py`** — system prompt lists available skills plus detected objects with base-frame positions; model returns an ordered tool-call plan; **the parser validates against the schemas before dispatch** (reject unknown skills, out-of-workspace coordinates, malformed args). A plan that reaches the controller unvalidated is how you break an arm.
@@ -323,7 +322,7 @@ Deliberately a **separate module with no dependency on either architecture**, pe
 
 ### W3 · Camera and calibration *(hardware-gated)*
 
-1. **Camera driver** behind the same interface the MuJoCo renderer satisfies — RGB, depth, and real intrinsics from the SDK replacing `intrinsics_from_fovy`. If W2's interfaces were drawn correctly this is the *only* file Track A needs for real images.
+1. **Camera driver** — RGB, depth, and real intrinsics straight from the SDK. If W2's interfaces were drawn correctly this is the *only* file Track A needs for real images.
 2. **Decide the calibration marker.** Deferred since July, still blocking. Take the ArUco/ChArUco board — a printed board is more accurate than a detector-found geometric feature and takes an afternoon. Stop deferring this.
 3. **Collection script** — move the arm to 15–20 poses spread across the workspace, record `(TCP pose from get_state, marker centroid in camera)` at each.
 4. **Solve and save** `T_base_cam` via the existing `solve_rigid_transform` + `save`. The Kabsch solver already exists and is tested; only the procedure is missing.
@@ -405,34 +404,10 @@ Week 1 = 10 Aug 2026. Recess week = 28 Sep.
 
 ---
 
-## 10 · Simulation quarantine — **DONE 11 Aug 2026**
+## 10 · Simulation
 
-Executed. See `simulation/README.md` for the full record. Summary of what moved:
+Removed from the project on 11 Aug 2026. The MuJoCo substrate is gitignored, dropped from `pyproject.toml`, `mujoco` is no longer a dependency, and no live file references it. Every result in this FYP comes from hardware.
 
-| Was | Now |
-|-----|-----|
-| `src/fyp/hardware/sim/*.py` | `simulation/fyp_sim/` |
-| `src/fyp/helpers/ik.py` | `simulation/fyp_sim/ik.py` |
-| `assets/mujoco/` | `simulation/assets/mujoco/` |
-| `scripts/{build_scene,check_camera,check_depth,check_settling,record_episode}.py` | `simulation/scripts/` |
-| `tests/test_ik.py` | `simulation/tests/` |
-
-All moves used `git mv`, so history is preserved and git records them as renames. Imports rewritten `fyp.hardware.sim.X` → `fyp_sim.X` and `fyp.helpers.ik` → `fyp_sim.ik`. `fyp_sim` added to `[tool.hatch.build.targets.wheel] packages`, so it imports with no path shims. Asset paths in `config/config.yaml` and `build_scene.py` repointed.
-
-**`ik.py` moved because it is a MuJoCo damped-least-squares solver.** Verified before moving: its only callers were `sim/mujoco_controller.py`, `sim/server.py`, `check_settling.py` and `test_ik.py`, all sim. The real UR5e solves IK in firmware via `moveL`, so nothing on the hardware path calls it. **`src/fyp/helpers/` is now genuinely pure** — no module in it imports anything outside the standard library and numpy.
-
-**Two scripts did not move:**
-
-- `scripts/check_detector.py` stayed. Its renderer import is lazy, so it already works on a file input; the branch was repointed to `fyp_sim.renderer` rather than deleted, so it fails only if you ask for it.
-- `scripts/replay_episode.py` stayed. HDF5 in, mp4 out, no MuJoCo anywhere in it.
-
-`check_camera.py` and `check_depth.py` moved, but **their names are wanted back** for the real RealSense checks in W3.1. Write those fresh in `scripts/` rather than dragging these back.
-
-**Not yet verified:** `pytest` could not be run during the move (the venv points at an interpreter that only exists on the lab/dev machine). Static verification passed — `compileall` clean across `src/`, `scripts/` and `simulation/`, and an AST sweep found zero unresolved intra-project imports. **Run `uv sync && uv run pytest tests simulation/tests` before committing.**
-
-**Keep MuJoCo alive as a test fixture only until W3 lands.** Once the real camera and `T_base_cam` exist, the sim has no remaining job. The rule until then: **no new sim infrastructure**, and write nothing that only works in sim.
-
-**Do not delete the parked work.** `data/raw/episodes` (2 real episodes, 227 frames) stays as a converter fixture — it is what validated `export_lerobot.py`. The known ~4 Hz cadence bug in `scripts/record_episode.py` stays unfixed; it dies with the sim.
 
 ---
 

@@ -14,7 +14,7 @@ the same plan as an Obsidian vault for tracking.
 
 ## Setup
 
-Requires Python 3.12+, `uv`, and a real UR5e. URSim 5.25.2 also works for controller-level work.
+Requires Python 3.12+, `uv`, and a real UR5e. URSim 5.25.2 provides a controller endpoint for testing without the arm.
 
 ```bash
 uv sync
@@ -23,9 +23,7 @@ uv run pytest tests
 
 ## Layout
 
-Organised around the real UR5e. **No simulation result is a deliverable.** MuJoCo
-was the development substrate before lab access and is quarantined in
-`simulation/`, which is frozen — see `simulation/README.md`.
+Organised around the real UR5e. Every result comes from hardware.
 
 ```
 src/fyp/
@@ -38,11 +36,6 @@ src/fyp/
 └── architecture_b/   end-to-end SmolVLA, nothing hand-authored
     └── demos/        recorder, hdf5_store, lerobot_export
 
-simulation/           FROZEN. MuJoCo substrate, do not edit
-├── fyp_sim/          controller, renderer, scene, server, ik
-├── assets/mujoco/    scene/robot/gripper XML
-├── scripts/          sim-only CLIs
-└── tests/
 ```
 
 The three-way split is deliberate: the tree mirrors the experiment. `shared/`
@@ -61,11 +54,9 @@ entirely and `architecture_a/` would still run.
 Only `architecture_a/perception/detector.py` needs torch; everything else runs in the FYP
 venv. That split is visible in the tree rather than something you remember.
 
-Nothing under `src/fyp/` imports mujoco. `shared/helpers/` is genuinely pure:
-numpy and the standard library only.
+`shared/helpers/` is genuinely pure: numpy and the standard library only.
 
 ## Status
 
-Week 1 of the FYP proper, Aug 2026. Simulation quarantined. Architecture A
-software not started. Lab access not yet confirmed, which is the blocker on
-everything downstream. Current tasks live in `docs/plan_vault/Reference/Open Actions.md`.
+Week 1 of the FYP proper, Aug 2026. Architecture A software not started. Lab
+access not yet confirmed, which is the blocker on everything downstream. Current tasks live in `docs/plan_vault/Reference/Open Actions.md`.

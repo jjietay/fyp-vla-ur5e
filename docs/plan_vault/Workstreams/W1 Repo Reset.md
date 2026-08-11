@@ -8,7 +8,7 @@ week: 1
 
 Housekeeping that has to happen before real data exists, because each item silently corrupts something downstream if left.
 
-- [x] quarantine the simulation into `simulation/`, imports rewritten, history preserved
+- [x] split the package into `shared/`, `architecture_a/` and `architecture_b/`, imports rewritten, history preserved
 - [ ] add `euler_to_rotvec` and `euler_to_R` to `shared/helpers/rotations.py`, with round trip tests against the existing `rotvec_to_euler`
 - [ ] fix `shared/helpers/config.py::get_config(path)`, which ignores `path` after the first call because of a module level singleton, so it looks configurable and is not
 - [ ] fix `architecture_b/demos/hdf5_store.py::episode_paths`, which returns sorted `.h5` then sorted `.hdf5`, so mixed extensions give silently wrong episode order

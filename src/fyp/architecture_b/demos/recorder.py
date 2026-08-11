@@ -5,7 +5,7 @@ In-memory capture of a demonstration episode. Stored as a list in _buffer.
 The recorder doesn't read anything or move the arm. Whatever moving the robot will
 hand this file its state via record().
 
-Can be used interchangeably btw sim and real.
+Backend-agnostic: it is handed state and never reads the robot itself.
 
 Writing to disk lives in `hdf5_store.py`; this module only buffers. This matters because
 the buffer is pure (no h5py or filesystem dependencies) and testable.

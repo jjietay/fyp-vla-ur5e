@@ -1,106 +1,101 @@
-## To run URSim
-URSIM=~/Documents/NTU/Y4S1/FYP/ursim/URSim_Linux-5.25.2.130406/ursim-5.25.2.130406
+# Commands
 
-cd "$URSIM"
+Live commands only.
 
-./start-ursim.sh UR5e
+## URSim
 
-## Unrestricted starting pose values
+Universal Robots' own controller simulator. It is what makes
+`pytest tests` pass without the real arm on `127.0.0.1:30004`.
+
+```bash
+URSIM=~/Documents/NTU/Y4S1/FYP/simulation/ursim/URSim_Linux-5.25.2.130406/ursim-5.25.2.130406
+cd "$URSIM" && ./start-ursim.sh UR5e
+```
+
+Unrestricted starting pose:
+
+```
 pose = [0.44489, -0.24078, -0.23421, 3.075, 0.679, -0.002]
+```
 
-## Start MuJoCo
-XDG_SESSION_TYPE=x11 uv run python -c "
-import mujoco, mujoco.viewer
-m = mujoco.MjModel.from_xml_path('simulation/assets/mujoco/ur5e/scene_gripper.xml')
-d = mujoco.MjData(m)
-mujoco.mj_resetDataKeyframe(m, d, 0)
-mujoco.mj_forward(m, d)
-mujoco.viewer.launch(m, d)
-"
+## Tests
 
-## Rebuilds scene_gripper.xml after changes to scene.xml
-uv run python scripts/build_scene.py
+```bash
+uv sync
+uv run pytest tests
+```
 
-## Opens MuJoCo Server
-XDG_SESSION_TYPE=x11 uv run python -m fyp_sim.server
+## Episodes
 
-## Opens Client
-uv run python
-from fyp_sim.client import SimClient
-c = SimClient()
-c.start_recording()
-c.stop_and_save()
-exit()
+```bash
+# HDF5 -> mp4
+uv run python scripts/replay_episode.py data/raw/episodes/ep_001.h5
+xdg-open data/raw/episodes/ep_001.mp4
+```
 
-## Inspect the MP4 Video
-uv run python scripts/replay_episode.py data/episodes/ep_001.h5
-xdg-open data/episodes/ep_001.mp4
+First and last frame plus gripper transitions, for a quick sanity look:
 
-## Save first and last frame for visual context
+```bash
 uv run python -c "
 import h5py, numpy as np
 import matplotlib.pyplot as plt
-with h5py.File('data/episodes/ep_001.h5', 'r') as f:
+with h5py.File('data/raw/episodes/ep_001.h5', 'r') as f:
     imgs = f['images'][:]; grip = f['gripper_states'][:]; tcp = f['tcp_poses'][:]
 fig, ax = plt.subplots(1, 2, figsize=(8, 3))
 ax[0].imshow(imgs[0]);  ax[0].set_title('frame 0');  ax[0].axis('off')
 ax[1].imshow(imgs[-1]); ax[1].set_title('frame -1'); ax[1].axis('off')
-plt.savefig('data/episodes/ep_001_check.png', dpi=100)
+plt.savefig('data/cache/ep_001_check.png', dpi=100)
 print('gripper transitions at frames:', np.where(np.diff(grip) != 0)[0])
 print('TCP z range:', round(float(tcp[:,2].min()),3), '->', round(float(tcp[:,2].max()),3))
 "
+```
 
-## Architecture A — render RGB + depth and verify against MuJoCo truth (FYP venv)
-uv run python scripts/check_camera.py --camera workspace --verify
+## Architecture A: detection
 
-- writes data/frames/workspace_{rgb.png,depth.png,depth.npy}
-- use the .npy for maths — the PNG is normalised for eyeballing only
+Runs in the lerobot venv, because that is where torch lives.
 
-## Architecture A — render a frame for the detector (FYP venv)
-uv run python scripts/check_detector.py --render-only --camera workspace \
-  --out data/frames/frame_top.png
-
-## Architecture A — detect, with NMS + per-query top-1 (lerobot venv)
+```bash
 cd ~/lerobot
 uv run python /home/jj/Documents/NTU/Y4S1/FYP/scripts/check_detector.py \
-  --image /home/jj/Documents/NTU/Y4S1/FYP/data/frames/frame_top.png \
-  --queries "red cube" "green cube" "blue cube" "yellow cube" "bin" \
+  --image /home/jj/Documents/NTU/Y4S1/FYP/data/cache/frame_top.png \
+  --queries "red cube" "metal tray" "orange juice" "water bottle" "glass" \
   --model google/owlv2-base-patch16-ensemble --threshold 0.3 \
   --nms-iou 0.5 --top1-per-query \
-  --out  /home/jj/Documents/NTU/Y4S1/FYP/data/frames/detections_owlv2.png \
-  --json /home/jj/Documents/NTU/Y4S1/FYP/data/frames/detections.json
+  --out  /home/jj/Documents/NTU/Y4S1/FYP/data/cache/detections_owlv2.png \
+  --json /home/jj/Documents/NTU/Y4S1/FYP/data/cache/detections.json
+```
 
-- NMS is class-agnostic by default: OWLv2 fires two labels on one cube and per-query suppression would keep both.
-- Drop --top1-per-query once the scene can hold more than one instance of a query.
+- always pass `--model` and `--threshold` explicitly; the script defaults to OWL-ViT at 0.1, which is the combination that does not work
+- NMS is class-agnostic by default, because OWLv2 fires two labels on one object and per-query suppression would keep both
+- drop `--top1-per-query` once a scene can hold more than one instance of a query
 
-## Architecture A — depth-to-3D (FYP venv)
-uv run python scripts/check_depth.py --verify
-uv run python scripts/check_depth.py --detections data/frames/detections.json
+## Architecture B: LeRobot
 
-- `--verify` isolates the geometry (no detector)
-- `--detections` runs the real chain.
-- Output is CAMERA frame; stage 4 (hand-eye) converts to the robot base frame.
-
-## Lerobot Initial Sync
+```bash
+# one-time
 cd ~/lerobot && uv sync --extra dataset --extra training --extra smolvla
+```
 
+HDF5 to LeRobot dataset:
 
-## Convert HDF5 episodes into a LeRobot Dataset
+```bash
 cd ~/lerobot
 PYTHONPATH=/home/jj/Documents/NTU/Y4S1/FYP/src \
 uv run --extra dataset --with h5py python /home/jj/Documents/NTU/Y4S1/FYP/scripts/export_lerobot.py \
-  --episodes /home/jj/Documents/NTU/Y4S1/FYP/data/episodes \
+  --episodes /home/jj/Documents/NTU/Y4S1/FYP/data/raw/episodes \
   --repo-id  jj/ur5e_pickplace \
   --task     "pick and place the block" \
   --camera   top \
-  --root     /home/jj/Documents/NTU/Y4S1/FYP/data/lerobot_ur5e
+  --root     /home/jj/Documents/NTU/Y4S1/FYP/data/processed/lerobot_ur5e
+```
 
+Fine-tune SmolVLA. `--steps=1` is the plumbing dry run; raise it for a real run.
 
-## Train SmolVLA2 Base
-  cd ~/lerobot && uv run --extra dataset --extra training lerobot-train \
+```bash
+cd ~/lerobot && uv run --extra dataset --extra training lerobot-train \
   --policy.path=lerobot/smolvla_base \
   --dataset.repo_id=jj/ur5e_pickplace \
-  --dataset.root=/home/jj/Documents/NTU/Y4S1/FYP/data/lerobot_ur5e \
+  --dataset.root=/home/jj/Documents/NTU/Y4S1/FYP/data/processed/lerobot_ur5e \
   --rename_map='{"observation.images.top": "observation.images.camera1"}' \
   --policy.push_to_hub=false \
   --batch_size=2 \
@@ -109,4 +104,4 @@ uv run --extra dataset --with h5py python /home/jj/Documents/NTU/Y4S1/FYP/script
   --job_name=dryrun \
   --policy.device=cuda \
   --wandb.enable=false
-
+```

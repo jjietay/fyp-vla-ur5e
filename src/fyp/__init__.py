@@ -21,7 +21,4 @@ by only one side stays with that side. The test is that you could delete
 Without that rule `shared/` slowly becomes `utils/` and stops being evidence of
 anything. With it, the fairness argument in the write-up is just a directory
 listing.
-
-MuJoCo is not here. It is quarantined in `simulation/` at the repo root and is
-frozen; no simulation result is a deliverable.
 """

@@ -2,7 +2,7 @@
 
 Real UR5e backend, driven over ur_rtde.
 
-Public API (mirrored exactly by simulation/fyp_sim/mujoco_controller.py):
+Public API:
 
 - __init__ connects via ur_rtde
 - move_to_pose(pose, speed, acc) using moveL
@@ -25,12 +25,12 @@ from fyp.shared.helpers.config import get_config, DEFAULT_CONFIG_PATH
 class URController:
     def __init__(self, path: str | Path = DEFAULT_CONFIG_PATH, ):
         self.cfg = get_config(path)
-        ursim_ip = self.cfg["robot"]["host"]
+        robot_ip = self.cfg["robot"]["host"]
         self.default_speed = self.cfg["robot"]["motion"]["default_speed"]
         self.default_acc = self.cfg["robot"]["motion"]["default_acc"]
-        self.rtde_r = rtde_receive.RTDEReceiveInterface(ursim_ip)
-        self.rtde_c = rtde_control.RTDEControlInterface(ursim_ip)
-        self.rtde_io = rtde_io.RTDEIOInterface(ursim_ip)
+        self.rtde_r = rtde_receive.RTDEReceiveInterface(robot_ip)
+        self.rtde_c = rtde_control.RTDEControlInterface(robot_ip)
+        self.rtde_io = rtde_io.RTDEIOInterface(robot_ip)
         self.pin_power = None
         self.pin_control = None
 

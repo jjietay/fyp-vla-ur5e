@@ -6,9 +6,10 @@ Holds a loop at a target frequency using deadline-based sleeping: the next
 deadline advances by a fixed period rather than being measured from "now", so
 per-iteration overshoot does not accumulate into a drifting rate.
 
-Currently unused. The sim server gates recording on wall-clock time directly
-(see simulation/fyp_sim/server.py::_maybe_record); this class is kept for the real
-robot's teleop loop, where a genuine fixed-rate loop is needed.
+Currently unused. It exists for the hardware teleop recorder, where moveJ and
+moveL block and state has to be polled from a separate thread on a real clock.
+Counting iterations instead of gating on time is how a recorder silently ends up
+capturing at a quarter of its configured rate.
 """
 
 import time
