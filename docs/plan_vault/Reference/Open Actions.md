@@ -10,7 +10,7 @@ Things that block other things. The top two are the highest priority items in th
 - [ ] **A2, week 1.** Confirm who pays for the wrist camera and teleop device, then order, see [[Shopping List]]
 - [ ] **A3, week 1.** Confirm the existing lab RGB-D model and its SDK, and whether a mount point already exists
 - [ ] **A4, week 2.** Confirm GPU availability and hours, and run the throwaway fine tune against `ep_001.h5` to check 12 GB is enough
-- [ ] **A5, week 3.** Decide the marker, see [[Calibration Marker]]
+- [x] **A5, done 12 Aug.** Marker decided: **none**. `T_base_cam` is measured from the mount geometry, see [[Calibration Marker]]. Validation in [[W3 Camera and Calibration]] is now the only check on stage 4
 - [ ] **A6, week 4, hard deadline.** Ask whether the StaffLink project title and summary need updating for the widened scope. Changes lock around week 8 and **examiners are allocated based on the title and summary**
 - [ ] **A7, Jan 2027.** Agree the demonstration date with the examiner
 - [x] **A8, done 11 Aug.** `README.md` and `pyproject.toml` updated. The stale handover, ursim reference and old plan versions were deleted rather than maintained, so `docs/fyp_plan.md` is now the only plan

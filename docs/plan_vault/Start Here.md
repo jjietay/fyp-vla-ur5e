@@ -40,4 +40,4 @@ Week 1, Aug 2026.
 
 Architecture A is written end to end: perception, grounding, skills, planner, clarification loop and per stage tracing. The [[Evaluation Protocol|evaluation harness]] is built. None of it has run against hardware, because there is none yet.
 
-Lab access is still unconfirmed and remains the blocker on everything downstream. The two decisions that will block work the moment access arrives, [[Calibration Marker]] and [[Action Space]], are both still open. See [[Open Actions]].
+Lab access is still unconfirmed and remains the blocker on everything downstream. [[Calibration Marker]] closed on 12 Aug with no marker, leaving [[Action Space]] as the one decision that will block work the moment access arrives. See [[Open Actions]].

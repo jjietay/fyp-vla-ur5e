@@ -13,6 +13,6 @@ Choices that shape the project, each with the reasoning attached. These become t
 | [[Detector Query Format]] | decided, forced by how OWLv2 works |
 | [[Teleoperation Method]] | decided, hardware pending |
 | [[Action Space]] | pending, needed by W5 |
-| [[Calibration Marker]] | **pending since July, blocking W3** |
+| [[Calibration Marker]] | decided 12 Aug, no marker, transform measured from the mount |
 
 A decision recorded without its reason is not much use six months later when an examiner asks why.

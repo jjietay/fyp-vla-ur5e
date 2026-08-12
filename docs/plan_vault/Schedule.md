@@ -13,7 +13,7 @@ Nov 2026 is a **completion** deadline. Submission stays on the official dates in
 | 1 | 10 to 16 Aug | [[W1 Repo Reset]], chase lab access and procurement | **done**, plus most of W2 and W4 pulled forward |
 | 2 | 17 to 23 Aug | [[W2b Speech Front End]], and the reading in [[Reading]] | speech gives a transcript |
 | 3 | 24 to 30 Aug | wire speech into the pipeline, Architecture B inference loop | spoken command drives A end to end |
-| 4 | 31 Aug to 6 Sep | [[W3 Camera and Calibration]] | `T_base_cam` validated, RMS reported |
+| 4 | 31 Aug to 6 Sep | [[W3 Camera and Calibration]] | `T_base_cam` measured and validated, reach error reported in mm |
 | 5 | 7 to 13 Sep | [[W4 Architecture A End to End]] | A passes [[Tier 0 Pick and Place]] |
 | 6 | 14 to 20 Sep | teleop rig, dataset conventions, **[[D1 Project Plan]] due 14 Sep** | D1 submitted |
 | 7 | 21 to 27 Sep | record Tier 0 demos, first fine tune | dataset exists |

@@ -93,7 +93,7 @@ Blue is shared by both. Note that **Architecture B has no path back to the user*
 
 ```mermaid
 flowchart LR
-    MARK[Calibration marker]:::pending --> W3[W3 Calibration]
+    MARK[Calibration marker: none]:::ok --> W3[W3 Calibration]
     CAM[Camera setup]:::ok --> W3
     TELE[Teleoperation method]:::ok --> W5[W5 Capture]
     ACT[Action space]:::pending --> W5
@@ -104,7 +104,9 @@ flowchart LR
     classDef pending fill:#78350f,stroke:#f59e0b,color:#fff
 ```
 
-Two decisions are still open and both block hardware work. [[Calibration Marker]] has been open since July. [[Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
+One decision is still open. [[Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
+
+[[Calibration Marker]] closed on 12 Aug with no marker, so W3 is now gated on lab access alone.
 
 ## Keeping these current
 

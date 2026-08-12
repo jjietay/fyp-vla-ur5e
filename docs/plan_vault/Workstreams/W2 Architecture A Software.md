@@ -46,7 +46,7 @@ Why it matters: Architecture A now starts from exactly the string Architecture B
 Written against real hardware only, so none of it has been executed. What still gates a first run:
 
 * measure the workspace bounds, `down_rotvec` and `robot.home_q` on the real cell
-* run the hand-eye procedure, since the pipeline refuses to start without `T_base_cam.json`
+* write `T_base_cam.json` from the measured mount, since the pipeline refuses to start without it, see [[Calibration Marker]]
 * set `ANTHROPIC_API_KEY`
 
 19 hardware-free checks cover the safety envelope and plan validation, which are the two things standing between generated output and a physical arm.

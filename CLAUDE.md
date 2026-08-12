@@ -106,8 +106,18 @@ evaluation harness. 31 tests pass without a robot.
 earlier), and the speech front end (`shared/speech.py`, W2b).
 
 **Blocked on lab access:** calibration, all demonstration capture, every trial, every number.
-Two decisions must be made the moment access arrives: the calibration marker, and the action
-space. Both are open. See `docs/plan_vault/Reference/Open Actions.md`.
+One decision must be made the moment access arrives: the action space. The calibration marker
+question closed on 12 Aug 2026 with **no marker** (see below). See
+`docs/plan_vault/Reference/Open Actions.md`.
+
+**No fiducial markers, anywhere.** `T_base_cam` is written by hand into
+`config/calibration/T_base_cam.json` from the measured camera mount geometry, not fitted.
+`solve_rigid_transform` in `hand_eye.py` stays in the repo as the documented fallback (matte
+ball on the gripper, still tag-free) if the measured transform proves too coarse to grasp
+with. Expect a systematic 1-3 cm bias: 1 degree of mount orientation error is ~17 mm at a 1 m
+standoff. The reach test in W3 is the only check on stage 4, because a hand-measured transform
+produces no residual of its own. Reasoning in
+`docs/plan_vault/Decisions/Calibration Marker.md`.
 
 ## Evaluation harness
 

@@ -1,6 +1,6 @@
 """pipeline.py
 
-It takes a typed instruction and gives you the arm carrying it out, with a
+It takes an instruction and gives you the arm carrying it out, with a
 per-stage record of everything that happened on the way.
 
     instruction -> queries -> detect -> filter -> depth -> camera to base
@@ -8,6 +8,10 @@ per-stage record of everything that happened on the way.
                               plan -> validate -> execute <-------+
                                 ^                      |
                                 +-- results fed back --+
+
+`run` takes a string and never learns how it arrived. Speech is a front end that
+hands over a transcript, so nothing in here changes when it lands, and the
+evaluation harness drives the same entry point from a fixed utterance list.
 
 The instruction reaches the detector before the camera does. Architecture A
 derives its own object vocabulary from the same string Architecture B receives,
