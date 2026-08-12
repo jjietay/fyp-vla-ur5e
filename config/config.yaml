@@ -45,6 +45,23 @@ camera:
   max_depth: 2.0          # metres, readings beyond this are treated as invalid
   depth_patch_radius: 2   # median over a (2r+1)^2 patch, robust to speckle
 
+# ================== SPEECH ==================
+# ASR sits OUTSIDE both architectures and is identical for both: one microphone,
+# one model, one transcript, handed to A and to B unchanged. Cleaning the
+# transcript for one and not the other makes speech a confound and the
+# comparison stops meaning anything.
+speech:
+  model: "large-v3"        # VRAM is not the constraint here, ~3.4 GB at float16
+  device: "cuda"           # "cpu" to test without a GPU; compute_type follows
+  compute_type: "float16"  # NOT int8. CTranslate2 int8 crashes on sm_120
+  language: "en"           # null auto-detects, at the cost of an extra pass
+  beam_size: 5
+  samplerate: 16000        # Whisper's native rate, so nothing gets resampled
+  min_duration_s: 0.3      # below this it was a stray keypress, not an utterance
+  max_duration_s: 30.0     # truncate rather than hand Whisper a forgotten stream
+  log_dir: "logs/speech/"  # one wav + one jsonl line per utterance, timestamped
+  save_audio: true         # audio alongside the transcript, per W2b
+
 # ================== ARCHITECTURE A ==================
 architecture_a:
   detector:

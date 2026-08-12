@@ -5,9 +5,10 @@ Architecture A stage 4: converts CAMERA-frame 3D points into ROBOT BASE-frame
 sub-millimetre camera-frame XYZ) and the pick/place primitives, which can only
 speak base frame.
 
-Setup assumed here is EYE-TO-HAND: the camera is bolted to the world looking
-down at the table, NOT mounted on the arm. So the unknown is one fixed transform
-T_base_cam, and it never changes unless the camera is knocked.
+Setup assumed here is EYE-TO-HAND: the camera is bolted to the world, viewing
+the table from the side at roughly 45 degrees, NOT mounted on the arm. So the
+unknown is one fixed transform T_base_cam, and it never changes unless the
+camera is knocked.
 
 How it is solved:
 - Move the arm to N poses. At each one you know where the TCP is in base frame
