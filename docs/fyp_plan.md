@@ -1,6 +1,8 @@
 # FYP Technical Plan V5 — Deliverables and Route
 
-**Project A1005-261** · Development of a Large Language Model-Based Interface for Robotic Systems
+**Project A1005-261** · Modular vs. End-to-End Vision-Language-Action Models for Embodied Robotic Manipulation
+
+*Title updated by Prof Cheah, 31 Aug 2026, from "Development of a Large Language Model-Based Interface for Robotic Systems".*
 **Student:** Tay Juen Jie · **Supervisor:** A/P Cheah Chien Chern · **Lab:** Robotics I (S2-B6a-01)
 **Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026 · **Supersedes and replaces:** all earlier plans, `SESSION_HANDOVER.md`, and the old vault architecture note (deleted 11 Aug)
 
@@ -451,7 +453,7 @@ Removed from the project on 11 Aug 2026. The MuJoCo substrate is gitignored, dro
 
 Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distinctive result.** If time gets short, cut the drawer before cutting the ambiguity experiment.
 
-**Speech input is not on this ladder.** The project is titled *"LLM-Based Interface for Robotic Systems"* and the official summary promises *"more intuitive human–robot interaction"* — spoken command is the most direct reading of both. A text-only submission invites the examiner to ask why the interface is a terminal. Rung 1 already includes it; W2b is two days of work and it is on no critical path, so build it early and stop worrying about it.
+**Speech input is not on this ladder.** The official summary promises *"more intuitive human–robot interaction"* — spoken command is the most direct reading of both. A text-only submission invites the examiner to ask why the interface is a terminal. Rung 1 already includes it; W2b is two days of work and it is on no critical path, so build it early and stop worrying about it.
 
 ---
 

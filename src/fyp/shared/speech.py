@@ -25,6 +25,7 @@ removal, no lowercasing. Disfluent speech is data.
 from __future__ import annotations
 
 import json
+import sys
 import time
 import wave
 from dataclasses import dataclass, field
@@ -153,6 +154,8 @@ class SpeechToText:
         self.compute_type = _compute_type_for(self.device, s["compute_type"])
 
         WhisperModel = _import_faster_whisper()
+        if self.device != "cpu":
+            _preload_cuda_libs()
         t0 = time.perf_counter()
         # Loaded eagerly so the wait happens at startup rather than in the gap
         # after someone has just spoken to the robot.
@@ -202,7 +205,12 @@ class SpeechToText:
                                                 beam_size=self.beam_size)
         # faster-whisper returns a generator and does the actual work lazily, so
         # nothing has run until this list() and timing it before here reads zero.
-        seg_list = [{"start": sg.start, "end": sg.end, "text": sg.text} for sg in segments]
+        # It is also why a missing CUDA library surfaces HERE rather than at load:
+        # the model constructs fine and only fails when it first encodes.
+        try:
+            seg_list = [{"start": sg.start, "end": sg.end, "text": sg.text} for sg in segments]
+        except RuntimeError as e:
+            raise _cuda_library_error(e) from e
         latency_s = time.perf_counter() - t0
 
         text = "".join(sg["text"] for sg in seg_list).strip()
@@ -286,6 +294,116 @@ def _compute_type_for(device: str, configured: str) -> str:
         print("  note: float16 is CUDA-only in CTranslate2, using float32 on cpu")
         return "float32"
     return configured
+
+
+# Filled in by `_preload_cuda_libs` so a failure can be reported instead of
+# guessed at. The first version of this swallowed every error, which made a
+# preload that silently did nothing indistinguishable from one that worked.
+_PRELOAD_REPORT: list[str] = []
+
+
+def _nvidia_lib_dirs() -> list[Path]:
+    """
+    It takes nothing and gives you the directories holding NVIDIA's shared
+    libraries, found on the filesystem rather than by importing them.
+
+    `import nvidia.cublas.lib` is the documented way and it is fragile: those
+    wheels ship no `__init__.py`, so it depends on implicit namespace packages
+    resolving, and whether they do varies with how the venv was built. Globbing
+    site-packages asks the only question that matters, which is whether the files
+    are on disk.
+    """
+    import site
+    import sysconfig
+
+    roots = {sysconfig.get_paths()["purelib"]}
+    roots.update(getattr(site, "getsitepackages", lambda: [])())
+    roots.update(p for p in sys.path if p.endswith("site-packages"))
+
+    dirs: list[Path] = []
+    for root in roots:
+        nvidia = Path(root) / "nvidia"
+        if nvidia.is_dir():
+            dirs.extend(sorted(d for d in nvidia.glob("*/lib") if d.is_dir()))
+    return dirs
+
+
+def _preload_cuda_libs() -> None:
+    """
+    It takes nothing and gives you the CUDA maths libraries loaded into this
+    process, so CTranslate2 can find them.
+
+    CTranslate2 dlopens `libcublas.so.12` and `libcudnn.so.9` by bare name, so it
+    searches the loader path and nothing else. The pip wheels put those files
+    inside site-packages, which is not on that path, and the documented fix is to
+    export LD_LIBRARY_PATH **before** launching Python.
+
+    An environment variable you have to remember is a demo that fails in front of
+    an examiner. Loading the files here by absolute path with RTLD_GLOBAL has the
+    same effect and needs nothing from the shell: glibc matches a later dlopen
+    against the SONAMEs already resident in the process. This is the same trick
+    torch uses for its own CUDA dependencies.
+
+    Two passes, because these libraries depend on each other and the right order
+    is not obvious. Anything that fails for a missing dependency on the first
+    pass usually succeeds on the second, once that dependency is loaded.
+    """
+    import ctypes
+
+    _PRELOAD_REPORT.clear()
+    dirs = _nvidia_lib_dirs()
+    if not dirs:
+        _PRELOAD_REPORT.append("no nvidia/*/lib directories found in site-packages")
+        return
+
+    # Sorted so libcublasLt comes before libcublas, which needs it.
+    files = sorted({f for d in dirs for f in d.glob("lib*.so*")})
+    pending = list(files)
+
+    for _ in range(2):
+        failed = []
+        for path in pending:
+            try:
+                ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+            except OSError as e:
+                failed.append(path)
+                _PRELOAD_REPORT.append(f"{path.name}: {e}")
+        if not failed:
+            break
+        _PRELOAD_REPORT.clear()
+        pending = failed
+
+    _PRELOAD_REPORT.insert(0, f"searched: {', '.join(str(d) for d in dirs)}")
+    _PRELOAD_REPORT.insert(1, f"loaded {len(files) - len(pending)} of {len(files)} libraries")
+
+
+def _cuda_library_error(e: Exception) -> RuntimeError:
+    """
+    It takes CTranslate2's library error and gives you one that says what to do.
+
+    The raw message is "Library libcublas.so.12 is not found or cannot be
+    loaded", which reads like a broken CUDA install and is usually not one.
+    CTranslate2 4.5 and later need cuBLAS for CUDA 12 and cuDNN 9, and this venv
+    has no torch by design, so nothing pulled them in.
+    """
+    if "libcu" not in str(e) and "cudnn" not in str(e).lower():
+        return e if isinstance(e, RuntimeError) else RuntimeError(str(e))
+
+    report = "\n".join(f"  {line}" for line in _PRELOAD_REPORT) or "  (preload did not run)"
+
+    return RuntimeError(
+        f"{e}\n\n"
+        f"What the preload in speech.py saw:\n{report}\n\n"
+        "CTranslate2 needs cuBLAS for CUDA 12 and cuDNN 9, and this venv has no\n"
+        "torch by design, so nothing installed them. Either:\n\n"
+        "  uv sync                       # they are now project dependencies\n\n"
+        "or, to test without the download, borrow the ones the lerobot venv\n"
+        "already has:\n\n"
+        "  export LD_LIBRARY_PATH=$HOME/lerobot/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:"
+        "$HOME/lerobot/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib\n\n"
+        "or run on CPU, which works everywhere and is far slower:\n\n"
+        "  uv run python scripts/listen.py --cpu"
+    )
 
 
 def _import_sounddevice():

@@ -1,94 +1,96 @@
-# =============== REAL UR5e ROBOT =====================
+# Every tunable value in the project. Reasoning lives in docs/plan_vault/Decisions.md,
+# not here. Bench measurement procedure is in docs/commands.md, "At the bench".
+#
+# MEASURE BEFORE DRIVING THE ARM: robot.host, robot.gripper.*, workspace.x/y/z,
+# architecture_a.skills.down_rotvec, and robot.home_q which is absent.
+
 robot:
-  host: "127.0.0.1"
-  gripper: { power_pin: 1, control_pin: 2 }
-  motion: { default_speed: 0.25, default_acc: 0.5 }   # m/s, m/s^2 (moveL)
+  host: "127.0.0.1"       # MEASURE. Still the old simulator's address
+  rtde_port: 30004
+  gripper:
+    power_pin: 1          # CONFIRM against the real wiring before powering it
+    control_pin: 2        # CONFIRM
+  # home_q: [ , , , , , ] # MEASURE. Six joint angles. skills.home() refuses without it
+  motion:
+    default_speed: 0.25   # m/s, m/s^2, for blocking moveL and moveJ
+    default_acc: 0.50
+  servo:                  # non-blocking servoL path, used by Architecture B
+    time: 0.05            # s, one control period. MUST match the policy rate
+    lookahead_time: 0.1   # s, 0.03 to 0.2. Higher smooths and adds lag
+    gain: 300             # 100 to 2000. Higher chases harder and can oscillate
 
+workspace:                # base frame, not world. Every commanded pose is checked
+  x: [-0.700, 0.700]      # MEASURE, and err tight
+  y: [-0.700, 0.700]      # MEASURE
+  z: [ 0.005, 0.700]      # MEASURE. z min sits just above the table
+  max_speed: 0.25         # m/s ceiling. Architecture B derives its per-step limit from this
+  max_acc: 0.50           # m/s^2
+  max_angular_speed: 1.0  # rad/s. B needs this stated because it commands steps, not paths
 
-# ================== PATHS ===================
-# Split by whether a script can rebuild it:
-#   raw/       captures that cannot be regenerated. Nothing writes here except
-#              the recorder. Back this up.
-#   cache/     depth maps, rendered frames, detector JSON. Delete freely.
-#   processed/ the dataset you train on, rebuilt from raw/ by export_lerobot.py
-#   reports/   pictures for looking at. Not data, not inputs to anything.
-#   config/calibration/  git-tracked, because you must know which calibration
-#                        produced which result
-paths:
-  episodes_dir: "data/raw/episodes/"
-  cache_dir: "data/cache/"
-  processed_dir: "data/processed/"
+paths:                    # split by whether a script can rebuild it
+  episodes_dir: "data/raw/episodes/"      # cannot be regenerated. Back this up
+  cache_dir: "data/cache/"                # delete freely
+  processed_dir: "data/processed/"        # rebuilt from raw/
   figures_dir: "reports/figures/"
   logs_dir: "logs/"
-  calibration_dir: "config/calibration/"
+  calibration_dir: "config/calibration/"  # git-tracked, so results stay attributable
 
-# ================== WORKSPACE SAFETY ==================
-# Base-frame axis-aligned box that every commanded pose is checked against
-# BEFORE it reaches the controller. Numbers below are placeholders: measure the
-# real cell and replace them before the arm is ever driven from a plan.
-# A plan that reaches the controller unchecked is how an arm hits the table.
-workspace:
-  x: [-0.700, 0.700]      # metres, robot base frame
-  y: [-0.700, 0.700]
-  z: [ 0.005, 0.700]      # z min is just above the table surface
-  max_speed: 0.25         # m/s  ceiling applied to every skill
-  max_acc: 0.50           # m/s^2
-
-# ================== CAMERA ==================
-# Fixed RGB-D looking at the table. Intrinsics come from the SDK at runtime,
-# never hardcoded, because they change with resolution.
 camera:
   width: 1280
   height: 720
   fps: 30
-  align_depth_to_color: true
-  max_depth: 2.0          # metres, readings beyond this are treated as invalid
-  depth_patch_radius: 2   # median over a (2r+1)^2 patch, robust to speckle
+  align_depth_to_color: true  # not optional. Without it every object lands centimetres off
+  max_depth: 2.0              # m, readings beyond this are invalid
+  depth_patch_radius: 2       # median over a (2r+1)^2 patch, robust to speckle
 
-# ================== SPEECH ==================
-# ASR sits OUTSIDE both architectures and is identical for both: one microphone,
-# one model, one transcript, handed to A and to B unchanged. Cleaning the
-# transcript for one and not the other makes speech a confound and the
-# comparison stops meaning anything.
-speech:
-  model: "large-v3"        # VRAM is not the constraint here, ~3.4 GB at float16
-  device: "cuda"           # "cpu" to test without a GPU; compute_type follows
-  compute_type: "float16"  # NOT int8. CTranslate2 int8 crashes on sm_120
-  language: "en"           # null auto-detects, at the cost of an extra pass
+speech:                   # ASR is a CONTROLLED VARIABLE, identical for both architectures
+  model: "large-v3"
+  device: "cuda"          # "cpu" works everywhere and is far slower
+  compute_type: "float16" # NOT int8, which crashes on sm_120
+  language: "en"
   beam_size: 5
-  samplerate: 16000        # Whisper's native rate, so nothing gets resampled
-  min_duration_s: 0.3      # below this it was a stray keypress, not an utterance
-  max_duration_s: 30.0     # truncate rather than hand Whisper a forgotten stream
-  log_dir: "logs/speech/"  # one wav + one jsonl line per utterance, timestamped
-  save_audio: true         # audio alongside the transcript, per W2b
+  samplerate: 16000       # Whisper's native rate, so nothing gets resampled
+  min_duration_s: 0.3     # below this it was a stray keypress
+  max_duration_s: 30.0
+  log_dir: "logs/speech/"
+  save_audio: true
 
-# ================== ARCHITECTURE A ==================
 architecture_a:
   detector:
     model: "google/owlv2-base-patch16-ensemble"
     threshold: 0.3
     nms_iou: 0.5
+  perception:
+    duplicate_separation_mm: 20.0  # closer than this is one object seen twice
   grounding:
-    # Turns the instruction into detector queries. Same model as the planner by
-    # default: this is the planner reasoning about what to look for, not a new
-    # component, so it should not quietly become a different one.
-    model: null            # null means "use the planner model"
-    max_queries: 8         # more queries slows OWLv2 and adds false positives
+    model: null           # null means use the planner model, so no new component enters A
+    max_queries: 8        # more queries slow OWLv2 and add false positives
     max_tokens: 512
   planner:
     model: "claude-sonnet-4-5"
     max_tokens: 2048
     max_turns: 6          # planner/tool exchanges before the run is abandoned
   skills:
-    approach_height: 0.12   # metres above the target before descending
+    approach_height: 0.12 # m above the target before descending
     retreat_height: 0.15
-    grasp_depth_offset: 0.0 # + lowers the grasp point, tune per gripper
-    speed: 0.10             # m/s during descent and transport
+    grasp_depth_offset: 0.0  # + lowers the grasp point, tune per gripper
+    speed: 0.10           # m/s during descent and transport
     acc: 0.30
-    settle_s: 0.4           # pause after gripper actuation
-    # Tool orientation as a UR rotation vector, base frame. This is the
-    # "gripper pointing straight down" pose and must be measured on the real
-    # cell by hand-guiding the arm and reading get_state()["tcp_pose"][3:].
-    down_rotvec: [3.142, 0.0, 0.0]
+    settle_s: 0.4         # pause after gripper actuation
+    down_rotvec: [3.142, 0.0, 0.0]  # MEASURE. See scripts/check_orientation.py
   trace:
     dir: "logs/traces/"
+
+architecture_b:
+  camera: "top"           # MUST match the --camera used at export
+  gripper_threshold: 0.5  # policy outputs a float, the dataset stores 0 or 1
+  # No per-step limits here. They are DERIVED in policy_action.py as
+  # workspace.max_speed * robot.servo.time, so B can never outrun A.
+
+testing:                  # only tests/hardware/ needs these. They move a real arm
+  step_m: 0.02            # how far a positional test moves the TCP
+  step_rad: 0.05          # how far a joint test moves one joint
+  tolerance_m: 0.003
+  tolerance_rad: 0.01
+  settle_s: 0.5
+  stopped_tolerance_m: 0.001  # movement below this counts as "the arm is still"

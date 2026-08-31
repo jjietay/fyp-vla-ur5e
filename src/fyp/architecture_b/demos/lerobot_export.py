@@ -25,8 +25,18 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from fyp.shared.helpers.rotations import rotvec_to_euler
+from fyp.shared.helpers.rotations import (R_to_rotvec, euler_to_R, rotvec_to_R,
+                                          rotvec_to_euler)
 from fyp.shared.helpers.transforms import pose_inv, pose_trans
+
+
+# The names below are the contract between training and inference. LeRobot
+# assembles `observation.state` at inference time by looking each of these names
+# up in the robot's raw observation dict, and unpacks the policy's action tensor
+# by the ORDER of the action names. Change either tuple and every previously
+# trained checkpoint silently reads the wrong element.
+STATE_NAMES = ("x", "y", "z", "roll", "pitch", "yaw", "gripper")
+ACTION_NAMES = ("dx", "dy", "dz", "droll", "dpitch", "dyaw", "gripper")
 
 
 def build_state(tcp_pose: np.ndarray, gripper: int) -> np.ndarray:
@@ -45,6 +55,32 @@ def compute_delta_action(pose_t: np.ndarray,
     drpy = rotvec_to_euler(rel[3:])
 
     return np.concatenate([dpos, drpy, [float(gripper_next)]]).astype(np.float32)
+
+
+def apply_delta_action(pose_t: np.ndarray, action: np.ndarray) -> np.ndarray:
+    """
+    It takes the current TCP pose and one delta action and gives you the pose to
+    command next, as a UR pose with an axis-angle rotation vector.
+
+    The exact inverse of `compute_delta_action`, and it lives next to it for that
+    reason. Training turns pairs of poses into deltas here, and inference turns
+    deltas back into poses here, so a convention change that touches one and not
+    the other cannot happen silently. `tests/test_action_space.py` round-trips
+    the pair and will fail if it does.
+
+    The rotation delta is a BASE frame rotation, because `compute_delta_action`
+    builds it as T_next @ T_t^-1, which left-multiplies. Applying it on the right
+    instead looks plausible and is wrong everywhere except at the identity.
+
+    The gripper element of `action` is an absolute target rather than a delta, so
+    it is not used here. The caller commands it separately.
+    """
+    pose_t = np.asarray(pose_t, dtype=float).reshape(-1)
+    action = np.asarray(action, dtype=float).reshape(-1)
+
+    pos_next = pose_t[:3] + action[:3]
+    R_next = euler_to_R(action[3:6]) @ rotvec_to_R(pose_t[3:])
+    return np.concatenate([pos_next, R_to_rotvec(R_next)])
 
 
 def infer_fps(timestamps: np.ndarray, fallback: float = 20.0) -> int:
@@ -153,11 +189,11 @@ def convert(episodes_dir: str, repo_id: str, task: str,
     features = {
         "observation.state": {
             "dtype": "float32", "shape": (7,),
-            "names": ["x", "y", "z", "roll", "pitch", "yaw", "gripper"],
+            "names": list(STATE_NAMES),
         },
         "action": {
             "dtype": "float32", "shape": (7,),
-            "names": ["dx", "dy", "dz", "droll", "dpitch", "dyaw", "gripper"],
+            "names": list(ACTION_NAMES),
         },
         f"observation.images.{camera}": {
             "dtype": "video", "shape": (H, W, 3),

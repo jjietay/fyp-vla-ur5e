@@ -15,7 +15,6 @@ Everything that has to happen in order, and what can be done in parallel while w
 ```mermaid
 flowchart TD
     LAB([Lab access confirmed]):::blocker
-    W1[W1 Repo Reset]:::doing
     W2[W2 Architecture A Software]
     W2B[W2b Speech Front End]
     W3[W3 Camera and Calibration]:::crit
@@ -26,8 +25,6 @@ flowchart TD
     D4[D4 Final Report]:::deliver
     D2[D2 Interim Report 10 Nov]:::deliver
 
-    W1 --> W2
-    W1 --> W2B
     W2 --> W4
     W2B --> W5
     LAB --> W3
@@ -47,7 +44,7 @@ flowchart TD
 
 Red is the critical path. Amber is the thing blocking it. Green is in progress.
 
-The shape of the risk is visible here: **four of the five red boxes sit downstream of one amber box.** Nothing you do in W1 or W2b changes that, which is why chasing lab access matters more this week than any code.
+The shape of the risk is visible here: **four of the five red boxes sit downstream of one amber box.** No amount of software work changes that, which is why lab access matters more than any code.
 
 ## Runtime, both architectures
 
@@ -87,7 +84,7 @@ flowchart TD
     classDef shared fill:#1e3a8a,stroke:#3b82f6,color:#fff
 ```
 
-Blue is shared by both. Note that **Architecture B has no path back to the user**: there is no arrow returning from B to the microphone, and that missing arrow is the entire [[Tier 2 Ambiguity]] result.
+Blue is shared by both. Note that **Architecture B has no path back to the user**: there is no arrow returning from B to the microphone, and that missing arrow is the entire [[Tasks#Tier 2 Ambiguity\|Tier 2 Ambiguity]] result.
 
 ## Decisions and what they block
 
@@ -104,9 +101,9 @@ flowchart LR
     classDef pending fill:#78350f,stroke:#f59e0b,color:#fff
 ```
 
-One decision is still open. [[Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
+One decision is still open. [[Decisions#Action space\|Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
 
-[[Calibration Marker]] closed on 12 Aug with no marker, so W3 is now gated on lab access alone.
+[[Decisions#Calibration marker\|Calibration Marker]] closed on 12 Aug with no marker, so W3 is now gated on lab access alone.
 
 ## Keeping these current
 
@@ -115,5 +112,5 @@ These are hand written, so they go stale if the plan changes and nobody updates 
 ## Other ways to draw things in Obsidian
 
 * **Canvas** is a core plugin and already enabled: right click in the file explorer, New canvas, then drag notes in as live cards and draw arrows between them. Better than Mermaid when you want to rearrange by hand, worse when you want it version controlled and diffable
-* **Excalidraw** is a community plugin for sketching, useful for figures in [[D4 Final Report]]
+* **Excalidraw** is a community plugin for sketching, useful for figures in [[Deliverables#D4 Final Report\|D4 Final Report]]
 * **Juggl** is a community plugin that replaces the graph view with one supporting directed layouts, if you specifically want the *whole vault* laid out rather than a curated diagram

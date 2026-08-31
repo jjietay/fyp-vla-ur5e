@@ -10,7 +10,6 @@ import numpy as np
 
 from fyp.architecture_a.perception.pixel_to_3d import CameraIntrinsics, depth_at, pixel_to_camera
 
-DUPLICATE_SEPARATION_MM = 20.0
 
 
 @dataclass
@@ -50,11 +49,20 @@ def locate(detections: list[dict], depth: np.ndarray, intr: CameraIntrinsics,
 
 
 def find_duplicates(located: list[LocatedObject],
-                    separation_mm: float = DUPLICATE_SEPARATION_MM) -> list[tuple]:
+                    separation_mm: float | None = None) -> list[tuple]:
     """
-    This function compares the list of located objects, and identifies those pairs that are
-    suspiciously close together, deeming them as duplicates.
+    It takes located objects and gives you the pairs that are suspiciously close
+    together, which are the same object detected twice.
+
+    `separation_mm` defaults to `architecture_a.perception.duplicate_separation_mm`
+    in config.yaml. It is read there rather than kept as a constant here because
+    it depends on how small the objects on the bench are, so it is a per-setup
+    number. Read lazily, so importing this module still costs nothing.
     """
+    if separation_mm is None:
+        from fyp.shared.helpers.config import get_config
+        separation_mm = float(
+            get_config()["architecture_a"]["perception"]["duplicate_separation_mm"])
     pairs = []
     for i in range(len(located)):
         for j in range(i + 1, len(located)):

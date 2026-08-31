@@ -1,12 +1,40 @@
 """ pixel_to_3d.py
 
-This file represents the Pinhole camera model where:
-pixels + depth <---> camera-frame 3D points
+It takes a pixel and a depth reading and gives you a 3D point in the camera's
+own frame, and back again.
 
-- the equations are universal and works with a real RGB-D camera
-- convention is depth is z-depth which is the perpendicular distance from
-  camera plane along viewing axis
-- mjc's buffer is z-depth
+The pinhole camera model. Depth is z-depth, meaning the perpendicular distance
+from the camera plane along the viewing axis, which is what a RealSense reports.
+
+## The axis convention, and why it changed on 31 Aug 2026
+
+This file uses the **OpenCV** camera frame:
+
+    x  right across the image
+    y  DOWN the image
+    z  FORWARD, away from the camera, POSITIVE
+
+That is the convention `pyrealsense2` deprojects into, and it is the convention
+the intrinsics assume. `shared/hardware/camera.py` reads fx, fy, ppx and ppy
+straight from the SDK and converts depth to positive metres, so the numbers
+arriving here are OpenCV numbers and the maths has to match them.
+
+It did not, until 31 Aug. `pixel_to_camera` negated y and z, which is the
+**OpenGL** convention MuJoCo uses, inherited from the simulation this project
+started in. Nothing caught it, because `camera_to_pixel` negated them right back,
+so the round trip was exact and every test of it passed. Everything was
+self-consistent and only the physical camera disagreed.
+
+It would not have stayed harmless. A FITTED `T_base_cam` absorbs a fixed axis
+flip silently, because Kabsch finds whatever map takes one cloud to the other.
+The Calibration Marker decision closed on **no marker**, so `T_base_cam` is
+measured from the mount, and a measured transform describes where the camera
+physically is. It cannot absorb a flip that is not physically there. Every
+back-projected point would have landed mirrored in y and behind the camera in z,
+and it would have read as a badly wrong calibration.
+
+If you ever point this at a MuJoCo buffer again, negate y and z on the way in
+rather than changing the functions below.
 """
 
 from __future__ import annotations
@@ -30,16 +58,20 @@ def intrinsics_from_fovy(fovy_deg: float, width: int, height: int) -> CameraIntr
 
 def pixel_to_camera(u, v, depth, intr: CameraIntrinsics) -> np.ndarray:
     """
-    This function converts a 2d pixel with coordinate (u,v) and depth
-    into a 3d coordinates (x,y,z) with respect to the camera
-    as the global frame (0,0,0).
+    It takes a pixel and its depth and gives you the 3D point in the camera
+    frame, with the camera itself at the origin.
+
+    OpenCV axes, so y increases DOWN the image and z is positive going away from
+    the camera. A point on the table in front of the camera comes back with a
+    positive z of roughly the standoff distance. A negative z means the flip
+    described in the module docstring has come back.
     """
     u = np.asarray(u, dtype=float)
     v = np.asarray(v, dtype=float)
     z = np.asarray(depth, dtype=float)
     xyz = np.stack([(u - intr.cx) * z / intr.fx,
-                    -(v - intr.cy) * z / intr.fy,
-                    -z], axis=-1)
+                    (v - intr.cy) * z / intr.fy,
+                    z], axis=-1)
     return xyz
 
 
@@ -52,22 +84,26 @@ def camera_to_pixel(p_cam, intr: CameraIntrinsics) -> tuple:
     we calculated earlier via pixel_to_camera.
     """
     p = np.asarray(p_cam, dtype=float)
-    depth = -p[..., 2]
+    depth = p[..., 2]
     if np.any(depth <= 0):
         raise ValueError("point(s) at or behind the camera plane")
     u = intr.fx * (p[..., 0] / depth) + intr.cx
-    v = intr.cy - intr.fy * (p[..., 1] / depth)
+    v = intr.fy * (p[..., 1] / depth) + intr.cy
     return u, v, depth
 
 
 def surface_to_centroid(p_cam: np.ndarray, half_height: float) -> np.ndarray:
     """
-    This function is used to find the 3d point from camera (0,0,0) to the
-    center of the object. Since we know the coordinate of the face of object,
-    we can add the extra distance that is half of depth of thickness of obj.
+    It takes the point where the camera sees the near FACE of an object and
+    gives you the point at its centre.
+
+    The depth reading lands on the surface facing the camera, and a grasp wants
+    the middle, so this pushes the point half the object's thickness further
+    away. Away is +z in OpenCV axes, which is why this ADDS. It subtracted while
+    the file used OpenGL axes, where away was negative.
     """
     out = np.array(p_cam, dtype=float, copy=True)
-    out[..., 2] -= half_height
+    out[..., 2] += half_height
     return out
 
 

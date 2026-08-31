@@ -1,4 +1,6 @@
-# FYP: LLM-Based Interface for Robotics Systems using UR5e
+# FYP: Modular vs. End-to-End Vision-Language-Action Models for Embodied Robotic Manipulation
+
+Modular LLM pipeline against a fine-tuned VLA, on a real UR5e.
 
 NTU EEE Final Year Project (A1005-261). The user speaks a command and a UR5e
 carries it out. The project compares two ways of making that happen: a modular
@@ -14,11 +16,13 @@ the same plan as an Obsidian vault for tracking.
 
 ## Setup
 
-Requires Python 3.12+, `uv`, and a real UR5e. URSim 5.25.2 provides a controller endpoint for testing without the arm.
+Requires Python 3.12+, `uv`, and a real UR5e. Tests under `tests/unit/` need none of it;
+tests under `tests/hardware/` move the arm and skip themselves when it is not reachable.
 
 ```bash
 uv sync
-uv run pytest tests
+uv run pytest tests/unit   # no device needed
+uv run pytest tests        # adds the hardware tests, which skip without a controller
 ```
 
 ## Layout
@@ -52,7 +56,9 @@ it is generically useful. The test is that you could delete `architecture_b/`
 entirely and `architecture_a/` would still run.
 
 - `scripts/` : thin CLIs - `check_*` verify one stage each, `export_*` does work
-- `tests/` : unit tests for the real stack
+- `integrations/` : the LeRobot UR5e adapter, installed into the lerobot venv, not this one
+- `tests/` : split by whether a device is needed - `unit/` runs anywhere,
+  `hardware/` needs a UR controller and skips itself when none answers
 - `config/` : `config.yaml`, plus `calibration/` which is **tracked**, because you
   must know which calibration produced which result
 - `data/` : demonstration recordings (`raw/`), rebuildable datasets (`processed/`),
@@ -73,4 +79,4 @@ driver and the evaluation harness. **None of it has run against hardware**, beca
 there is none yet. Architecture B is not started.
 
 Lab access is unconfirmed and is the blocker on everything downstream. Current
-tasks live in `docs/plan_vault/Reference/Open Actions.md`.
+tasks live in `docs/plan_vault/Open Actions.md`.

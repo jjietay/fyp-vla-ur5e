@@ -1,12 +1,18 @@
 [project]
 name = "llm_based_interface_for_robotics_systems_using_ur5e"
 version = "0.1.0"
-description = "LLM-based interface for robotic systems: modular LLM pipeline vs fine-tuned VLA on a UR5e"
+description = "Modular vs. end-to-end vision-language-action models for embodied robotic manipulation, on a UR5e"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.40.0",
     "faster-whisper>=1.1.0",
+    # CTranslate2 4.5+ dlopens these by bare name and this venv has no torch to
+    # supply them, so faster-whisper loads the model happily and then fails on
+    # the first encode with "Library libcublas.so.12 is not found". About 1.5 GB.
+    # `shared/speech.py` preloads them by absolute path, so no LD_LIBRARY_PATH.
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12>=9,<10",
     "h5py>=3.16.0",
     "imageio>=2.37.3",
     "imageio-ffmpeg>=0.6.0",
@@ -29,7 +35,7 @@ packages = ["src/fyp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["integration: needs a reachable UR controller (URSim or the real arm)"]
+markers = ["integration: needs the real UR5e reachable at robot.host; MOVES THE ARM"]
 
 [tool.pyright]
 reportAttributeAccessIssue = false

@@ -7,8 +7,10 @@ NTU EEE FYP A1005-261. User speaks a command, a UR5e does it. The deliverable is
 is only what you need to not break things. If the two disagree, the plan wins.
 
 - Target: all work **complete** by 10 Nov 2026. Submissions stay on official NTU dates in 2027.
-- Current tasks: `docs/plan_vault/Reference/Open Actions.md`
-- Vault: `docs/plan_vault/` (Obsidian, 39 notes) mirrors the plan for tracking.
+- Current tasks: `docs/plan_vault/Open Actions.md`
+- Vault: `docs/plan_vault/` (Obsidian, 12 flat notes) mirrors the plan for tracking.
+  Start Here, Schedule, Flowchart, Deliverables, Open Actions, Workstreams, Tasks,
+  Decisions, Hypotheses, Evaluation Protocol, Risks, Reading. No subfolders.
 
 ## Repo map
 
@@ -47,7 +49,8 @@ Violating this quietly destroys the fairness argument the whole FYP rests on.
 
 ```bash
 uv sync
-uv run pytest tests                                  # green without a robot
+uv run pytest tests/unit                             # no device needed, always green
+uv run pytest tests                                  # adds tests/hardware, which skip without a robot
 
 uv run python scripts/run_architecture_a.py --instruction "put the red cube in the tray"
 uv run python scripts/run_evaluation.py --tier 0 --layouts-only   # no robot needed
@@ -58,16 +61,26 @@ uv run python scripts/run_evaluation.py --architecture A --tier 0
 the planner and the grounding step both need it.
 
 `uv run` for everything. Python 3.12+. There is a separate lerobot venv at `~/lerobot` for
-torch work. URSim (Universal Robots' own controller simulator) provides the
-`127.0.0.1:30004` endpoint the controller tests need.
+torch work. `tests/hardware/` needs the real UR5e answering on RTDE at `robot.host`, and
+running those tests MOVES THE ARM. There is no simulator any more.
 
 ## Landmines
 
 Each of these has already cost time. Verified as of 11 Aug 2026.
 
-- **`pytest tests` should be GREEN.** Controller tests are marked `integration` and auto-skip
-  when nothing answers on `127.0.0.1:30004`. Force them with `--integration`. If you see 5
-  errors instead of 5 skips, `tests/conftest.py` is missing.
+- **A stale `.git/index.lock` blocks every git operation.** If git says "Another git process
+  seems to be running", check the file first: `ls -la .git/index.lock`. **Zero bytes and more
+  than a few minutes old means it is stale**, because a live process writes to it. Delete it
+  and carry on. Any agent running git through a sandboxed file bridge should use
+  `GIT_OPTIONAL_LOCKS=0 git status`, since a bridge that cannot unlink will leave the lock
+  behind and lock the user out of their own repo.
+
+- **`pytest tests` should be GREEN.** Tests split by whether a device is needed:
+  `tests/unit/` needs nothing, `tests/hardware/` needs a UR controller. The hardware ones
+  carry the `integration` marker and auto-skip when nothing answers on `127.0.0.1:30004`.
+  Force them with `--integration`. If you see 5 errors instead of 5 skips, `tests/conftest.py`
+  is missing. A new file in `tests/hardware/` without `pytestmark` turns the suite red on a
+  laptop, which is the one mistake this layout does not prevent by itself.
 - **Everything stays in base frame.** `get_state` reports the TCP in base frame and `moveL`
   expects targets in it. Do not invent a world frame or mix in coordinates measured against
   the table without converting first. See the `hand_eye.py` header.
@@ -91,7 +104,7 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   embedding matched against image patches, so a sentence has no corresponding region and the
   match is meaningless. This is why `planner.py::extract_queries` exists at all. The 77-token
   CLIP limit is real but is not the binding constraint: a command fits and still fails.
-  Reasoning in `architecture_a/perception/detector.py` and `docs/plan_vault/Decisions/Detector Query Format.md`.
+  Reasoning in `architecture_a/perception/detector.py` and `docs/plan_vault/Decisions.md`.
 - **Never pass `queries=` to `ArchitectureA` for a recorded trial.** It pins the detector
   vocabulary and skips grounding, which hands A a list of what is on the table that B never
   receives. Debugging aid only. `run_evaluation.py` deliberately passes nothing.
@@ -99,16 +112,24 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
 ## What exists right now (11 Aug 2026)
 
 **Written, never run against hardware:** Architecture A end to end (grounding, perception,
-skills, planner, clarification, tracing), `shared/hardware/{camera,safety}.py`, and the
-evaluation harness. 31 tests pass without a robot.
+skills, planner, clarification, tracing), `shared/hardware/{camera,safety}.py`, the evaluation
+harness, the speech front end (`shared/speech.py`, W2b), and as of 31 Aug the Architecture B
+robot side. `pytest tests/unit` collects 59 and passes, verified 31 Aug 2026 on Python 3.12.3.
+The count is higher than the number of test functions because several are parametrised.
 
-**Not started:** Architecture B (`architecture_b/` has only the demo-capture path from
-earlier), and the speech front end (`shared/speech.py`, W2b).
+**Architecture B, 31 Aug:** inference runs on LeRobot's own `policy_server` and `robot_client`,
+driving the UR5e adapter at `integrations/lerobot_robot_ur5e/`, which is installed into the
+lerobot venv rather than this one. `URController` gained a non-blocking `servo_to_pose`,
+because `moveL` blocks and a 20 Hz policy loop built on it waits every cycle. See
+`docs/plan_vault/Decisions.md`.
+
+**Not started:** wiring speech into the runner, so `run_architecture_a.py` still has no
+`--speak` path, and all of W3 calibration, which is gated on lab access.
 
 **Blocked on lab access:** calibration, all demonstration capture, every trial, every number.
 One decision must be made the moment access arrives: the action space. The calibration marker
 question closed on 12 Aug 2026 with **no marker** (see below). See
-`docs/plan_vault/Reference/Open Actions.md`.
+`docs/plan_vault/Open Actions.md`.
 
 **No fiducial markers, anywhere.** `T_base_cam` is written by hand into
 `config/calibration/T_base_cam.json` from the measured camera mount geometry, not fitted.
@@ -117,7 +138,7 @@ ball on the gripper, still tag-free) if the measured transform proves too coarse
 with. Expect a systematic 1-3 cm bias: 1 degree of mount orientation error is ~17 mm at a 1 m
 standoff. The reach test in W3 is the only check on stage 4, because a hand-measured transform
 produces no residual of its own. Reasoning in
-`docs/plan_vault/Decisions/Calibration Marker.md`.
+`docs/plan_vault/Decisions.md`.
 
 ## Evaluation harness
 
