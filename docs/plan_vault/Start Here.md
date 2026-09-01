@@ -18,22 +18,22 @@ The user speaks a command, the UR5e does it, and the project compares two ways o
 
 #### 1. Planning
 
-[[Schedule]] for the week by week route to Nov 2026.
-[[Deliverables]] for what NTU wants, when, and where the marks are.
-[[Open Actions]] for the things blocking everything else.
-[[Flowchart]] for the dependency and runtime diagrams.
+[[Weekly Focus]] for the week by week route to Nov 2026.
+[[FYP Submissions]] for what NTU wants, when, and where the marks are.
+[[To Do (Non-Technical)]] for the things blocking everything else.
+[[Flowchart of Architecture and Dependencies]] for the dependency and runtime diagrams.
 
 #### 2. Doing the Work
 
 [[Workstreams]] for the build order and what state each part is in.
 [[Tasks]] for what the robot has to accomplish.
-[[Decisions]] for the choices made and why.
+[[Decisions to Make]] for the choices made and why.
 
 #### 3. Thinking
-[[Hypotheses]] for what the project claims.
-[[Evaluation Protocol]] for how those claims get tested.
-[[Risks]] for what goes wrong and what to do about it.
-[[Reading]] for the papers.
+[[Hypotheses for Comparison]] for what the project claims.
+[[Evaluation of Architecture]] for how those claims get tested.
+[[Different Risk in Project]] for what goes wrong and what to do about it.
+[[Research Papers for Reading]] for the papers.
 
 ## Status, 31 Aug 2026
 
@@ -45,8 +45,8 @@ The calibration path is written and unrun: `check_camera.py`, `check_orientation
 
 There are **zero recorded episodes**, so nothing can be trained yet.
 
-The one decision still open is the rotation format in [[Decisions#Action space]], and a ten second bench check settles it.
+The one decision still open is the rotation format in [[Decisions to Make#Action space]], and a ten second bench check settles it.
 
 ## How this vault is organised
 
-Twelve files, flat, no folders. Each one is a subject rather than a note, so the D-notes live inside [[Deliverables]], the tiers inside [[Tasks]], and so on. It was 42 files across five folders until 31 Aug, and most of them were shorter than their own frontmatter.
+Twelve files, flat, no folders. Each one is a subject rather than a note, so the D-notes live inside [[FYP Submissions]], the tiers inside [[Tasks]], and so on. It was 42 files across five folders until 31 Aug, and most of them were shorter than their own frontmatter.

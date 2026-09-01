@@ -101,16 +101,16 @@ flowchart LR
     classDef pending fill:#78350f,stroke:#f59e0b,color:#fff
 ```
 
-One decision is still open. [[Decisions#Action space\|Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
+One decision is still open. [[Decisions to Make#Action space\|Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
 
-[[Decisions#Calibration marker\|Calibration Marker]] closed on 12 Aug with no marker, so W3 is now gated on lab access alone.
+[[Decisions to Make#Calibration marker\|Calibration Marker]] closed on 12 Aug with no marker, so W3 is now gated on lab access alone.
 
 ## Keeping these current
 
-These are hand written, so they go stale if the plan changes and nobody updates them. Worth one minute after any scope change. The source of truth stays [[Schedule]] and `docs/fyp_plan.md`.
+These are hand written, so they go stale if the plan changes and nobody updates them. Worth one minute after any scope change. The source of truth stays [[Weekly Focus]] and `docs/fyp_plan.md`.
 
 ## Other ways to draw things in Obsidian
 
 * **Canvas** is a core plugin and already enabled: right click in the file explorer, New canvas, then drag notes in as live cards and draw arrows between them. Better than Mermaid when you want to rearrange by hand, worse when you want it version controlled and diffable
-* **Excalidraw** is a community plugin for sketching, useful for figures in [[Deliverables#D4 Final Report\|D4 Final Report]]
+* **Excalidraw** is a community plugin for sketching, useful for figures in [[FYP Submissions#D4 Final Report\|D4 Final Report]]
 * **Juggl** is a community plugin that replaces the graph view with one supporting directed layouts, if you specifically want the *whole vault* laid out rather than a curated diagram

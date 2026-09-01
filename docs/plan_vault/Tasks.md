@@ -16,7 +16,7 @@ The widening beyond pick and place is the scope change agreed with the superviso
 | [[Tasks#Tier 3 Drawer\|Tier 3]] | put the snack in the drawer, which gets closed | dynamic world state |
 | [[Tasks#Tier 4 Generalisation\|Tier 4]] | unseen objects and phrasings | transfer |
 
-Ordering note for descoping: Tier 2 is cheaper than Tier 3 and produces a more distinctive result, so cut the drawer before cutting the ambiguity experiment. See [[Risks]].
+Ordering note for descoping: Tier 2 is cheaper than Tier 3 and produces a more distinctive result, so cut the drawer before cutting the ambiguity experiment. See [[Different Risk in Project]].
 
 ---
 
@@ -30,7 +30,7 @@ Targets: Architecture A at 70 percent over 20 trials, Architecture B at 50 perce
 
 The first fine tune uses a **constrained workspace**, roughly 10 to 15 cm, rather than the full reachable area. Density beats raw episode count, and it widens only once the constrained version works.
 
-Success: cube fully inside the tray, gripper clear, arm returned to home. Written into the harness source, not left to judgement, per [[Evaluation Protocol]].
+Success: cube fully inside the tray, gripper clear, arm returned to home. Written into the harness source, not left to judgement, per [[Evaluation of Architecture]].
 
 ---
 
@@ -38,7 +38,7 @@ Success: cube fully inside the tray, gripper clear, arm returned to home. Writte
 
 Spoken: *"Pour the orange juice into the glass."* Both bottles present, the instruction names one, so there is nothing to clarify.
 
-The primitive stops being a two pose pick. There is a grasp, a transport that must not spill, and a controlled tilt over a target. Architecture A needs a hand authored tilt profile, and Architecture B has to learn the tilt from demonstration. This is the cleanest test of who handles motion that is hard to script, which is one of the [[Hypotheses]].
+The primitive stops being a two pose pick. There is a grasp, a transport that must not spill, and a controlled tilt over a target. Architecture A needs a hand authored tilt profile, and Architecture B has to learn the tilt from demonstration. This is the cleanest test of who handles motion that is hard to script, which is one of the [[Hypotheses for Comparison]].
 
 ### Rig and safety
 
@@ -73,9 +73,9 @@ Do not patch this asymmetry with an LLM wrapper. Measure it.
 
 If it picks orange juice 19 times out of 20 regardless of what the user wanted, that is a quantified demonstration that an end to end policy substitutes its training prior for the user's intent. One figure, and it is worth more than any success rate table.
 
-Running A and B side by side on this instruction is the thirty seconds that explains the entire project, see [[Deliverables#D5 Demonstration]].
+Running A and B side by side on this instruction is the thirty seconds that explains the entire project, see [[FYP Submissions#D5 Demonstration]].
 
-**Layout warning.** A hidden second candidate turns a clarification trial into Architecture A confidently picking the visible object, which would score a camera mounting choice as an architecture finding. See [[Decisions#Camera]].
+**Layout warning.** A hidden second candidate turns a clarification trial into Architecture A confidently picking the visible object, which would score a camera mounting choice as an architecture finding. See [[Decisions to Make#Camera]].
 
 ---
 

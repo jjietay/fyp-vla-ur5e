@@ -43,7 +43,7 @@ Architecture, tier, trial index, layout ID, spoken utterance, transcript, outcom
 
 Architecture A costs cents per command forever. Architecture B costs GPU hours once and nothing per command afterwards. That tradeoff is real, trivially measurable, and almost no student report includes it.
 
-Claims being tested are in [[Hypotheses]].
+Claims being tested are in [[Hypotheses for Comparison]].
 
 ## Built 11 Aug 2026
 

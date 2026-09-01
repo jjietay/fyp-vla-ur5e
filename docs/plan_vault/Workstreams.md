@@ -4,7 +4,7 @@ tags: [overview]
 
 # Workstreams
 
-Build order, arranged by dependency rather than by date. [[Schedule]] places these in time.
+Build order, arranged by dependency rather than by date. [[Weekly Focus]] places these in time.
 
 Critical path to a result: lab access, then W3, then W5, then W6, then W7. Everything in Architecture A sits off that path, which is why it went first.
 
@@ -60,7 +60,7 @@ Why it matters: Architecture A now starts from exactly the string Architecture B
 
 ## W2b Speech front end
 
-The user speaks, the system acts. ASR sits **outside both architectures** and is identical for both: one microphone, one model, one transcript, handed to A and to B unchanged. Reasoning in [[Decisions#Speech stack]].
+The user speaks, the system acts. ASR sits **outside both architectures** and is identical for both: one microphone, one model, one transcript, handed to A and to B unchanged. Reasoning in [[Decisions to Make#Speech stack]].
 
 - [x] `shared/speech.py`: push to talk capture, then `faster-whisper`, then text, and nothing else
 - [x] `compute_type="float16"` set explicitly, since the default int8 crashes on RTX 50 series
@@ -108,7 +108,7 @@ The single biggest unblocker in the project. Nothing downstream can address a re
 Each of these fails in a way that looks like the next one's problem, so doing them out of order costs a session.
 
 1. `check_camera.py`. Proves frames arrive, reports intrinsics at this resolution, warns on a USB 2 link, and prints the centre pixel as a 3D point so the axis convention is visible
-2. `check_orientation.py`, arm parked pointing down, read only. Settles the open half of [[Decisions#Action space]]
+2. `check_orientation.py`, arm parked pointing down, read only. Settles the open half of [[Decisions to Make#Action space]]
 3. measure the mount, camera optical origin to arm base, translation and orientation
 4. `write_calibration.py` with those six numbers
 5. `check_calibration.py`, the only evidence stage 4 works
@@ -150,7 +150,7 @@ Wiring the software and the camera into one runnable thing.
 
 ### Build the logging properly the first time
 
-Per stage diagnosability is the entire argument for Architecture A. It is one of the [[Hypotheses]], and this log becomes the evidence in the final report. Retrofitting it later means re-running every trial.
+Per stage diagnosability is the entire argument for Architecture A. It is one of the [[Hypotheses for Comparison]], and this log becomes the evidence in the final report. Retrofitting it later means re-running every trial.
 
 Closing the loop is also what makes [[Tasks#Tier 3 Drawer]] possible at all. Document the failure modes encountered while doing it, because they are results rather than bugs.
 
@@ -166,8 +166,8 @@ Closing the loop is also what makes [[Tasks#Tier 3 Drawer]] possible at all. Doc
 
 Critical path, longest tail, and the workstream most likely to be underestimated. Demo collection is hours of wall clock time and it gates training, which gates the whole comparison.
 
-- [ ] teleoperation rig working, see [[Decisions#Teleoperation method]]
-- [ ] lock the dataset conventions and **write down the reasons**, see [[Decisions#Action space]]
+- [ ] teleoperation rig working, see [[Decisions to Make#Teleoperation method]]
+- [ ] lock the dataset conventions and **write down the reasons**, see [[Decisions to Make#Action space]]
 - [ ] hardware recorder: threaded, clock gated state polling with camera frames captured in sync
 - [ ] record, using a paraphrase from W2b as each episode instruction
 - [ ] export to LeRobot, confirm it loads and the fps assertion passes
@@ -196,7 +196,7 @@ Back up `data/raw/` outside the repo before recording starts. It is gitignored, 
 
 Fine tuning SmolVLA and driving the arm from it.
 
-- [x] inference: LeRobot's `policy_server` and `robot_client` plus our UR5e adapter, see [[Decisions#Architecture B inference]]
+- [x] inference: LeRobot's `policy_server` and `robot_client` plus our UR5e adapter, see [[Decisions to Make#Architecture B inference]]
 - [x] safety envelope wired into B, in the adapter's `send_action`, using the same `WorkspaceEnvelope` Architecture A uses
 - [x] asynchronous inference, which comes free with `robot_client`
 - [ ] throwaway fine tune to find out whether 12 GB is enough, which now waits on the first real episode

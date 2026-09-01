@@ -7,10 +7,12 @@ NTU EEE FYP A1005-261. User speaks a command, a UR5e does it. The deliverable is
 is only what you need to not break things. If the two disagree, the plan wins.
 
 - Target: all work **complete** by 10 Nov 2026. Submissions stay on official NTU dates in 2027.
-- Current tasks: `docs/plan_vault/Open Actions.md`
+- Current tasks: `docs/plan_vault/To Do (Non-Technical).md`
 - Vault: `docs/plan_vault/` (Obsidian, 12 flat notes) mirrors the plan for tracking.
-  Start Here, Schedule, Flowchart, Deliverables, Open Actions, Workstreams, Tasks,
-  Decisions, Hypotheses, Evaluation Protocol, Risks, Reading. No subfolders.
+  Start Here, Weekly Focus, Flowchart of Architecture and Dependencies, FYP Submissions,
+  To Do (Non-Technical), Workstreams, Tasks, Decisions to Make, Hypotheses for Comparison,
+  Evaluation of Architecture, Different Risk in Project, Research Papers for Reading.
+  No subfolders, and a new decision is a `##` section rather than a new file.
 
 ## Repo map
 
@@ -18,7 +20,8 @@ is only what you need to not break things. If the two disagree, the plan wins.
 src/fyp/
 ├── shared/           CONTROLLED VARIABLE. Both architectures, at runtime.
 │   ├── helpers/      rotations, transforms, config, rate_limiter
-│   └── hardware/     ur5e_controller, camera, safety, intrinsics
+│   ├── hardware/     ur5e_controller, camera, safety, intrinsics
+│   └── speech.py     push-to-talk ASR. Outside both architectures on purpose
 ├── architecture_a/   modular. Nothing trained.
 │   ├── perception/   detector, filters, localiser, pixel_to_3d
 │   ├── calibration/  hand_eye  <- A only; B never forms a 3D point
@@ -28,7 +31,9 @@ src/fyp/
 │   ├── pipeline.py   the orchestrator
 │   └── trace.py      per-stage failure log <- the H6 evidence
 ├── architecture_b/   end-to-end SmolVLA. Nothing hand-authored.
-│   └── demos/        recorder, hdf5_store, lerobot_export
+│   ├── demos/        recorder, hdf5_store, lerobot_export
+│   └── policy_action.py  clamp, delta maths, envelope check. ALL of B's inference
+│                     logic, kept here rather than in the adapter so it is testable
 └── evaluation/       the harness. Imports NEITHER architecture, on purpose.
     ├── suite.py      tiers, utterances, layouts, success criteria. FROZEN.
     └── harness.py    trial runner + results tables
@@ -104,32 +109,41 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   embedding matched against image patches, so a sentence has no corresponding region and the
   match is meaningless. This is why `planner.py::extract_queries` exists at all. The 77-token
   CLIP limit is real but is not the binding constraint: a command fits and still fails.
-  Reasoning in `architecture_a/perception/detector.py` and `docs/plan_vault/Decisions.md`.
+  Reasoning in `architecture_a/perception/detector.py` and `docs/plan_vault/Decisions to Make.md`.
 - **Never pass `queries=` to `ArchitectureA` for a recorded trial.** It pins the detector
   vocabulary and skips grounding, which hands A a list of what is on the table that B never
   receives. Debugging aid only. `run_evaluation.py` deliberately passes nothing.
 
-## What exists right now (11 Aug 2026)
+## What exists right now (1 Sep 2026)
+
+Week 4 of 13. **Nothing has run against hardware except speech.**
 
 **Written, never run against hardware:** Architecture A end to end (grounding, perception,
 skills, planner, clarification, tracing), `shared/hardware/{camera,safety}.py`, the evaluation
-harness, the speech front end (`shared/speech.py`, W2b), and as of 31 Aug the Architecture B
-robot side. `pytest tests/unit` collects 59 and passes, verified 31 Aug 2026 on Python 3.12.3.
-The count is higher than the number of test functions because several are parametrised.
+harness, and as of 31 Aug the Architecture B robot side. `pytest tests/unit` collects 173,
+verified 1 Sep 2026. The count is higher than the number of test functions because several are
+parametrised, and it is far higher than the 59 this file claimed in August because the demos,
+perception, policy-action and skills suites landed since.
+
+**Working on real hardware:** the speech front end only. `shared/speech.py` transcribes on the
+GPU and `scripts/run_architecture_a.py` drives the pipeline from it, with speech as the
+DEFAULT and `--text` or `--instruction` as the escape.
 
 **Architecture B, 31 Aug:** inference runs on LeRobot's own `policy_server` and `robot_client`,
 driving the UR5e adapter at `integrations/lerobot_robot_ur5e/`, which is installed into the
 lerobot venv rather than this one. `URController` gained a non-blocking `servo_to_pose`,
 because `moveL` blocks and a 20 Hz policy loop built on it waits every cycle. See
-`docs/plan_vault/Decisions.md`.
+`docs/plan_vault/Decisions to Make.md`.
 
-**Not started:** wiring speech into the runner, so `run_architecture_a.py` still has no
-`--speak` path, and all of W3 calibration, which is gated on lab access.
+**Not started:** all of W3 calibration, which is gated on lab access, and W5 demonstration
+capture, which is gated on W3. There is also no Architecture B agent for the evaluation
+harness: `run_evaluation.py --architecture B` prints a message and exits, because nothing yet
+wraps `policy_server` and `robot_client` behind `run(instruction) -> outcome`.
 
 **Blocked on lab access:** calibration, all demonstration capture, every trial, every number.
 One decision must be made the moment access arrives: the action space. The calibration marker
 question closed on 12 Aug 2026 with **no marker** (see below). See
-`docs/plan_vault/Open Actions.md`.
+`docs/plan_vault/To Do (Non-Technical).md`.
 
 **No fiducial markers, anywhere.** `T_base_cam` is written by hand into
 `config/calibration/T_base_cam.json` from the measured camera mount geometry, not fitted.
@@ -138,7 +152,7 @@ ball on the gripper, still tag-free) if the measured transform proves too coarse
 with. Expect a systematic 1-3 cm bias: 1 degree of mount orientation error is ~17 mm at a 1 m
 standoff. The reach test in W3 is the only check on stage 4, because a hand-measured transform
 produces no residual of its own. Reasoning in
-`docs/plan_vault/Decisions.md`.
+`docs/plan_vault/Decisions to Make.md`.
 
 ## Evaluation harness
 

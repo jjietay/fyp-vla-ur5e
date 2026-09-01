@@ -223,6 +223,38 @@ def test_a_refused_pose_is_a_failure_not_a_skipped_waypoint():
     assert "refused" in result.message
 
 
+def test_pour_stops_when_the_grasp_failed(ctrl):
+    """
+    A skill reports failure by RETURNING `ok=False`, not by raising, so a caller
+    that ignores the return value carries on as if it worked. `pour` calls `pick`
+    first, and without this check it would tilt an empty gripper over the glass
+    and report a pour that never happened, which scores as a spill.
+
+    `refuse_after=1` lets the approach pose through and refuses the descent, which
+    is where a real grasp fails.
+    """
+    ctrl = FakeController(refuse_after=1)
+    target = [TARGET[0] - 0.2, TARGET[1], TARGET[2]]
+    result = Skills(ctrl, cfg=CFG).pour(TARGET, target, hold_s=0.0, steps=3)
+
+    assert not result.ok
+    assert "grasp" in result.message
+    # It must not have gone on to the receptacle after the grasp failed.
+    assert all(pose[0] != pytest.approx(target[0]) for pose in ctrl.poses)
+
+
+def test_pour_reports_the_waypoints_of_the_skills_it_calls(skills, ctrl):
+    """
+    `pour` is the only skill built out of other skills, so its trace is the only
+    one that can silently lose poses. The trace is the evidence for the
+    per-stage-diagnosability claim, so it has to cover the whole motion.
+    """
+    result = skills.pour(TARGET, [TARGET[0] - 0.2, TARGET[1], TARGET[2]],
+                         hold_s=0.0, steps=3)
+    assert result.ok, result.message
+    assert result.waypoints == ctrl.poses
+
+
 def test_open_drawer_rejects_a_bad_axis_without_touching_the_arm(skills, ctrl):
     result = skills.open_drawer(TARGET, pull_axis="sideways")
     assert not result.ok

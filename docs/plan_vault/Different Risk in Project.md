@@ -6,10 +6,10 @@ tags: [reference]
 
 | Risk | Impact | What to do |
 |---|---|---|
-| lab access slips past week 4 | eats the Nov target and the buffer with it | chase it in week 1, see [[Open Actions]] |
+| lab access slips past week 4 | eats the Nov target and the buffer with it | chase it in week 1, see [[To Do (Non-Technical)]] |
 | hands in frame contaminate demos | retrain from scratch, about 2 weeks | SpaceMouse ordered week 1, inspect the first 5 episodes |
 | demos recorded with one templated instruction | phrasing hypothesis becomes untestable, unfixable without re recording | paraphrase sets written **before** recording starts |
-| measured `T_base_cam` off by more than grasp tolerance | A fails everywhere, B unaffected | reach test against known points, since a hand measured transform reports no residual of its own. Fall back to the ball and Kabsch procedure in [[Decisions#Calibration marker\|Calibration Marker]] |
+| measured `T_base_cam` off by more than grasp tolerance | A fails everywhere, B unaffected | reach test against known points, since a hand measured transform reports no residual of its own. Fall back to the ball and Kabsch procedure in [[Decisions to Make#Calibration marker\|Calibration Marker]] |
 | B fails to converge on 50 episodes | no comparison at all | constrain the workspace first, widen later |
 | 12 GB VRAM too tight for the fine tune | W6 stalls on the critical path | test a short run in week 2, long before real data exists |
 | spill damages equipment | project ending | tray, tinted water, capped speed |

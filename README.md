@@ -33,7 +33,8 @@ Organised around the real UR5e. Every result comes from hardware.
 src/fyp/
 ├── shared/           the CONTROLLED VARIABLE - both architectures use these
 │   ├── helpers/      rotations, transforms, config, rate_limiter
-│   └── hardware/     ur5e_controller, camera, safety, intrinsics
+│   ├── hardware/     ur5e_controller, camera, safety, intrinsics
+│   └── speech.py     push-to-talk ASR, outside both architectures
 ├── architecture_a/   modular pipeline, nothing trained
 │   ├── perception/   detector, filters, localiser, pixel_to_3d
 │   ├── calibration/  hand_eye - A only, B never forms a 3D point
@@ -43,7 +44,8 @@ src/fyp/
 │   ├── pipeline.py   the orchestrator
 │   └── trace.py      per-stage failure log
 ├── architecture_b/   end-to-end SmolVLA, nothing hand-authored
-│   └── demos/        recorder, hdf5_store, lerobot_export
+│   ├── demos/        recorder, hdf5_store, lerobot_export
+│   └── policy_action.py  the clamp, the delta maths and the envelope check
 └── evaluation/       the harness. Imports neither architecture, deliberately
     ├── suite.py      tiers, utterances, layouts, success criteria. Frozen
     └── harness.py    trial runner and results tables
@@ -72,11 +74,18 @@ venv. That split is visible in the tree rather than something you remember.
 
 ## Status
 
-Week 1 of the FYP proper, Aug 2026.
+Week 4 of 13, Sep 2026.
 
-Architecture A is written end to end, along with the safety envelope, the camera
-driver and the evaluation harness. **None of it has run against hardware**, because
-there is none yet. Architecture B is not started.
+Both architectures are written. Architecture A is complete end to end: grounding,
+perception, skills, planning, the clarification loop and per-stage tracing.
+Architecture B's robot side runs on LeRobot's own `policy_server` and
+`robot_client` through the UR5e adapter in `integrations/`. The safety envelope,
+the camera driver and the evaluation harness all exist.
 
-Lab access is unconfirmed and is the blocker on everything downstream. Current
-tasks live in `docs/plan_vault/Open Actions.md`.
+**Nothing has run against hardware except speech.** The speech front end
+transcribes on the GPU and drives Architecture A. There are zero recorded
+episodes, so Architecture B has no checkpoint and nothing can be trained yet.
+
+Lab access is the blocker on everything downstream: calibration, demonstration
+capture, every trial and every number. Current tasks live in
+`docs/plan_vault/To Do (Non-Technical).md`.

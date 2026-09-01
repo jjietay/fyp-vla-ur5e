@@ -50,7 +50,12 @@ def nms(dets, iou_thresh: float = 0.5, per_query: bool = False):
 
 def top1_per_query(dets):
     """
-    Arrange the query in ascending scores.
+    It takes detections and gives you the single best scoring box per label,
+    returned in descending score order.
+
+    For a scene known to hold at most one of each thing. NMS cannot do this,
+    because two boxes on genuinely different objects do not overlap and so never
+    suppress each other. Leave it off the moment a scene can hold two red cubes.
     """
     best: dict[str, tuple] = {}
     for det in dets:

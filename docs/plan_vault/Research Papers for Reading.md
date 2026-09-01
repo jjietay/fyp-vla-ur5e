@@ -16,7 +16,7 @@ Asynchronous inference and action chunking. Directly about the problem the infer
 
 Action and observation formats across a large collection of robot datasets, including UR5.
 
-**Read before settling [[Decisions#Action space\|Action Space]].** It is the closest thing to a survey of what conventions other people converged on, which is exactly the question being decided.
+**Read before settling [[Decisions to Make#Action space\|Action Space]].** It is the closest thing to a survey of what conventions other people converged on, which is exactly the question being decided.
 
 ## SmolVLA
 
@@ -27,4 +27,4 @@ Already read and summarised. Key facts carried into the plan:
 * asynchronous inference reported at roughly 30 percent off completion time
 * around 50 episodes as a fine tuning starting point, with workspace density mattering more than raw count
 
-Citing all three properly is worth marks under references, see [[Deliverables#Where the marks actually are\|Assessment Mapping]].
+Citing all three properly is worth marks under references, see [[FYP Submissions#Where the marks actually are\|Assessment Mapping]].

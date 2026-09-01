@@ -4,17 +4,17 @@ tags: [overview]
 
 # Decisions
 
-Choices that shape the project, each with the reasoning attached. These become the methodology chapter of [[Deliverables#D4 Final Report]], so the reason written down at the time is worth more than it looks.
+Choices that shape the project, each with the reasoning attached. These become the methodology chapter of [[FYP Submissions#D4 Final Report]], so the reason written down at the time is worth more than it looks.
 
 | Decision | State |
 |---|---|
-| [[Decisions#Camera|Camera]] | decided, procurement pending |
-| [[Decisions#Speech stack|Speech stack]] | decided, working on the GPU 31 Aug |
-| [[Decisions#Detector query format|Detector query format]] | decided, forced by how OWLv2 works |
-| [[Decisions#Teleoperation method|Teleoperation method]] | decided, hardware pending |
-| [[Decisions#Action space|Action space]] | frame decided 31 Aug, rotation format still open |
-| [[Decisions#Calibration marker|Calibration marker]] | decided 12 Aug, no marker |
-| [[Decisions#Architecture B inference|Architecture B inference]] | decided 31 Aug |
+| [[Decisions to Make#Camera|Camera]] | decided, procurement pending |
+| [[Decisions to Make#Speech stack|Speech stack]] | decided, working on the GPU 31 Aug |
+| [[Decisions to Make#Detector query format|Detector query format]] | decided, forced by how OWLv2 works |
+| [[Decisions to Make#Teleoperation method|Teleoperation method]] | decided, hardware pending |
+| [[Decisions to Make#Action space|Action space]] | frame decided 31 Aug, rotation format still open |
+| [[Decisions to Make#Calibration marker|Calibration marker]] | decided 12 Aug, no marker |
+| [[Decisions to Make#Architecture B inference|Architecture B inference]] | decided 31 Aug |
 
 A decision recorded without its reason is not much use six months later when an examiner asks why.
 
@@ -55,7 +55,7 @@ No. SmolVLA consumes RGB images, a state vector and a language string, and has n
 
 **Hard rule: nothing may depend on wrist depth.** Design as if it is RGB. If depth arrives it is a branch that can be deleted without touching anything else. If the lab pays, specify a short minimum range model, because a D435 class sensor cannot focus closer than about 0.3 m and is useless at grasp distance.
 
-Two cameras is evidence rather than preference. Reference SmolVLA fine tuning setups use two views, and overhead plus wrist produces noticeably smoother trajectories than wrist only. A single camera chosen against the reference configuration would compromise [[Evaluation Protocol]].
+Two cameras is evidence rather than preference. Reference SmolVLA fine tuning setups use two views, and overhead plus wrist produces noticeably smoother trajectories than wrist only. A single camera chosen against the reference configuration would compromise [[Evaluation of Architecture]].
 
 ### Where the fixed camera stands
 
@@ -120,7 +120,7 @@ Square on foreshortens the reach axis, and foreshortening is the weakest cue in 
 
 Accepted for two reasons. The wrist camera reads approach distance directly, and the reference configuration is overhead plus wrist, where the descent runs straight at the overhead camera and is foreshortened the same way. Occlusion, by contrast, costs both architectures equally, so a diagonal is not a neutral compromise: it pays a penalty on both to buy back what the wrist camera already covers.
 
-State the placement and this residual in [[Deliverables#D2 Interim Report and Video]]. Documenting the direction of a known bias is what makes the comparison defensible.
+State the placement and this residual in [[FYP Submissions#D2 Interim Report and Video]]. Documenting the direction of a known bias is what makes the comparison defensible.
 
 ---
 
@@ -128,13 +128,13 @@ State the placement and this residual in [[Deliverables#D2 Interim Report and Vi
 
 **`faster-whisper` running locally, push to talk, `compute_type="float16"`.**
 
-Speech recognition is an off the shelf component here, like the camera driver. Say so explicitly in [[Deliverables#D4 Final Report]], because claiming it invites an examiner to probe an area with no novel work in it.
+Speech recognition is an off the shelf component here, like the camera driver. Say so explicitly in [[FYP Submissions#D4 Final Report]], because claiming it invites an examiner to probe an area with no novel work in it.
 
 ### Why local rather than a cloud API
 
 Cost is not the reason. Total spoken audio across the project is roughly 500 utterances at 5 seconds, under a dollar at any provider.
 
-The reason is the demonstration. A local model cannot fail because the campus network did, and [[Deliverables#D5 Demonstration]] happens in front of an examiner. Keep a cloud path behind a config flag as a fallback.
+The reason is the demonstration. A local model cannot fail because the campus network did, and [[FYP Submissions#D5 Demonstration]] happens in front of an examiner. Keep a cloud path behind a config flag as a fallback.
 
 ### Two CUDA traps, both hit
 
@@ -152,7 +152,7 @@ Enter starts, Enter stops, rather than a held key. A held key needs a real displ
 
 ### The rule that protects the comparison
 
-**Both architectures get the same raw transcript.** Architecture A absorbs disfluent speech natively because it is an LLM. Architecture B takes the string conditioned on its training distribution and has no way to normalise wording. Cleaning the transcript for B inserts an LLM into B and it stops being end to end. That asymmetry is measured rather than patched, see [[Hypotheses]].
+**Both architectures get the same raw transcript.** Architecture A absorbs disfluent speech natively because it is an LLM. Architecture B takes the string conditioned on its training distribution and has no way to normalise wording. Cleaning the transcript for B inserts an LLM into B and it stops being end to end. That asymmetry is measured rather than patched, see [[Hypotheses for Comparison]].
 
 ---
 
@@ -173,7 +173,7 @@ CLIP's 77 token context is a real limit but not the binding one. A spoken comman
 
 Something has to convert `"place that red cube into that metal tray"` into `["red cube", "metal tray"]` before OWLv2 can be asked anything. That is the grounding call in `planner.py::extract_queries`, and it is a genuine architectural requirement.
 
-Worth stating plainly in the report, because it cuts both ways. Architecture A needs a second language model call purely to bridge from human language into detector language, and that bridge is a failure point, recorded as H9 in [[Hypotheses]]. A wrong noun phrase kills the run before perception begins. Architecture B pays nothing, because SmolVLA takes the raw string into the policy and never converts it.
+Worth stating plainly in the report, because it cuts both ways. Architecture A needs a second language model call purely to bridge from human language into detector language, and that bridge is a failure point, recorded as H9 in [[Hypotheses for Comparison]]. A wrong noun phrase kills the run before perception begins. Architecture B pays nothing, because SmolVLA takes the raw string into the policy and never converts it.
 
 So the modular architecture is not simply more interpretable at a small cost. It requires a translation step the end to end model does not, and that step is one of the places it breaks.
 

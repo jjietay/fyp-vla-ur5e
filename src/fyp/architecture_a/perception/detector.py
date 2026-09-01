@@ -30,12 +30,18 @@ detector. Something has to turn "place that red cube into that metal tray" into
 from __future__ import annotations
 
 
-def detect(pil_img, queries, model_name, threshold=None):
+def detect(pil_img, queries, model_name):
     """
     This function takes a photo and a list of text descriptions, and the model
     will output the bounding boxes that matches our description.
 
     We are supposed to input the model name, in this case we are using OWLv2.
+
+    There is no threshold argument on purpose. Everything comes back, sorted by
+    descending score, and `filters.apply_filters` decides what to keep. Keeping
+    the model call pure is what lets the filtering be unit tested in a venv with
+    no torch in it, and it is why the counts at each filter stage can be reported
+    in the trace.
     """
     import torch
     from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection

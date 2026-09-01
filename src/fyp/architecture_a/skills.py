@@ -182,12 +182,24 @@ class Skills:
         Tilt is applied about the tool x-axis by composing rotation vectors
         through their rotation matrices. Adding rotation vectors component-wise
         looks like it works and does not.
+
+        `pick` and `place` are called for their sub-motions, and their results are
+        CHECKED rather than discarded. A skill reports failure by returning
+        `ok=False` instead of raising, so ignoring the return value of the grasp
+        lets everything below it run on an empty gripper: the arm tilts nothing
+        over the glass, returns nothing to the table, and reports a pour that
+        happened. Their waypoints are absorbed as well, so the trace still lists
+        every pose the arm was sent to.
         """
         from fyp.shared.helpers.rotations import R_to_rotvec, rotvec_to_R
 
         r = SkillResult("pour", True, "")
         try:
-            self.pick(source_xyz)
+            grasp = self.pick(source_xyz)
+            r.waypoints += grasp.waypoints
+            if not grasp.ok:
+                raise SkillError(f"could not grasp the container: {grasp.message}")
+
             above = self._above(target_xyz, float(pour_height))
             self._move(above, r)
 
@@ -211,6 +223,7 @@ class Skills:
                 self._move(self._pose(above[:3], rv), r, speed=self.speed * 0.5)
 
             back = self.place(source_xyz)
+            r.waypoints += back.waypoints
             if not back.ok:
                 raise SkillError(f"could not return the container: {back.message}")
         except (SkillError, SafetyViolation) as e:

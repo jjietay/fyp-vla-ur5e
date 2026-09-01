@@ -207,8 +207,10 @@ uv run python /home/jj/Documents/NTU/Y4S1/FYP/scripts/check_detector.py \
   --json /home/jj/Documents/NTU/Y4S1/FYP/data/cache/detections.json
 ```
 
-- always pass `--model` and `--threshold` explicitly, because the script defaults to OWL-ViT
-  at 0.1, which is the combination that does not work
+- `--model` and `--threshold` are optional now. They default to
+  `architecture_a.detector` in `config.yaml`, so the script and the pipeline cannot disagree
+  about what the detector is. They are written out above only so the command records which
+  combination produced a given overlay
 - NMS is class-agnostic by default, since OWLv2 fires two labels on one object and per-query
   suppression would keep both
 - drop `--top1-per-query` once a scene can hold more than one instance of a query
@@ -285,7 +287,7 @@ cd ~/lerobot && uv run --extra dataset --extra training lerobot-train \
 ## Architecture B: inference on the arm
 
 Two processes, both LeRobot's own. `policy_server` runs the checkpoint, `robot_client` runs
-the arm through our adapter. Reasoning in `docs/plan_vault/Decisions.md`. Both run out of the
+the arm through our adapter. Reasoning in `docs/plan_vault/Decisions to Make.md`. Both run out of the
 lerobot venv, because the client is the half that touches hardware.
 
 Terminal 1, the policy. `--host` is the interface this server **binds** to, not a robot

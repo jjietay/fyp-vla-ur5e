@@ -4,7 +4,7 @@ tags: [reference]
 
 # Hypotheses
 
-Stated up front, before tuning. Each becomes a subsection of the discussion in [[Deliverables#D4 Final Report\|D4 Final Report]].
+Stated up front, before tuning. Each becomes a subsection of the discussion in [[FYP Submissions#D4 Final Report\|D4 Final Report]].
 
 | Number | Claim | Tested by |
 |---|---|---|

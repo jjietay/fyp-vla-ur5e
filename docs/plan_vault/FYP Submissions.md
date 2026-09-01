@@ -10,13 +10,13 @@ The distinction that matters: work is **complete** by Nov 2026, which is a perso
 
 | Deliverable | Submit on | Weight |
 |---|---|---|
-| [[Deliverables#D1 Project Plan\|D1 Project Plan]] | 14 Sep 2026 | 7 |
-| [[Deliverables#D2 Interim Report and Video\|D2 Interim Report and Video]] | 10 Nov 2026 | 13 |
-| [[Deliverables#D3 Draft Final Report\|D3 Draft Final Report]] | 25 Mar 2027 | part of 40 |
-| [[Deliverables#D4 Final Report\|D4 Final Report]] | 09 Apr 2027 | part of 40 |
-| [[Deliverables#D5 Demonstration\|D5 Demonstration]] | 12 to 16 Apr 2027 | part of 40 |
-| [[Deliverables#D6 Oral Presentation\|D6 Oral Presentation]] | 10 to 12 May 2027 | part of 40 |
-| [[Deliverables#D7 Library Submission\|D7 Library Submission]] | 19 May 2027 | none |
+| [[FYP Submissions#D1 Project Plan\|D1 Project Plan]] | 14 Sep 2026 | 7 |
+| [[FYP Submissions#D2 Interim Report and Video\|D2 Interim Report and Video]] | 10 Nov 2026 | 13 |
+| [[FYP Submissions#D3 Draft Final Report\|D3 Draft Final Report]] | 25 Mar 2027 | part of 40 |
+| [[FYP Submissions#D4 Final Report\|D4 Final Report]] | 09 Apr 2027 | part of 40 |
+| [[FYP Submissions#D5 Demonstration\|D5 Demonstration]] | 12 to 16 Apr 2027 | part of 40 |
+| [[FYP Submissions#D6 Oral Presentation\|D6 Oral Presentation]] | 10 to 12 May 2027 | part of 40 |
+| [[FYP Submissions#D7 Library Submission\|D7 Library Submission]] | 19 May 2027 | none |
 
 A further 40 marks sit outside the documents entirely, in the mapping at the bottom of this file.
 
@@ -30,7 +30,7 @@ A short plan and strategy report. Assessed on whether the research activities ar
 
 Required contents: the main objectives, background, the proposed way of carrying out the tasks, and a proposed weekly schedule **in chart form**, which is a stated requirement rather than a suggestion.
 
-Almost all of it already exists and can be lifted. Objectives and background come from the scope statement in `docs/fyp_plan.md`, the approach section is [[Workstreams]], and the chart is [[Schedule]] reformatted as a Gantt chart rather than a table.
+Almost all of it already exists and can be lifted. Objectives and background come from the scope statement in `docs/fyp_plan.md`, the approach section is [[Workstreams]], and the chart is [[Weekly Focus]] reformatted as a Gantt chart rather than a table.
 
 ---
 
@@ -83,14 +83,14 @@ Same content as D4, one revision behind.
 
 Lead with the interface, then use the comparison to answer what has to sit behind it. The official summary promises a user interface enabling more intuitive human robot interaction, so the report opens on the user speaking and the robot acting, not on two pipelines being benchmarked.
 
-The high standard criterion explicitly asks for limitations of the current work to be highlighted, so [[Risks]] and the failure analysis are marked content rather than padding.
+The high standard criterion explicitly asks for limitations of the current work to be highlighted, so [[Different Risk in Project]] and the failure analysis are marked content rather than padding.
 
 ### Content sources, by how much writing they save
 
-- [[Evaluation Protocol]] and its results tables
-- [[Hypotheses]], one subsection each
+- [[Evaluation of Architecture]] and its results tables
+- [[Hypotheses for Comparison]], one subsection each
 - the per stage failure logs from Architecture A
-- [[Decisions]], which becomes the methodology chapter
+- [[Decisions to Make]], which becomes the methodology chapter
 
 ---
 
@@ -159,23 +159,23 @@ From the EEE assessment criteria.
 
 | Item | Marks | Earned by |
 |---|---|---|
-| writing, structure, references | 11 | cite the papers in [[Reading]] properly |
-| introduction, theory, review, discussion, conclusion | 12 | [[Hypotheses]] give the discussion its spine, [[Risks]] supplies the limitations section |
+| writing, structure, references | 11 | cite the papers in [[Research Papers for Reading]] properly |
+| introduction, theory, review, discussion, conclusion | 12 | [[Hypotheses for Comparison]] give the discussion its spine, [[Different Risk in Project]] supplies the limitations section |
 | demonstration and oral | 17 | D5 and D6 |
 
 ### Approach, development and achievement, 40
 
 | Item | Marks | Earned by |
 |---|---|---|
-| initiative and regular supervisor updates | 8 | a fortnightly email, tracked in [[Open Actions]] |
-| **design, implementation, data, results, complexity** | **24** | [[Evaluation Protocol]] |
+| initiative and regular supervisor updates | 8 | a fortnightly email, tracked in [[To Do (Non-Technical)]] |
+| **design, implementation, data, results, complexity** | **24** | [[Evaluation of Architecture]] |
 | ability, independence, extending ideas | 8 | the widened task suite is the extension, say so explicitly |
 
 ### The block to over serve
 
 The 24 mark item is the largest single line, and it explicitly rewards design of experiments, appropriate experimental technique, mastery of data collection, understanding of tools **and their limitations**, and new and interesting results.
 
-That is a description of [[Evaluation Protocol]]. Controlled layouts, stated hypotheses, held out phrasings, real data collection, and a cost table that shows where each architecture is weak.
+That is a description of [[Evaluation of Architecture]]. Controlled layouts, stated hypotheses, held out phrasings, real data collection, and a cost table that shows where each architecture is weak.
 
 ### The cheapest 8 marks in the project
 
