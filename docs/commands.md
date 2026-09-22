@@ -81,21 +81,22 @@ the demo.
 
 ## At the bench, in this order
 
-Each step fails in a way that looks like the next one's problem.
+Each step fails in a way that looks like the next one's problem. Read-only steps come first,
+motion comes after, and calibration comes last. Replace `<ARM_IP>` with the address Koji gives
+you.
 
-### 0. Before power
-
-These eight values were set against the dead simulator, or never set at all:
+These values were set against the dead simulator, or never set at all. Steps (11) to (16) fill
+them in:
 
 ```
 config/config.yaml
    8:  host: "127.0.0.1"       # MEASURE. Still the old simulator's address
-  11:    power_pin: 1          # CONFIRM against the real wiring before powering it
-  12:    control_pin: 2        # CONFIRM
+  11:    power_pin: 1          # WRONG for this gripper, see (5) to (8) and (17) to (18)
+  12:    control_pin: 2        # WRONG for this gripper
   13:  # home_q: [ , , , , , ] # MEASURE. Six joint angles. skills.home() refuses without it
-  
+
   ################# WORKPLACE SAFETY BOX ##########################
-  23:  x: [-0.700, 0.700]      # MEASURE, and err tight 
+  23:  x: [-0.700, 0.700]      # MEASURE, and err tight
   24:  y: [-0.700, 0.700]      # MEASURE
   25:  z: [ 0.005, 0.700]      # MEASURE. z min sits just above the table
 
@@ -103,17 +104,113 @@ config/config.yaml
   80:    down_rotvec: [3.142, 0.0, 0.0]  # MEASURE. See scripts/check_orientation.py
 ```
 
-- [ ] `host`, the arm's IP
-- [ ] the two gripper pins. **Ask** which outputs it is wired to. `gripper_start()` writes to
-      them the moment Architecture A runs, so do not find out by toggling
-- [ ] USB 3 cable in a USB 3 port. USB 2 connects, streams, and silently caps resolution
-- [ ] camera opposite the arm, centred, 0.7 to 0.8 m above the **table surface**
-- [ ] tape the tripod feet. Shared lab, this comes down between sessions
+**The gripper is an OnRobot (RG2 or RG6), not a Robotiq 2F-85.** Its cable goes to the green
+M8 plug on the wrist tool connector. `gripper_start()` and `gripper_toggle()` write to control
+box pins 1 and 2, which do not reach the tool connector, so the current gripper code cannot
+move it. Do not run Architecture A or the gripper test until the gripper code is rewritten.
 
-`down_rotvec` comes from step 2. The workspace box and `home_q` come from jogging the arm once
-it is powered.
 
-### 1. Camera
+### Find Out
+
+(3) The arm IP address, and a free static IP address for the laptop on the same subnet
+
+(4) Is RTDE on in the pendant security settings, and can you use Remote Control mode? The
+control interface needs Remote Control mode on e-Series. The receive interface does not
+
+(5) Which OnRobot gripper is it? Read the label for RG2 or RG6
+
+(6) Is there an OnRobot Compute Box, and what is its IP address?
+
+(7) Is the OnRobot URCap installed? Ask him to open and close the gripper from the pendant
+
+(8) Are the TCP offset and the payload in the installation file set for the gripper plus the
+quick changer? `getActualTCPPose` reports the point the pendant defines, so a wrong TCP makes
+every pose wrong, and the long RG fingers make the error large
+
+(9) Where can the camera be taped? Ask him to show you the e-stop, freedrive and the speed
+slider
+
+### Connection and read-only work, about 45 min
+
+(10) Static IP on the laptop, then check the arm answers
+
+```bash
+ip link                                  # find the Ethernet name, for example enp3s0
+sudo ip addr add <LAPTOP_IP>/24 dev <ETH_NAME>
+ping -c 3 <ARM_IP>
+nc -zv <ARM_IP> 30004                    # RTDE port
+```
+
+(11) Set `robot.host: "<ARM_IP>"` in `config/config.yaml`
+
+(12) Read the joint angles and the TCP pose. Receive interface only, so it cannot move the arm
+and does not stop a pendant program. Steps (14) to (16) reuse this command
+
+```bash
+uv run python -c "import rtde_receive as r; x=r.RTDEReceiveInterface('<ARM_IP>'); print('q', x.getActualQ()); print('tcp', x.getActualTCPPose())"
+```
+
+Do not use `URController` for this. Its constructor opens the control interface too, which
+uploads a script and takes the arm.
+
+(13) Down pose. Freedrive on, hand-guide the gripper to point straight down in the pose you
+would pick from, release freedrive so the arm holds, and keep your hands off it. The **length**
+of RX, RY, RZ on the Move tab should be near 3.14, not any one of them
+
+```bash
+uv run python scripts/check_orientation.py --seconds 10
+```
+
+*Stable* means Euler is safe and nothing changes. *Unstable* means the rotation format has to
+change before recording anything.
+
+(14) `down_rotvec`. Take the middle of each range from (13), or the last three numbers from
+(12) in the same pose, and paste them into `architecture_a.skills.down_rotvec`
+
+(15) `home_q`. Freedrive to a safe home pose, run (12), and paste the six joint angles into
+`robot.home_q`
+
+(16) Workspace box. Freedrive to each corner of the usable table area, run (12) at each, and
+write tighter x, y and z limits into `workspace`. z min sits just above the table
+
+### Gripper facts, about 15 min
+
+(17) If there is a Compute Box, check it answers on the Modbus port
+
+```bash
+ping -c 3 <BOX_IP>
+nc -zv <BOX_IP> 502
+```
+
+(18) If there is no Compute Box, make a pendant program with one gripper open node and one
+close node. Save it, then copy the `.urp` and the `.script` files to the USB stick. The
+`.script` file holds the exact URScript the URCap sends, which the new gripper code will copy
+
+### First motion, about 45 min
+
+(19) Pendant in Remote Control mode, speed slider low, Koji at the e-stop
+
+(20) Controller tests, without the gripper test
+
+```bash
+uv run pytest tests/hardware/test_controller.py -k "not gripper" -v
+```
+
+The `controller` fixture no longer starts the gripper, so with `-k "not gripper"` this run
+writes to no digital output at all. Only the gripper tests ask for `gripper_start()`, and they
+are expected to fail until the gripper code fits the OnRobot
+
+(21) Servo test. First time `servoL` goes to a real arm, and Architecture B depends on it
+
+```bash
+uv run pytest tests/hardware/test_servo.py -v
+```
+
+### Camera and calibration, stretch, about 60 min
+
+(22) Camera opposite the arm, centred, 0.7 to 0.8 m above the **table surface**, at about 45
+degrees. USB 3 cable in a USB 3 port. Tape the tripod feet, because this comes down between
+sessions
 
 ```bash
 uv run python scripts/check_camera.py
@@ -128,49 +225,29 @@ anything.
 
 Writes `data/cache/frame_top.png`, which the detector check needs later.
 
-### 2. Down pose, which gives you two things
+(23) Measure the mount
 
-1. Freedrive on, hand-guide the gripper to point straight down in the pose you would pick from
-2. Release freedrive so the arm holds. No hand on it
-3. Check RX, RY, RZ on the Move tab. Their **length** should be near 3.14, not any one of them
+- **jog the TCP in +x and watch which way it goes** before measuring anything. Guessing the
+  base axes is a 90 degree error that looks like a calibration fault
+- measure from the arm base to the **middle lens**, the RGB one. The imager sits a few mm
+  behind the glass and that offset is unpublished, so measure to the glass
+- square the tripod to the table edge. One degree is about 17 mm at 1 m
 
-```bash
-uv run python scripts/check_orientation.py --seconds 10
-```
-
-Read-only, cannot move the arm.
-
-**Verdict.** *Stable* means Euler is safe and nothing changes. *Unstable* means the rotation
-format has to change before recording anything.
-
-**And your real `down_rotvec`.** Take the middle of each printed range and paste the three
-numbers into `architecture_a.skills.down_rotvec`.
-
-### 3. Measure the mount
-
-- [ ] **jog the TCP in +x and watch which way it goes** before measuring anything. Guessing the
-      base axes is a 90 degree error that looks like a calibration fault
-- [ ] measure to the **middle lens**, the RGB one. The imager sits a few mm behind the glass and
-      that offset is unpublished, so measure to the glass
-- [ ] square the tripod to the table edge. One degree is about 17 mm at 1 m
-
-### 4. Write it
+(24) Write it. Metres and degrees. Refuses to overwrite without `--force`
 
 ```bash
 uv run python scripts/write_calibration.py --xyz X Y Z --rpy ROLL PITCH YAW
 ```
 
-Metres and degrees. Refuses to overwrite without `--force`.
-
-### 5. Prove it
+(25) Prove it. **The real run moves the arm**, so Koji stays at the e-stop
 
 ```bash
 uv run python scripts/check_calibration.py --dry-run   # compute targets, do not move
 uv run python scripts/check_calibration.py --points 5
 ```
 
-Run `--dry-run` first. If the printed positions are not somewhere on your table, step 3 is
-wrong and there is no point moving anything.
+Run `--dry-run` first. If the printed positions are not somewhere on your table, (23) is wrong
+and there is no point moving anything.
 
 Then the real run: click an object, it hovers the TCP above where it thinks the object is, and
 **you measure the miss with a rule and type it in**. Manual on purpose, because anything the
@@ -179,8 +256,22 @@ software measured would come from the transform being tested.
 Expect 1 to 3 cm. Large mean with small scatter means the six numbers are slightly off, so
 re-measure the angles. Large scatter means depth alignment or the datum, not the numbers.
 
-If it is too large to grasp with, the fallback is a matte ball in the gripper and a fitted
-transform, reusing code that already exists. Worth having a ping-pong ball in your bag.
+If it is too large to grasp with, the fallback is the ping-pong ball in the gripper and a
+fitted transform, reusing code that already exists.
+
+### Last 15 min
+
+(26) Photos of the taped positions, the gripper label, and the pendant TCP and payload screens
+
+(27) Commit the config and calibration, then take the camera down
+
+```bash
+git add config/
+git commit -m "Lab session: robot host, home_q, workspace, down_rotvec, calibration"
+```
+
+If (22) to (25) do not fit, do them first in recess week, before Architecture A. Architecture
+A cannot run without `T_base_cam`.
 
 ## Architecture A
 

@@ -11,9 +11,15 @@ Public API:
 - servo_stop(acc) ends a servo stream
 - period_start() / wait_period(t) hold an exact control cadence
 - get_state() returns a dict: joint_pos, tcp_pose, gripper_state
+  (gripper_state is None until gripper_start() has run)
 - gripper_start(default pin_power = 1, default pin_control = 2)
 - gripper_toggle(state = 0 or 1, where 0 is closed and 1 is open)
 - close()
+
+The gripper is OPT-IN. Connecting touches no digital output. Only gripper_start()
+writes to the pins, so a motion-only run cannot switch a control box output that
+may be wired to someone else's equipment in the shared lab. The pin code itself
+does not fit the lab's OnRobot gripper yet, which sits on the tool connector.
 """
 
 import rtde_control
@@ -142,6 +148,10 @@ class URController:
         return self.rtde_c.waitPeriod(t_start)
 
     def gripper_toggle(self, state: int):
+        # Raise rather than return a message. A skill that closes a gripper that
+        # was never started would otherwise carry on as if it had grasped.
+        if self.pin_control is None:
+            raise RuntimeError("gripper_toggle() called before gripper_start()")
         if state == 1:
             self.rtde_io.setStandardDigitalOut(self.pin_control, False)
             time.sleep(0.1)
@@ -155,7 +165,10 @@ class URController:
         return {
         "joint_pos": self.rtde_r.getActualQ(),
         "tcp_pose": self.rtde_r.getActualTCPPose(),
-        "gripper_state": 0 if self.rtde_r.getDigitalOutState(self.pin_control) else 1
+        # None, not a guess, when the gripper was never started. Passing None to
+        # getDigitalOutState raises a TypeError, which broke every motion-only caller.
+        "gripper_state": None if self.pin_control is None
+                         else (0 if self.rtde_r.getDigitalOutState(self.pin_control) else 1)
         }
 
     def close(self):

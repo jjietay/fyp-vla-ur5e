@@ -43,9 +43,14 @@ SETTLE_S = float(_T["settle_s"])
 
 @pytest.fixture
 def controller():
-    """Connected controller that puts the arm back where it found it."""
+    """
+    Connected controller that puts the arm back where it found it.
+
+    Does NOT start the gripper. `gripper_start()` switches a control box output
+    on, and in a shared lab that pin can drive something else, so only the
+    gripper tests below ask for it, through the `gripper` fixture.
+    """
     c = URController()
-    c.gripper_start()
     start_pose = list(c.get_state()["tcp_pose"])
     start_q = list(c.get_state()["joint_pos"])
     yield c
@@ -57,8 +62,25 @@ def controller():
         c.close()
 
 
+@pytest.fixture
+def gripper(controller):
+    """
+    It takes the connected controller and gives it back with the gripper started.
+
+    The pin wiring in config.yaml is for a digital-I/O gripper. The lab's OnRobot
+    gripper sits on the tool connector, so these tests are expected to fail
+    until the gripper code is rewritten. Skip them with -k "not gripper".
+    """
+    controller.gripper_start()
+    return controller
+
+
 def test_gripper_start_reports_success(controller):
     assert controller.gripper_start() == "Gripper initialized."
+
+
+def test_get_state_reports_none_before_start(controller):
+    assert controller.get_state()["gripper_state"] is None
 
 
 def test_get_state_returns_the_expected_keys(controller):
@@ -98,7 +120,7 @@ def test_move_joints_reaches_a_small_relative_target(controller):
     assert final == pytest.approx(target, abs=TOLERANCE_RAD)
 
 
-def test_gripper_toggles_between_the_two_int_states(controller):
+def test_gripper_toggles_between_the_two_int_states(gripper):
     """
     The API takes int 0 and 1, and so does every caller: `skills.py` uses
     GRIPPER_OPEN and GRIPPER_CLOSED, and the LeRobot adapter thresholds a float
@@ -108,15 +130,15 @@ def test_gripper_toggles_between_the_two_int_states(controller):
     which could never pass. The API was right and the test was wrong, so the test
     was the thing that changed.
     """
-    controller.gripper_toggle(GRIPPER_OPEN)
+    gripper.gripper_toggle(GRIPPER_OPEN)
     time.sleep(SETTLE_S)
-    assert controller.get_state()["gripper_state"] == GRIPPER_OPEN
+    assert gripper.get_state()["gripper_state"] == GRIPPER_OPEN
 
-    controller.gripper_toggle(GRIPPER_CLOSED)
+    gripper.gripper_toggle(GRIPPER_CLOSED)
     time.sleep(SETTLE_S)
-    assert controller.get_state()["gripper_state"] == GRIPPER_CLOSED
+    assert gripper.get_state()["gripper_state"] == GRIPPER_CLOSED
 
 
-def test_gripper_rejects_anything_that_is_not_zero_or_one(controller):
-    assert controller.gripper_toggle("open") == "Unable to control gripper."
-    assert controller.gripper_toggle(7) == "Unable to control gripper."
+def test_gripper_rejects_anything_that_is_not_zero_or_one(gripper):
+    assert gripper.gripper_toggle("open") == "Unable to control gripper."
+    assert gripper.gripper_toggle(7) == "Unable to control gripper."
