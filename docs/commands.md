@@ -18,13 +18,18 @@ open a new terminal without exporting it.
 # FYP environment
 uv sync
 
-# lerobot environment, which is where torch lives
-cd ~/lerobot && uv sync --extra dataset --extra training --extra smolvla
+# lerobot environment, which is where torch lives. --inexact, so a re-sync does not
+# delete the adapter and the two drivers installed below, which are not in its lockfile
+deactivate 2>/dev/null
+cd ~/lerobot && uv sync --inexact --extra dataset --extra training --extra smolvla
 
-# the UR5e adapter, plus the drivers the inference client needs
+# the UR5e adapter, plus the drivers the inference client needs. --python .venv names
+# the target: without it, `uv pip install` installs into whatever venv is ACTIVE, and
+# with the FYP venv active the adapter lands in the wrong environment (found 23 Sep 2026)
 cd ~/lerobot
-uv pip install ur-rtde pyrealsense2
-uv pip install -e /home/jj/Documents/NTU/Y4S1/FYP/integrations/lerobot_robot_ur5e
+# same ur-rtde as the FYP venv (uv.lock), because URController is shared by A and B
+uv pip install --python .venv ur-rtde==1.6.3 pyrealsense2
+uv pip install --python .venv -e /home/jj/Documents/NTU/Y4S1/FYP/integrations/lerobot_robot_ur5e
 ```
 
 Check the adapter registered before wiring anything to the arm. If `ur5e` is missing from the
@@ -85,29 +90,31 @@ Each step fails in a way that looks like the next one's problem. Read-only steps
 motion comes after, and calibration comes last. Replace `<ARM_IP>` with the address Koji gives
 you.
 
-These values were set against the dead simulator, or never set at all. Steps (11) to (16) fill
-them in:
+State of these values after the first session, 23 Sep 2026. Steps (10) to (15) are how each
+was filled in:
 
 ```
 config/config.yaml
-   8:  host: "127.0.0.1"       # MEASURE. Still the old simulator's address
-  11:    power_pin: 1          # WRONG for this gripper, see (5) to (8) and (17) to (18)
-  12:    control_pin: 2        # WRONG for this gripper
-  13:  # home_q: [ , , , , , ] # MEASURE. Six joint angles. skills.home() refuses without it
+  robot.host: "10.149.230.1"          # DONE. Laptop is 10.149.230.50/24, profile `ur5e`, no gateway
+  robot.gripper: widths and force     # DONE. RG2 over URScript, no pins. See ur5e_controller.py
+  robot.home_q: [5.6173, ...]         # DONE. From the pendant, TCP pointing down
 
-  ################# WORKPLACE SAFETY BOX ##########################
-  23:  x: [-0.700, 0.700]      # MEASURE, and err tight
-  24:  y: [-0.700, 0.700]      # MEASURE
-  25:  z: [ 0.005, 0.700]      # MEASURE. z min sits just above the table
+  workspace.x, workspace.y            # STILL TO MEASURE, after the table layout is agreed with Koji
+  workspace.z: [0.177, 0.700]         # DONE. Table at 0.172 in base frame, plus 5 mm
+  workspace.max_radius: 0.75          # DONE. 0.81 m was out of reach
 
-  ##################### ORIENTATION OF GRIPPER POINTING DOWN ########################
-  80:    down_rotvec: [3.142, 0.0, 0.0]  # MEASURE. See scripts/check_orientation.py
+  architecture_a.skills.down_rotvec   # DONE. [0.580, 3.087, 0.0], checked by a move straight down
 ```
 
-**The gripper is an OnRobot (RG2 or RG6), not a Robotiq 2F-85.** Its cable goes to the green
-M8 plug on the wrist tool connector. `gripper_start()` and `gripper_toggle()` write to control
-box pins 1 and 2, which do not reach the tool connector, so the current gripper code cannot
-move it. Do not run Architecture A or the gripper test until the gripper code is rewritten.
+Read every pose from RTDE, never from the pendant. The pendant shows TCP z in a different frame
+(it read -0.020 where RTDE read 0.380).
+
+**The gripper is an OnRobot RG2, not a Robotiq 2F-85.** Its cable goes to the green M8 plug
+on the wrist tool connector, and there is no Compute Box. Since 23 Sep 2026 `URController`
+drives it the way the URCap does. It sends URScript that shifts a 17 bit word out over the two
+tool outputs, checks that the fingers started to move, sends once more if they did not, and
+reads the final width back through RTDE output registers. The pendant must be in Remote Control
+mode. `scripts/check_gripper.py` is the bench test, and it runs the same controller code.
 
 
 ### Find Out
@@ -119,20 +126,18 @@ control interface needs Remote Control mode on e-Series. The receive interface d
 
 (5) Which OnRobot gripper is it? Read the label for RG2 or RG6
 
-(6) Is there an OnRobot Compute Box, and what is its IP address?
+(6) Is the OnRobot URCap installed? Ask him to open and close the gripper from the pendant
 
-(7) Is the OnRobot URCap installed? Ask him to open and close the gripper from the pendant
-
-(8) Are the TCP offset and the payload in the installation file set for the gripper plus the
+(7) Are the TCP offset and the payload in the installation file set for the gripper plus the
 quick changer? `getActualTCPPose` reports the point the pendant defines, so a wrong TCP makes
 every pose wrong, and the long RG fingers make the error large
 
-(9) Where can the camera be taped? Ask him to show you the e-stop, freedrive and the speed
+(8) Where can the camera be taped? Ask him to show you the e-stop, freedrive and the speed
 slider
 
 ### Connection and read-only work, about 45 min
 
-(10) Static IP on the laptop, then check the arm answers
+(9) Static IP on the laptop, then check the arm answers
 
 ```bash
 ip link                                  # find the Ethernet name, for example enp3s0
@@ -141,10 +146,10 @@ ping -c 3 <ARM_IP>
 nc -zv <ARM_IP> 30004                    # RTDE port
 ```
 
-(11) Set `robot.host: "<ARM_IP>"` in `config/config.yaml`
+(10) Set `robot.host: "<ARM_IP>"` in `config/config.yaml`
 
-(12) Read the joint angles and the TCP pose. Receive interface only, so it cannot move the arm
-and does not stop a pendant program. Steps (14) to (16) reuse this command
+(11) Read the joint angles and the TCP pose. Receive interface only, so it cannot move the arm
+and does not stop a pendant program. Steps (13) to (15) reuse this command
 
 ```bash
 uv run python -c "import rtde_receive as r; x=r.RTDEReceiveInterface('<ARM_IP>'); print('q', x.getActualQ()); print('tcp', x.getActualTCPPose())"
@@ -153,7 +158,7 @@ uv run python -c "import rtde_receive as r; x=r.RTDEReceiveInterface('<ARM_IP>')
 Do not use `URController` for this. Its constructor opens the control interface too, which
 uploads a script and takes the arm.
 
-(13) Down pose. Freedrive on, hand-guide the gripper to point straight down in the pose you
+(12) Down pose. Freedrive on, hand-guide the gripper to point straight down in the pose you
 would pick from, release freedrive so the arm holds, and keep your hands off it. The **length**
 of RX, RY, RZ on the Move tab should be near 3.14, not any one of them
 
@@ -161,46 +166,65 @@ of RX, RY, RZ on the Move tab should be near 3.14, not any one of them
 uv run python scripts/check_orientation.py --seconds 10
 ```
 
-*Stable* means Euler is safe and nothing changes. *Unstable* means the rotation format has to
-change before recording anything.
+On 23 Sep 2026 this showed Euler roll flipping, so `observation.state` is now 6D (the first two
+columns of the rotation matrix) and not Euler. Run it again to confirm the `state.*` rows are
+stable. The raw `tcp_pose` rows can still flip at this pose, and that is harmless.
 
-(14) `down_rotvec`. Take the middle of each range from (13), or the last three numbers from
-(12) in the same pose, and paste them into `architecture_a.skills.down_rotvec`
+(13) `down_rotvec`. Take the middle of each range from (12), or the last three numbers from
+(11) in the same pose, and paste them into `architecture_a.skills.down_rotvec`
 
-(15) `home_q`. Freedrive to a safe home pose, run (12), and paste the six joint angles into
+(14) `home_q`. Freedrive to a safe home pose, run (11), and paste the six joint angles into
 `robot.home_q`
 
-(16) Workspace box. Freedrive to each corner of the usable table area, run (12) at each, and
+(15) Workspace box. Freedrive to each corner of the usable table area, run (11) at each, and
 write tighter x, y and z limits into `workspace`. z min sits just above the table
 
 ### Gripper facts, about 15 min
 
-(17) If there is a Compute Box, check it answers on the Modbus port
-
-```bash
-ping -c 3 <BOX_IP>
-nc -zv <BOX_IP> 502
-```
-
-(18) If there is no Compute Box, make a pendant program with one gripper open node and one
+(16) **Required.** Make a pendant program with one gripper open node and one
 close node. Save it, then copy the `.urp` and the `.script` files to the USB stick. The
-`.script` file holds the exact URScript the URCap sends, which the new gripper code will copy
+`.script` file holds the exact URScript the URCap sends, which the new gripper code will copy.
+Done 23 Sep 2026: fetched over SFTP as root into `docs/rg2.script` and `docs/rg2.urp`
 
 ### First motion, about 45 min
 
-(19) Pendant in Remote Control mode, speed slider low, Koji at the e-stop
+(17) Pendant in Remote Control mode, speed slider low, Koji at the e-stop
 
-(20) Controller tests, without the gripper test
+First move of every session. It shows the move and asks before it goes, and refuses any joint
+that must turn more than 30 degrees, so jog closer on the pendant first. Ctrl+C stops it
+
+```bash
+uv run python scripts/go_home.py
+```
+
+Not yet tested: recovery from the e-stop. Press it during `go_home.py`, release, power on,
+and run it again. Do this before demonstration capture or any trial
+
+(18) Controller tests, without the gripper test
 
 ```bash
 uv run pytest tests/hardware/test_controller.py -k "not gripper" -v
 ```
 
-The `controller` fixture no longer starts the gripper, so with `-k "not gripper"` this run
-writes to no digital output at all. Only the gripper tests ask for `gripper_start()`, and they
-are expected to fail until the gripper code fits the OnRobot
+The `controller` fixture does not start the gripper, so with `-k "not gripper"` this run never
+moves the fingers. Then the gripper tests, with NOTHING between the fingers, and the endurance
+run, which counts lost commands instead of stopping on the first one
 
-(21) Servo test. First time `servoL` goes to a real arm, and Architecture B depends on it
+```bash
+uv run pytest tests/hardware/test_controller.py -k gripper -v
+uv run python scripts/check_gripper.py --cycles 20
+```
+
+Rotation at the down pose, the case Koji reported. Run `go_home.py` first, because these skip
+unless the TCP points down. Each test turns the tool a few degrees in place and checks that no
+joint takes the long way round, and that the same orientation written with the opposite-sign
+rotation vector does not move the arm, with `moveL` and with `servoL`
+
+```bash
+uv run pytest tests/hardware/test_orientation.py -v
+```
+
+(19) Servo test. First time `servoL` goes to a real arm, and Architecture B depends on it
 
 ```bash
 uv run pytest tests/hardware/test_servo.py -v
@@ -208,7 +232,7 @@ uv run pytest tests/hardware/test_servo.py -v
 
 ### Camera and calibration, stretch, about 60 min
 
-(22) Camera opposite the arm, centred, 0.7 to 0.8 m above the **table surface**, at about 45
+(20) Camera opposite the arm, centred, 0.7 to 0.8 m above the **table surface**, at about 45
 degrees. USB 3 cable in a USB 3 port. Tape the tripod feet, because this comes down between
 sessions
 
@@ -225,7 +249,7 @@ anything.
 
 Writes `data/cache/frame_top.png`, which the detector check needs later.
 
-(23) Measure the mount
+(21) Measure the mount
 
 - **jog the TCP in +x and watch which way it goes** before measuring anything. Guessing the
   base axes is a 90 degree error that looks like a calibration fault
@@ -233,20 +257,20 @@ Writes `data/cache/frame_top.png`, which the detector check needs later.
   behind the glass and that offset is unpublished, so measure to the glass
 - square the tripod to the table edge. One degree is about 17 mm at 1 m
 
-(24) Write it. Metres and degrees. Refuses to overwrite without `--force`
+(22) Write it. Metres and degrees. Refuses to overwrite without `--force`
 
 ```bash
 uv run python scripts/write_calibration.py --xyz X Y Z --rpy ROLL PITCH YAW
 ```
 
-(25) Prove it. **The real run moves the arm**, so Koji stays at the e-stop
+(23) Prove it. **The real run moves the arm**, so Koji stays at the e-stop
 
 ```bash
 uv run python scripts/check_calibration.py --dry-run   # compute targets, do not move
 uv run python scripts/check_calibration.py --points 5
 ```
 
-Run `--dry-run` first. If the printed positions are not somewhere on your table, (23) is wrong
+Run `--dry-run` first. If the printed positions are not somewhere on your table, (21) is wrong
 and there is no point moving anything.
 
 Then the real run: click an object, it hovers the TCP above where it thinks the object is, and
@@ -261,16 +285,16 @@ fitted transform, reusing code that already exists.
 
 ### Last 15 min
 
-(26) Photos of the taped positions, the gripper label, and the pendant TCP and payload screens
+(24) Photos of the taped positions, the gripper label, and the pendant TCP and payload screens
 
-(27) Commit the config and calibration, then take the camera down
+(25) Commit the config and calibration, then take the camera down
 
 ```bash
 git add config/
 git commit -m "Lab session: robot host, home_q, workspace, down_rotvec, calibration"
 ```
 
-If (22) to (25) do not fit, do them first in recess week, before Architecture A. Architecture
+If (20) to (23) do not fit, do them first in recess week, before Architecture A. Architecture
 A cannot run without `T_base_cam`.
 
 ## Architecture A
@@ -415,8 +439,8 @@ uv run --extra smolvla python -m lerobot.async_inference.robot_client \
   --aggregate_fn_name=weighted_average
 ```
 
-- **two unrelated `127.0.0.1` values live here, and confusing them costs an afternoon.**
-  `robot.host` in `config.yaml` is the ARM's address and becomes the real UR5e IP.
+- **two unrelated addresses live here, and confusing them costs an afternoon.**
+  `robot.host` in `config.yaml` is the ARM's address, `10.149.230.1`.
   `--host` on the policy server is the interface that server binds to and stays loopback.
   Pointing it at the arm's IP fails to start, because the laptop does not own that address
 - to run the policy on another machine, the server takes `--host=0.0.0.0` and the client's

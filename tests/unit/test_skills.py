@@ -24,7 +24,7 @@ import pytest
 
 from fyp.architecture_a.skills import GRIPPER_CLOSED, GRIPPER_OPEN, Skills
 from fyp.shared.hardware.safety import WorkspaceEnvelope
-from fyp.shared.hardware.ur5e_controller import URController
+from fyp.shared.hardware.ur5e_controller import GripperError, URController
 from fyp.shared.helpers.config import get_config
 
 # The REAL config. Testing skills against invented workspace bounds and invented
@@ -45,10 +45,9 @@ def no_settling(monkeypatch):
     """
     It takes nothing and gives you skills that do not sleep.
 
-    `settle_s` is a real 0.4 s in config.yaml, and this file actuates the gripper
-    dozens of times. Patching the sleep rather than overriding the config keeps
-    every number under test real and neutralises only the waiting, which is the
-    one thing that has no bearing on whether the logic is correct.
+    `pour` holds the tilt for `hold_s` seconds. Patching the sleep rather than
+    passing a smaller number keeps every number under test real and neutralises
+    only the waiting, which has no bearing on whether the logic is correct.
     """
     monkeypatch.setattr("fyp.architecture_a.skills.time.sleep", lambda _s: None)
 
@@ -60,11 +59,17 @@ class FakeController:
     `refuse_after` reproduces the one controller behaviour that is easy to ignore:
     `moveL` returning False rather than raising. A skill that does not check it
     carries on to the next waypoint as though the arm had arrived.
+
+    `gripper_fails_on` makes that gripper state raise `GripperError`, as the real
+    controller does when the RG2 does not respond.
     """
 
-    def __init__(self, refuse_after: int | None = None):
+    def __init__(self, refuse_after: int | None = None, gripper_fails_on: int | None = None,
+                 joint_pos=None):
         self.calls: list[tuple] = []
+        self.joint_pos = [0.0] * 6 if joint_pos is None else [float(v) for v in joint_pos]
         self.refuse_after = refuse_after
+        self.gripper_fails_on = gripper_fails_on
         self._moves = 0
 
     def move_to_pose(self, pose, speed=None, acc=None):
@@ -80,10 +85,13 @@ class FakeController:
 
     def gripper_toggle(self, state):
         self.calls.append(("gripper_toggle", state))
+        if state == self.gripper_fails_on:
+            raise GripperError("NO_RESPONSE, width 99.8 mm")
 
     def get_state(self):
         self.calls.append(("get_state",))
-        return {"joint_pos": [0.0] * 6, "tcp_pose": [0.0] * 6, "gripper_state": GRIPPER_OPEN}
+        return {"joint_pos": list(self.joint_pos), "tcp_pose": [0.0] * 6,
+                "gripper_state": GRIPPER_OPEN}
 
     @property
     def sequence(self) -> list[str]:
@@ -292,19 +300,49 @@ def test_result_records_every_waypoint_it_commanded(skills, ctrl):
     assert result.waypoints == ctrl.poses
 
 
-def test_home_fails_cleanly_when_home_q_is_not_configured(skills, ctrl):
+def test_home_fails_cleanly_when_home_q_is_not_configured(ctrl):
     """
-    `robot.home_q` is not in config.yaml today, so `home` cannot work. It must say
-    so rather than move the arm somewhere arbitrary.
+    Without `robot.home_q`, `home` cannot know where to go. It must say so rather
+    than move the arm somewhere arbitrary.
 
-    Note this reads the real config rather than the injected one, because `home`
-    calls `get_config()` directly. That inconsistency is deliberate to record: if
-    `home_q` is ever added, this test starts failing and the discrepancy surfaces.
+    The config handed in is the real one with `home_q` removed. `home` reads the
+    config it was given, so this stays true now that the real config has one.
     """
-    result = skills.home()
+    import copy
+    cfg = copy.deepcopy(CFG)
+    cfg["robot"].pop("home_q", None)
+    result = Skills(ctrl, cfg=cfg).home()
     assert not result.ok
     assert "home_q" in result.message
     assert ctrl.calls == []
+
+
+HOME_Q = [float(v) for v in CFG["robot"]["home_q"]]
+
+
+def test_home_moves_the_joints_to_the_configured_home_q():
+    """From near home: one joint move to exactly the configured angles, checked first."""
+    near = [q + 0.05 for q in HOME_Q]
+    ctrl = FakeController(joint_pos=near)
+    result = Skills(ctrl, cfg=CFG).home()
+    assert result.ok
+    assert ctrl.sequence == ["get_state", "move_joints"]
+    assert ctrl.calls[-1][1] == pytest.approx(HOME_Q)
+
+
+def test_home_refuses_to_spin_the_wrist_a_full_turn():
+    """
+    Wrist 3 at home_q minus 360 degrees is the same physical pose, and a joint
+    move from there would turn the wrist a full circle. `home` must refuse.
+    """
+    import math
+    spun = list(HOME_Q)
+    spun[5] -= 2 * math.pi
+    ctrl = FakeController(joint_pos=spun)
+    result = Skills(ctrl, cfg=CFG).home()
+    assert not result.ok
+    assert "joint 5" in result.message
+    assert "move_joints" not in ctrl.sequence
 
 
 # ------------------------------------------------- the fake cannot drift
@@ -328,3 +366,33 @@ def test_fake_controller_matches_the_real_one():
         assert list(real.parameters) == list(fake.parameters), (
             f"{name}: URController takes {list(real.parameters)}, "
             f"FakeController takes {list(fake.parameters)}")
+
+
+# ------------------------------------------------- a gripper that does not respond
+
+@pytest.mark.parametrize("run", [
+    lambda s: s.pick(TARGET),
+    lambda s: s.place(TARGET),
+    lambda s: s.pour(TARGET, TARGET),
+    lambda s: s.open_drawer(TARGET),
+])
+def test_a_gripper_failure_is_a_failed_result_not_a_crash(run):
+    """
+    `GripperError` from the controller must come back as `ok=False` with the
+    reason, like every other skill failure. If it escaped, the planner would
+    never see it and the run would stop with the arm wherever it was.
+    """
+    for state in (GRIPPER_OPEN, GRIPPER_CLOSED):
+        ctrl = FakeController(gripper_fails_on=state)
+        result = run(Skills(ctrl, cfg=CFG))
+        if ("gripper_toggle", state) not in ctrl.calls:
+            continue  # this skill never commands that state
+        assert not result.ok
+        assert "gripper did not respond" in result.message
+
+
+def test_pick_stops_moving_after_a_failed_close():
+    """No lift after a close that failed: the arm stays at the grasp pose."""
+    ctrl = FakeController(gripper_fails_on=GRIPPER_CLOSED)
+    Skills(ctrl, cfg=CFG).pick(TARGET)
+    assert ctrl.sequence[-1] == "gripper_toggle"

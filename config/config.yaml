@@ -5,12 +5,17 @@
 # architecture_a.skills.down_rotvec, and robot.home_q which is absent.
 
 robot:
-  host: "127.0.0.1"       # MEASURE. Still the old simulator's address
+  host: "10.149.230.1"       # NEW IP ADDRESS CONFIRMED
   rtde_port: 30004
-  gripper:
-    power_pin: 1          # CONFIRM against the real wiring before powering it
-    control_pin: 2        # CONFIRM
-  # home_q: [ , , , , , ] # MEASURE. Six joint angles. skills.home() refuses without it
+  gripper:                # OnRobot RG2 on the tool connector, no Compute Box. URScript over the tool pins
+    open_mm: 100.0        # RG2 stroke is 0 to 110 mm; 100 keeps clear of the end stop
+    close_mm: 0.0
+    force_n: 20.0         # 3 to 40 N. Half of the maximum holds a cup without crushing it
+    tolerance_mm: 5.0     # a width this close to the target counts as "already there"
+    max_sends: 2          # the command is sent again once if the fingers do not start to move
+    result_register: 12   # output int 12 and 13 and output double 12. ur_rtde leaves 12 to 19 to the user
+    result_timeout_s: 0.5 # wait for the result to reach RTDE after the script ends
+  home_q: [5.6173, -1.4937, -1.4575, -1.7097, 1.5933, 4.4209]  # rad. Pendant 23 Sep 2026: [321.85, -85.58, -83.51, -97.96, 91.29, 253.30] deg, TCP down
   motion:
     default_speed: 0.25   # m/s, m/s^2, for blocking moveL and moveJ
     default_acc: 0.50
@@ -22,7 +27,9 @@ robot:
 workspace:                # base frame, not world. Every commanded pose is checked
   x: [-0.700, 0.700]      # MEASURE, and err tight
   y: [-0.700, 0.700]      # MEASURE
-  z: [ 0.005, 0.700]      # MEASURE. z min sits just above the table
+  z: [ 0.177, 0.700]      # table 0.172 in base frame (fingertips ~1 mm above it, 23 Sep 2026) + 5 mm
+  max_radius: 0.75        # m, horizontal distance from the base axis. 0.81 was out of reach on 23 Sep 2026
+  max_joint_step_deg: 30  # a joint move turning any joint more than this is refused. Stops a full wrist spin
   max_speed: 0.25         # m/s ceiling. Architecture B derives its per-step limit from this
   max_acc: 0.50           # m/s^2
   max_angular_speed: 1.0  # rad/s. B needs this stated because it commands steps, not paths
@@ -76,8 +83,7 @@ architecture_a:
     grasp_depth_offset: 0.0  # + lowers the grasp point, tune per gripper
     speed: 0.10           # m/s during descent and transport
     acc: 0.30
-    settle_s: 0.4         # pause after gripper actuation
-    down_rotvec: [3.142, 0.0, 0.0]  # MEASURE. See scripts/check_orientation.py
+    down_rotvec: [0.580, 3.087, 0.0]  # RG URCap TCP, vertical, home yaw. RTDE 23 Sep 2026. Roll flips here, see check_orientation.py
   trace:
     dir: "logs/traces/"
 
@@ -94,3 +100,9 @@ testing:                  # only tests/hardware/ needs these. They move a real a
   tolerance_rad: 0.01
   settle_s: 0.5
   stopped_tolerance_m: 0.001  # movement below this counts as "the arm is still"
+  gripper_cycles: 20      # close and open pairs in the gripper endurance test. ~1 in 66 was lost before the resend
+  gripper_no_op_s: 0.6    # a gripper call that sends nothing should return within this. Fixed cost was ~0.2 s
+  rotate_deg: 10          # tool rotation in the down-pose tests, the case Koji reported
+  rotate_max_joint_deg: 45  # any joint turning more than this took the long way (a long turn is ~350)
+  rotate_joint_tolerance_deg: 3  # wrist 3 must turn rotate_deg within this for a tool z rotation
+  down_tolerance_deg: 15  # the down-pose tests skip unless the TCP is this close to down_rotvec

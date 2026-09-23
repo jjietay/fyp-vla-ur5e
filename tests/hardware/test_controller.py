@@ -25,7 +25,7 @@ import pytest
 
 from fyp.architecture_a.skills import GRIPPER_CLOSED, GRIPPER_OPEN
 from fyp.shared.hardware.safety import WorkspaceEnvelope
-from fyp.shared.hardware.ur5e_controller import URController
+from fyp.shared.hardware.ur5e_controller import URController, rg2_target_mm
 from fyp.shared.helpers.config import get_config
 
 pytestmark = pytest.mark.integration
@@ -39,6 +39,7 @@ STEP_RAD = float(_T["step_rad"])
 TOLERANCE_M = float(_T["tolerance_m"])
 TOLERANCE_RAD = float(_T["tolerance_rad"])
 SETTLE_S = float(_T["settle_s"])
+_G = get_config()["robot"]["gripper"]
 
 
 @pytest.fixture
@@ -46,9 +47,8 @@ def controller():
     """
     Connected controller that puts the arm back where it found it.
 
-    Does NOT start the gripper. `gripper_start()` switches a control box output
-    on, and in a shared lab that pin can drive something else, so only the
-    gripper tests below ask for it, through the `gripper` fixture.
+    Does NOT start the gripper, so the motion tests never move the fingers.
+    Only the gripper tests below ask for it, through the `gripper` fixture.
     """
     c = URController()
     start_pose = list(c.get_state()["tcp_pose"])
@@ -65,14 +65,14 @@ def controller():
 @pytest.fixture
 def gripper(controller):
     """
-    It takes the connected controller and gives it back with the gripper started.
+    It takes the connected controller and gives it back with the gripper started,
+    and leaves the fingers open afterwards so nothing is left clamped.
 
-    The pin wiring in config.yaml is for a digital-I/O gripper. The lab's OnRobot
-    gripper sits on the tool connector, so these tests are expected to fail
-    until the gripper code is rewritten. Skip them with -k "not gripper".
+    NOTHING MAY BE BETWEEN THE FINGERS. The close tests expect to close on air.
     """
     controller.gripper_start()
-    return controller
+    yield controller
+    controller.gripper_toggle(GRIPPER_OPEN)
 
 
 def test_gripper_start_reports_success(controller):
@@ -126,17 +126,37 @@ def test_gripper_toggles_between_the_two_int_states(gripper):
     GRIPPER_OPEN and GRIPPER_CLOSED, and the LeRobot adapter thresholds a float
     into the same two values.
 
-    The old test sent the strings "open" and "close" and asserted they came back,
-    which could never pass. The API was right and the test was wrong, so the test
-    was the thing that changed.
+    The width is checked as well as the state. The state only says what Python
+    asked for; the width is what the controller measured on the fingers.
+    """
+    width = gripper.gripper_toggle(GRIPPER_OPEN)
+    assert gripper.get_state()["gripper_state"] == GRIPPER_OPEN
+    assert width == pytest.approx(rg2_target_mm(_G["open_mm"]), abs=_G["tolerance_mm"])
+
+    width = gripper.gripper_toggle(GRIPPER_CLOSED)
+    assert gripper.get_state()["gripper_state"] == GRIPPER_CLOSED
+    assert width == pytest.approx(rg2_target_mm(_G["close_mm"]), abs=_G["tolerance_mm"])
+
+
+def test_gripper_already_in_place_is_not_sent_again(gripper):
+    """
+    The script checks the width before sending, so a second open sends no word
+    and returns in about the fixed cost of the call, not a stroke.
     """
     gripper.gripper_toggle(GRIPPER_OPEN)
-    time.sleep(SETTLE_S)
-    assert gripper.get_state()["gripper_state"] == GRIPPER_OPEN
+    t0 = time.monotonic()
+    gripper.gripper_toggle(GRIPPER_OPEN)
+    assert time.monotonic() - t0 < float(_T["gripper_no_op_s"])
 
-    gripper.gripper_toggle(GRIPPER_CLOSED)
-    time.sleep(SETTLE_S)
-    assert gripper.get_state()["gripper_state"] == GRIPPER_CLOSED
+
+def test_gripper_survives_many_cycles(gripper):
+    """
+    On 23 Sep 2026 about 1 command in 66 was lost with the old script. The resend
+    must make every one of these arrive, or raise, never pass silently.
+    """
+    for _ in range(int(_T["gripper_cycles"])):
+        gripper.gripper_toggle(GRIPPER_CLOSED)
+        gripper.gripper_toggle(GRIPPER_OPEN)
 
 
 def test_gripper_rejects_anything_that_is_not_zero_or_one(gripper):

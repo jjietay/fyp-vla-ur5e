@@ -16,14 +16,14 @@ Asynchronous inference and action chunking. Directly about the problem the infer
 
 Action and observation formats across a large collection of robot datasets, including UR5.
 
-**Read before settling [[Decisions to Make#Action space\|Action Space]].** It is the closest thing to a survey of what conventions other people converged on, which is exactly the question being decided.
+Relevant to [[Decisions to Make#Action space\|Action Space]], which was settled on 31 Aug and 23 Sep. It is the closest thing to a survey of what conventions other people converged on, so it is the reference for justifying that choice in the report.
 
 ## SmolVLA
 
 Already read and summarised. Key facts carried into the plan:
 
 * multi view RGB, robot state and a language string as input, with **no depth channel**
-* action chunk horizon of 50, executing in joint space
+* action chunk horizon of 50. The reference setups act in joint space, while this project uses TCP pose deltas to match Architecture A
 * asynchronous inference reported at roughly 30 percent off completion time
 * around 50 episodes as a fine tuning starting point, with workspace density mattering more than raw count
 

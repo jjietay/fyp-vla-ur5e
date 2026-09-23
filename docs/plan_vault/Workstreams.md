@@ -8,17 +8,17 @@ Build order, arranged by dependency rather than by date. [[Weekly Focus]] places
 
 Critical path to a result: lab access, then W3, then W5, then W6, then W7. Everything in Architecture A sits off that path, which is why it went first.
 
-| Workstream | Needs lab | State, 31 Aug 2026 |
+| Workstream | Needs lab | State, 23 Sep 2026 |
 |---|---|---|
-| [[Workstreams#W2 Architecture A software\|W2 Architecture A software]] | no | code complete, unrun on hardware |
+| [[Workstreams#W2 Architecture A software\|W2 Architecture A software]] | no | code complete. Controller motion and the gripper protocol proved on the arm, skills not yet run |
 | [[Workstreams#W2b Speech front end\|W2b Speech front end]] | no | **working**, wired into the runner |
-| [[Workstreams#W3 Camera and calibration\|W3 Camera and calibration]] | yes | scripts written, nothing run |
+| [[Workstreams#W3 Camera and calibration\|W3 Camera and calibration]] | yes | orientation check run on the arm. Camera not yet on the cell |
 | [[Workstreams#W4 Architecture A end to end\|W4 Architecture A end to end]] | yes | code complete, unrun on hardware |
 | [[Workstreams#W5 Demonstration capture\|W5 Demonstration capture]] | yes | not started, no data exists |
 | [[Workstreams#W6 Architecture B training\|W6 Architecture B training]] | partly | robot side built, no checkpoint |
 | [[Workstreams#W7 Evaluation and write up\|W7 Evaluation and write up]] | yes | harness built, trials blocked |
 
-**Treat every "code complete" as unverified**, because that is what it is. Almost nothing here has met hardware. Speech is the one exception.
+**Treat every "code complete" as unverified** until it has run on the arm. What has met hardware so far: speech, the controller's moves and servo stream (hardware tests 7 of 7, twice, on 23 Sep), and the RG2 protocol. The rewritten gripper code with its resend has not run on the arm yet.
 
 ---
 
@@ -52,8 +52,9 @@ Why it matters: Architecture A now starts from exactly the string Architecture B
 
 ### What still gates a first run
 
-- measure the workspace bounds, `down_rotvec` and `robot.home_q` on the real cell
-- write `T_base_cam.json` from the measured mount, since the pipeline refuses to start without it
+- ~~measure `down_rotvec`, `robot.home_q` and the table height~~, done 23 Sep
+- measure `workspace.x` and `workspace.y`, after the table layout is agreed with Koji
+- write `T_base_cam.json` from the measured camera position, since the pipeline refuses to start without it
 - set `ANTHROPIC_API_KEY`
 
 ---
@@ -101,14 +102,15 @@ The single biggest unblocker in the project. Nothing downstream can address a re
 - [x] `scripts/check_camera.py`, which proves the device works and reports intrinsics, coverage and the USB link
 - [x] `scripts/write_calibration.py`, which writes `T_base_cam.json` from six measured numbers
 - [x] `scripts/check_calibration.py`, which reaches for N points and reports the error in mm
-- [ ] run all of it, which needs the cell
+- [x] `check_orientation.py` run on the arm, 23 Sep
+- [ ] run the rest, which needs the camera on the cell
 
 ### Bench order
 
 Each of these fails in a way that looks like the next one's problem, so doing them out of order costs a session.
 
 1. `check_camera.py`. Proves frames arrive, reports intrinsics at this resolution, warns on a USB 2 link, and prints the centre pixel as a 3D point so the axis convention is visible
-2. `check_orientation.py`, arm parked pointing down, read only. Settles the open half of [[Decisions to Make#Action space]]
+2. `check_orientation.py`, arm parked pointing down, read only. Run on 23 Sep: Euler roll flipped, which settled the rotation format in [[Decisions to Make#Action space]]. It now checks that the 6D state is stable
 3. measure the mount, camera optical origin to arm base, translation and orientation
 4. `write_calibration.py` with those six numbers
 5. `check_calibration.py`, the only evidence stage 4 works
@@ -117,7 +119,7 @@ Depth coverage below 50 percent in step 1 means the scene, not the camera. Matte
 
 ### The trap
 
-The arm base carries `quat="0 0 0 -1"`, so **base is not world**. A world frame target fed through a base frame transform looks entirely plausible and is wrong.
+**Read poses from RTDE, never from the pendant.** On 23 Sep the pendant showed TCP z as -0.020 where RTDE reported 0.380, because the pendant shows a different frame. Everything in the code is in the robot base frame as RTDE reports it, and there is no world frame on the real cell. The old note about `quat="0 0 0 -1"` belonged to the MuJoCo model.
 
 ### Why validation is not optional
 
@@ -166,7 +168,7 @@ Closing the loop is also what makes [[Tasks#Tier 3 Drawer]] possible at all. Doc
 
 Critical path, longest tail, and the workstream most likely to be underestimated. Demo collection is hours of wall clock time and it gates training, which gates the whole comparison.
 
-- [ ] teleoperation rig working, see [[Decisions to Make#Teleoperation method]]
+- [ ] teleoperation rig working with the 3D jog device, see [[Decisions to Make#Teleoperation method]]
 - [ ] lock the dataset conventions and **write down the reasons**, see [[Decisions to Make#Action space]]
 - [ ] hardware recorder: threaded, clock gated state polling with camera frames captured in sync
 - [ ] record, using a paraphrase from W2b as each episode instruction
@@ -217,7 +219,7 @@ Keep the checkpoint and the exact dataset version together. A checkpoint whose d
 
 ### What to watch on the first real run
 
-`gripper_toggle` sleeps 0.1 s, which is two whole control periods at 20 Hz, so the adapter only actuates on a change of decision. Expect a visible pause at each grasp and release.
+`gripper_toggle` blocks until the fingers stop: about 0.2 s even when nothing moves, and about 1.5 s for a full stroke. It also ends the servo stream while it runs, because the RG2 is driven by a URScript that replaces the ur_rtde control script for that time. So the adapter only actuates on a change of decision, and each grasp and release will be a visible stop in the motion. Whether this hurts B's success rate is for the first real run to show.
 
 ---
 

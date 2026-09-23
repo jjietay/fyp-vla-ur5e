@@ -8,11 +8,11 @@ Choices that shape the project, each with the reasoning attached. These become t
 
 | Decision | State |
 |---|---|
-| [[Decisions to Make#Camera|Camera]] | decided, procurement pending |
+| [[Decisions to Make#Camera|Camera]] | decided, both cameras in hand 13 Sep |
 | [[Decisions to Make#Speech stack|Speech stack]] | decided, working on the GPU 31 Aug |
 | [[Decisions to Make#Detector query format|Detector query format]] | decided, forced by how OWLv2 works |
-| [[Decisions to Make#Teleoperation method|Teleoperation method]] | decided, hardware pending |
-| [[Decisions to Make#Action space|Action space]] | frame decided 31 Aug, rotation format still open |
+| [[Decisions to Make#Teleoperation method|Teleoperation method]] | decided 23 Sep, 3D jog device, no freedrive |
+| [[Decisions to Make#Action space|Action space]] | frame decided 31 Aug, rotation format decided 23 Sep |
 | [[Decisions to Make#Calibration marker|Calibration marker]] | decided 12 Aug, no marker |
 | [[Decisions to Make#Architecture B inference|Architecture B inference]] | decided 31 Aug |
 
@@ -24,13 +24,14 @@ A decision recorded without its reason is not much use six months later when an 
 
 `config/config.yaml` is the single source of truth for every **tunable** value, so that Architecture A and Architecture B cannot be constrained differently. A number living in a module is invisible to whoever is reviewing the workspace bounds, and invisible to every test.
 
-Five things stay in code on purpose. Each would be made worse by living in an editable file.
+Six things stay in code on purpose. Each would be made worse by living in an editable file.
 
 * **`STATE_NAMES`, `ACTION_NAMES`, `REQUIRED_DATASETS`** in `lerobot_export.py`. The format contract with a trained checkpoint. Editing one line in config would silently break every checkpoint trained before the edit, with no error, and the symptom would be a policy sending roll to z
 * **`TASKS` and `CHANGELOG`** in `evaluation/suite.py`. The experimental design, frozen before either pipeline was tuned. That freeze is what the evaluation chapter claims, and a file anyone can edit weakens the claim
 * **`SYSTEM_PROMPT` and `GROUNDING_PROMPT`** in `planner.py`. Multi-paragraph text that YAML handles badly, and "behaviour changes by editing prompts" is a stated property of Architecture A. They are the architecture rather than settings for it
 * **`TOOLS`, `TOOL_NAMES`, `MOTION_TOOLS`** in `tools.py`. Derived from the skill signatures with a test enforcing the match. In config they could disagree with the code
-* **`GRIPPER_CLOSED` and `GRIPPER_OPEN`** in `skills.py`. An API contract, not a tunable. `gripper_toggle` already handles the wiring inversion, so these never change with the cell
+* **`GRIPPER_CLOSED` and `GRIPPER_OPEN`** in `skills.py`. An API contract, not a tunable, so these never change with the cell
+* **The RG2 protocol numbers** in `ur5e_controller.py`, agreed 23 Sep 2026. The word formula (the 9.2 offset, the 110 mm clamp, the 3 to 40 N force range), the width formula and the sync cycle waits. They are the gripper's protocol copied from `docs/rg2.script`, not tuning, and a changed number sends a wrong command or reads a wrong width. The tunables (open and close width, force, tolerance, resends) are in `robot.gripper`
 
 `PROJECT_ROOT`, `DEFAULT_CONFIG_PATH` and `_CACHE` in `helpers/config.py` are the machinery that finds and reads the config, so they cannot be read from it.
 
@@ -62,7 +63,7 @@ Two cameras is evidence rather than preference. Reference SmolVLA fine tuning se
 Square on to the flat side of the table, arm at the far end, workspace between the two.
 
 - **azimuth: square on**, optical axis along the base x axis rather than diagonally across a corner
-- **lateral: centred**, camera at `y = 0` in base frame, position `(x_c, 0, z_c)` with `x_c` beyond the 0.55 m reach limit, looking back along minus x
+- **lateral: centred**, camera at `y = 0` in base frame, position `(x_c, 0, z_c)` with `x_c` beyond the 0.75 m reach limit measured on 23 Sep, looking back along minus x
 - **elevation: 0.7 to 0.8 m above the table**, about 35 to 39 degrees at a 1 m standoff
 
 Two D435i limits that constrain this: min-Z is about **0.3 m**, so nothing may sit closer than that, and it needs a **USB 3** cable, because a USB 2 cable enumerates and then silently caps resolution.
@@ -188,7 +189,7 @@ So the modular architecture is not simply more interpretable at a small cost. It
 
 ## Teleoperation method
 
-**Freedrive to prove the loop, SpaceMouse to record the real dataset.**
+**A 3D jog device through `servo_to_pose`, and no freedrive at all.** Decided 23 Sep 2026. The exact device is still to confirm.
 
 The most underestimated risk in the project, because it silently determines whether the training data is usable.
 
@@ -200,13 +201,13 @@ The most underestimated risk in the project, because it silently determines whet
 
 A visuomotor policy trained on kinesthetic teaching can key on the human arm present in every training frame. At test time that arm is absent, and the policy has learned a feature that no longer exists. Discovering this after 200 episodes costs weeks, so inspect the frames of the first five episodes before recording the rest.
 
-The plan: prove the recording loop with freedrive in the first lab session, order a SpaceMouse anyway, and record the real training set with the SpaceMouse. If freedrive data does end up shipping, say so in the report and treat it as a named confound rather than hoping nobody notices.
+The first plan was to prove the recording loop with freedrive and record the real set with a SpaceMouse. On 23 Sep that changed to no freedrive at all, so no hand is in any frame, including the first test episodes.
 
 ---
 
 ## Action space
 
-**TCP pose deltas. Seven numbers: a base frame translation delta, a rotation delta, and an absolute gripper target.** Frame decided 31 Aug 2026. The rotation FORMAT is still open.
+**TCP pose deltas. Seven numbers: a base frame translation delta, a rotation delta, and an absolute gripper target.** Frame decided 31 Aug 2026. Rotation format decided 23 Sep 2026, see below.
 
 An earlier lean towards joint positions predated `skills.py`. Architecture A's primitives command TCP poses through `move_to_pose`, and the deciding constraint in this project is that the action space must match what A commands, or the two architectures are not solving the same problem and the comparison is unfair in a way a careful examiner will spot.
 
@@ -222,13 +223,13 @@ An earlier lean towards joint positions predated `skills.py`. Architecture A's p
 
 Inverse kinematics is in the loop, so near a singularity a small hand movement demands very large joint speeds. Keep the workspace away from full extension and from directly over the base. One hand pose also has several joint solutions, so the arm can reconfigure at a branch boundary.
 
-### The open part
+### Rotation format, settled 23 Sep 2026
 
-`down_rotvec` is `[3.142, 0, 0]`, whose magnitude is pi. That is the boundary of **both** rotation formats in use. A turn of pi about an axis equals a turn of pi about the opposite axis, so the rotation vector can flip sign, and converting to Euler gives roll of pi, which is the wrap point, so roll can flip too. Same physical pose, opposite numbers.
+The down pose has a rotation vector of magnitude pi (`down_rotvec` is `[0.580, 3.087, 0.0]`). That is the boundary of **both** rotation formats in use. A turn of pi about an axis equals a turn of pi about the opposite axis, so the rotation vector can flip sign, and converting to Euler gives roll of pi, which is the wrap point, so roll can flip too. Same physical pose, opposite numbers.
 
-Action deltas are immune, because they are computed through rotation matrices. `observation.state` is not, and it carries roll. A flip would put a 6.28 jump into one of the policy's seven inputs, at random, on the exact pose used for every pick.
+`scripts/check_orientation.py` on the lab arm on 23 Sep 2026 showed roll flipping between -pi and +pi. So `observation.state` now stores rotation as the first two columns of the rotation matrix: ten numbers, being x, y, z, six matrix entries and the gripper. They change smoothly everywhere, and the third column is their cross product, so nothing is lost. A test puts two poses either side of the flip and checks the state barely changes.
 
-`scripts/check_orientation.py` settles whether this happens on the real controller. Read only, ten seconds. If it flips, store rotation as the first two columns of the rotation matrix, changing `STATE_NAMES`, the converter and the adapter together, **before any episode is recorded**.
+The action is unchanged: seven numbers with an Euler rotation delta. Action deltas were always immune, because they are computed through rotation matrices and a delta near zero is far from any wrap point. No episode had been recorded, so no data was lost.
 
 ### Also settled
 
@@ -242,9 +243,9 @@ Also to lock before recording: the observation set of two RGB views plus the sta
 
 **No marker. `T_base_cam` comes from the measured mount geometry instead.** Decided 12 Aug 2026.
 
-The fixed camera is bolted at a known offset from the arm base, so `T_base_cam` is one constant transform. Rather than recover it by observing a target, it is written directly from the measured mount into `config/calibration/T_base_cam.json`. Nothing in the pipeline changes, because `hand_eye.py` loads the transform from JSON and never cares how the numbers got there.
+The fixed camera stands at a measured offset from the arm base, so `T_base_cam` is one transform. Rather than recover it by observing a target, it is written directly from the measured position into `config/calibration/T_base_cam.json`. The lab is shared, so the camera is taped in place and taken down between sessions, and the transform is re-measured at the start of each session. Nothing in the pipeline changes, because `hand_eye.py` loads the transform from JSON and never cares how the numbers got there.
 
-Two reasons, and the second decided it. The mount is rigid and the transform is genuinely constant, so a geometric answer exists without observing anything. And Prof Cheah's view is that a printed board in the cell looks out of place against a real deployment, while the project argues for an interface a person could actually use.
+Two reasons, and the second decided it. Within a session the camera does not move, so a geometric answer exists without observing anything. And Prof Cheah's view is that a printed board in the cell looks out of place against a real deployment, while the project argues for an interface a person could actually use.
 
 ### The cost, recorded honestly
 
@@ -282,7 +283,7 @@ The client process needs `lerobot`, `torch`, `ur_rtde` and `pyrealsense2` togeth
 
 Both read out of the LeRobot 0.6.1 source rather than the documentation.
 
-**State names.** LeRobot builds `observation.state` by looking each dataset feature name up in the dict the robot returns. So the adapter's observation keys are literally `x`, `y`, `z`, `roll`, `pitch`, `yaw`, `gripper`, and the camera key is `top`.
+**State names.** LeRobot builds `observation.state` by looking each dataset feature name up in the dict the robot returns. So the adapter's observation keys are literally `x`, `y`, `z`, `r00`, `r10`, `r20`, `r01`, `r11`, `r21`, `gripper`, and the camera key is `top`. `rIJ` is row I, column J of the rotation matrix. Euler `roll`, `pitch`, `yaw` were dropped on 23 Sep 2026, see the rotation format section above.
 
 **Action order.** `robot_client` unpacks the policy's action tensor by the **order** of `action_features`, by index, with no names involved. A reordering produces no error and sends roll to z.
 

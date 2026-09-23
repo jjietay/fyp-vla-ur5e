@@ -12,10 +12,11 @@ camera-frame XYZ, the pick and place primitives only speak base frame, and this
 transform is the whole of the bridge between them. Without it the detector can
 see an object perfectly and the arm has no idea where it is.
 
-The camera is bolted to the world at roughly 45 degrees, so the transform is one
-constant and never changes unless the camera is knocked. `Calibration Marker`
-closed on no marker, which means these six numbers are MEASURED rather than
-fitted, and this script is that decision made runnable.
+The camera stands at roughly 45 degrees to the side, taped in place because the
+lab is shared, so the transform holds for one session. Re-measure and re-run this
+each time the camera is set up again. `Calibration Marker` closed on no marker,
+which means these six numbers are MEASURED rather than fitted, and this script
+is that decision made runnable.
 
 What the six numbers are:
 

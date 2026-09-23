@@ -8,22 +8,24 @@ Week 1 begins 10 Aug 2026. Recess week is 28 Sep. That gives 13 usable weeks to 
 
 Nov 2026 is a **completion** deadline. Submission stays on the official dates in [[FYP Submissions]].
 
-| Week   | Dates           | Focus                                                                 | Milestone                                                       |
-| ------ | --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 1      | 10 to 16 Aug    | [[Workstreams]], chase lab access and procurement                   | **done**, plus most of W2 and W4 pulled forward                 |
-| 2      | 17 to 23 Aug    | [[Workstreams#W2b Speech front end\|W2b Speech Front End]], and the reading in [[Research Papers for Reading]]              | speech gives a transcript                                       |
-| 3      | 24 to 30 Aug    | wire speech into the pipeline, Architecture B inference loop          | spoken command drives A end to end                              |
-| 4      | 31 Aug to 6 Sep | [[Workstreams#W3 Camera and calibration\|W3 Camera and Calibration]]                                         | `T_base_cam` measured and validated, reach error reported in mm |
-| 5      | 7 to 13 Sep     | [[Workstreams#W4 Architecture A end to end\|W4 Architecture A End to End]]                                      | A passes [[Tasks#Tier 0 Pick and Place\|Tier 0 Pick and Place]]                              |
-| 6      | 14 to 20 Sep    | teleop rig, dataset conventions, **[[FYP Submissions#D1 Project Plan\|D1 Project Plan]] due 14 Sep**   | D1 submitted                                                    |
-| 7      | 21 to 27 Sep    | record Tier 0 demos, first fine tune                                  | dataset exists                                                  |
-| recess | 28 Sep to 4 Oct | [[Workstreams#W6 Architecture B training\|W6 Architecture B Training]] inference loop, safety envelope, async | B passes Tier 0                                                 |
-| 8      | 5 to 11 Oct     | [[Tasks#Tier 1 Pouring\|Tier 1 Pouring]] both architectures                                 | Tier 1 done                                                     |
-| 9      | 12 to 18 Oct    | [[Tasks#Tier 2 Ambiguity\|Tier 2 Ambiguity]] and [[Tasks#Tier 3 Drawer\|Tier 3 Drawer]]                            | Tiers 2 and 3 done                                              |
-| 10     | 19 to 25 Oct    | [[Workstreams#W7 Evaluation and write up\|W7 Evaluation and Write Up]] full sweep, **freeze results**         | comparison complete                                             |
-| 11     | 26 Oct to 1 Nov | write [[FYP Submissions#D4 Final Report\|D4 Final Report]], figures, repo consolidation                | full draft                                                      |
-| 12     | 2 to 8 Nov      | draft to supervisor, Turnitin, record video, rehearse demo            | demo ready                                                      |
-| 13     | 9 to 15 Nov     | **[[FYP Submissions#D2 Interim Report and Video\|D2 Interim Report and Video]] due 10 Nov**                        | D2 submitted, D4 complete                                       |
+Re-baselined on 9 Sep 2026 and submitted in [[FYP Submissions#D1 Project Plan\|D1 Project Plan]]. The lab moved in September, so there was no arm until about 22 Sep. The three weeks lost come out of the critical path, which holds only because the software was already written and waiting on hardware.
+
+| Week | Dates | Focus | Milestone |
+|---|---|---|---|
+| 1 | 10 to 16 Aug | [[Workstreams]] repo reset, Architecture A software | **done** |
+| 2 and 3 | 17 to 30 Aug | Architecture A in full, [[Workstreams#W2b Speech front end\|W2b Speech Front End]], paraphrase sets | **done** |
+| 4 | 31 Aug to 6 Sep | Architecture B robot side, speech and camera benched without the arm | **done** |
+| 5 and 6 | 7 to 20 Sep | no arm. Detector on captured frames, hardware recorder, dataset conventions. **[[FYP Submissions#D1 Project Plan\|D1 Project Plan]] due 14 Sep** | D1 submitted |
+| 7 | 21 to 27 Sep | [[Workstreams#W3 Camera and calibration\|W3 Camera and Calibration]]: cell setup, action space check, hand eye, reach error in mm | first arm session 23 Sep done |
+| recess | 28 Sep to 4 Oct | [[Workstreams#W4 Architecture A end to end\|W4 Architecture A End to End]] on hardware | A passes [[Tasks#Tier 0 Pick and Place\|Tier 0 Pick and Place]] |
+| 8 | 5 to 11 Oct | first demonstration batch, first SmolVLA fine tune | dataset exists |
+| 9 | 12 to 18 Oct | [[Workstreams#W6 Architecture B training\|W6 Architecture B Training]] on hardware, Tier 0. [[Tasks#Tier 1 Pouring\|Tier 1 Pouring]] both | B passes Tier 0 |
+| 10 | 19 to 25 Oct | [[Tasks#Tier 2 Ambiguity\|Tier 2 Ambiguity]] and [[Tasks#Tier 3 Drawer\|Tier 3 Drawer]] | Tiers 2 and 3 done |
+| 11 | 26 Oct to 1 Nov | [[Workstreams#W7 Evaluation and write up\|W7 Evaluation and Write Up]] full sweep, Tier 4, **freeze results** | comparison complete |
+| 12 | 2 to 8 Nov | write [[FYP Submissions#D4 Final Report\|D4 Final Report]], record video, rehearse demo, draft to supervisor | demo ready |
+| 13 | 9 to 15 Nov | **[[FYP Submissions#D2 Interim Report and Video\|D2 Interim Report and Video]] due 10 Nov** | D2 submitted, D4 complete |
+
+If arm access slips again, drop from the bottom of the descope ladder in [[Different Risk in Project]], Tier 4 first and then Tier 3, rather than thinning every tier.
 
 ## After week 13
 
@@ -46,4 +48,4 @@ Weeks 2 and 3 were largely spent in week 1, because none of it needed the lab. W
 
 That does not buy as much time as it looks like it does. The critical path runs through lab access, and nothing above shortens it. What it buys is slack later, and the freedom to spend weeks 2 and 3 on the two papers in [[Research Papers for Reading]] and on the speech front end, both of which were going to get squeezed.
 
-Weeks 4 onward are unchanged and still gated on the arm.
+Weeks 5 onward were re-baselined on 9 Sep around the lab move, as in the table above.

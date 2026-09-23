@@ -5,20 +5,23 @@ Architecture A stage 4: converts CAMERA-frame 3D points into ROBOT BASE-frame
 sub-millimetre camera-frame XYZ) and the pick/place primitives, which can only
 speak base frame.
 
-Setup assumed here is EYE-TO-HAND: the camera is bolted to the world, viewing
-the table from the side at roughly 45 degrees, NOT mounted on the arm. So the
-unknown is one fixed transform T_base_cam, and it never changes unless the
-camera is knocked.
+Setup assumed here is EYE-TO-HAND: the camera stands still in the world,
+viewing the table from the side at roughly 45 degrees, NOT mounted on the arm.
+So the unknown is one transform T_base_cam. The lab is shared, so the camera is
+taped in place and taken down between sessions, which means T_base_cam holds
+for one session and is re-measured at the start of the next.
 
-How it is solved:
-- Move the arm to N poses. At each one you know where the TCP is in base frame
-  (from get_state) and you can see a marker on the gripper in the camera.
-- That gives N pairs of the SAME physical point expressed in two frames.
-- Kabsch/Procrustes finds the single rotation + translation that best maps one
-  cloud onto the other. No iteration, no initial guess, one SVD.
-
-Needs at least 3 non-collinear points to be solvable at all; use 10-20 spread
-across the whole workspace or the fit will be accurate only where you sampled.
+How it is obtained (decided 12 Aug 2026, no fiducial marker):
+- MEASURED from the mount with a rule and written by scripts/write_calibration.py.
+  This file only loads it. check_calibration.py is the only check on it, because
+  a measured transform has no residual of its own.
+- FALLBACK if the measured one is too coarse to grasp with: a matte ball held in
+  the gripper, the arm moved to N poses, the ball centre seen in the camera and
+  the TCP read from get_state. That gives N pairs of the SAME physical point in
+  two frames, and `solve_rigid_transform` below (Kabsch) finds the rotation and
+  translation that best maps one cloud onto the other. It needs at least 3
+  non-collinear points; use 10-20 spread across the workspace, or the fit is
+  accurate only where you sampled.
 
 CAREFUL: this solves camera -> BASE. Everything downstream must stay in base
 frame, because that is the only frame the arm understands: get_state reports the

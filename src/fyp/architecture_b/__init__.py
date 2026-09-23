@@ -25,7 +25,9 @@ prompt to edit and no primitive to tune, which is precisely the tradeoff being
 measured against Architecture A.
 
 The policy maps images, robot state and an instruction STRING to TCP pose
-deltas: seven numbers, being a base-frame translation delta, an Euler rotation
+deltas. The state gives orientation as two columns of the rotation matrix,
+because Euler roll flips between +pi and -pi with the gripper pointing down. The
+action is seven numbers, being a base-frame translation delta, an Euler rotation
 delta, and an absolute gripper target. Not joint positions. That choice is
 inherited from `demos/lerobot_export.py` and is still open in
 `docs/plan_vault/Decisions to Make.md`, so if it changes, the converter, the

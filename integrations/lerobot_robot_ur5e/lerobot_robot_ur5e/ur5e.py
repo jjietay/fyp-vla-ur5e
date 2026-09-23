@@ -174,9 +174,10 @@ class UR5eRobot(Robot):
 
         self._controller.servo_to_pose(target)
 
-        # Only on a change of decision. `gripper_toggle` sleeps 0.1 s, which is
-        # two whole control periods at 20 Hz, so re-commanding an already open
-        # gripper would stall the loop on every step and the arm would stutter.
+        # Only on a change of decision. `gripper_toggle` blocks until the fingers
+        # stop, about 0.2 s even for a gripper already in place and about 1.5 s
+        # for a full stroke, and it ends the servo stream while it runs.
+        # Re-commanding every step would stall the 20 Hz loop on every step.
         if gripper != self._gripper_commanded:
             self._controller.gripper_toggle(gripper)
             self._gripper_commanded = gripper

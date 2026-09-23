@@ -32,6 +32,8 @@ Required contents: the main objectives, background, the proposed way of carrying
 
 Almost all of it already exists and can be lifted. Objectives and background come from the scope statement in `docs/fyp_plan.md`, the approach section is [[Workstreams]], and the chart is [[Weekly Focus]] reformatted as a Gantt chart rather than a table.
 
+Written 9 to 13 Sep. The master copy is the Google Doc, and `docs/FYP_A1005-261_Project_Plan_v5.docx` is version 5. Its schedule is the one re-baselined around the lab move, which [[Weekly Focus]] now matches.
+
 ---
 
 ## D2 Interim Report and Video

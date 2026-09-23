@@ -12,8 +12,8 @@ mid-trial.
 
 `ask_user` is here alongside the motion skills, and that placement is the whole
 Tier 2 experiment. Asking a clarifying question is, to this architecture, just
-another tool call. Architecture B has no equivalent: SmolVLA emits joint actions
-and has no channel through which a question could travel. The asymmetry is a
+another tool call. Architecture B has no equivalent: SmolVLA emits TCP pose
+deltas and has no channel through which a question could travel. The asymmetry is a
 result, not something to paper over.
 """
 from __future__ import annotations

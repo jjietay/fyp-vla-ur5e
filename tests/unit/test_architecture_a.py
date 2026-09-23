@@ -112,7 +112,10 @@ def test_malformed_position_is_rejected(env):
 
 def test_bad_enum_is_rejected(env):
     with pytest.raises(PlanRejected, match="must be one of"):
-        validate_call("open_drawer", {"handle_xyz": [0.1, 0.1, 0.1], "pull_axis": "sideways"}, env)
+        # The handle is INSIDE the workspace, so the enum is the only thing wrong.
+        # It was [0.1, 0.1, 0.1] until 23 Sep 2026, when z min rose above 0.1 and
+        # the call was rejected for its position instead.
+        validate_call("open_drawer", {"handle_xyz": INSIDE, "pull_axis": "sideways"}, env)
 
 
 def test_valid_call_passes_through(env):

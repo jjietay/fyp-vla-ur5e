@@ -18,7 +18,7 @@ from fyp.architecture_b.demos.lerobot_export import (ACTION_NAMES, STATE_NAMES,
                                                      apply_delta_action,
                                                      build_state,
                                                      compute_delta_action)
-from fyp.shared.helpers.rotations import euler_to_rotvec, rotvec_to_R
+from fyp.shared.helpers.rotations import euler_to_rotvec, rotvec_to_euler, rotvec_to_R
 
 RNG = np.random.default_rng(0)
 
@@ -36,7 +36,8 @@ def random_pose() -> np.ndarray:
 
 def test_names_are_the_expected_order():
     """The wire order. robot_client unpacks the action tensor by index."""
-    assert STATE_NAMES == ("x", "y", "z", "roll", "pitch", "yaw", "gripper")
+    assert STATE_NAMES == ("x", "y", "z", "r00", "r10", "r20", "r01", "r11", "r21",
+                           "gripper")
     assert ACTION_NAMES == ("dx", "dy", "dz", "droll", "dpitch", "dyaw", "gripper")
 
 
@@ -44,6 +45,42 @@ def test_state_vector_matches_state_names():
     vector = build_state(random_pose(), 1)
     assert len(vector) == len(STATE_NAMES)
     assert vector.dtype == np.float32
+
+
+def test_state_columns_are_the_first_two_columns_of_R():
+    """The names promise R[i, j] in column order, so check each one by name."""
+    pose = random_pose()
+    R = rotvec_to_R(pose[3:])
+    state = dict(zip(STATE_NAMES, build_state(pose, 0)))
+    for i in range(3):
+        for j in range(2):
+            assert state[f"r{i}{j}"] == pytest.approx(R[i, j], abs=1e-6)
+
+
+def test_state_is_continuous_through_the_roll_flip():
+    """
+    The reason the state is not Euler. With the gripper pointing down, a tilt of
+    a hundredth of a radian either side moves Euler roll from about +pi to about
+    -pi. The 6D state of the same two poses must stay close, because the arm
+    barely moved.
+    """
+    xyz = [0.3, -0.3, 0.3]
+    a = np.concatenate([xyz, euler_to_rotvec([np.pi - 0.005, 0.0, 0.3])])
+    b = np.concatenate([xyz, euler_to_rotvec([-np.pi + 0.005, 0.0, 0.3])])
+
+    # First confirm the two poses really do sit either side of the flip.
+    assert abs(rotvec_to_euler(a[3:])[0] - rotvec_to_euler(b[3:])[0]) > 6.0
+
+    assert np.max(np.abs(build_state(a, 1) - build_state(b, 1))) < 0.02
+
+
+def test_state_columns_are_unit_and_orthogonal():
+    """Two columns of a rotation matrix, so the policy never sees an impossible state."""
+    state = build_state(random_pose(), 1)
+    c0, c1 = np.asarray(state[3:6], dtype=float), np.asarray(state[6:9], dtype=float)
+    assert np.linalg.norm(c0) == pytest.approx(1.0, abs=1e-6)
+    assert np.linalg.norm(c1) == pytest.approx(1.0, abs=1e-6)
+    assert float(c0 @ c1) == pytest.approx(0.0, abs=1e-6)
 
 
 # -------------------------------------------------------------- round trip

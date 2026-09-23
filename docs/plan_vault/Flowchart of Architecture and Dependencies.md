@@ -14,10 +14,10 @@ Everything that has to happen in order, and what can be done in parallel while w
 
 ```mermaid
 flowchart TD
-    LAB([Lab access confirmed]):::blocker
+    LAB([Lab access, from 22 Sep]):::done
     W2[W2 Architecture A Software]
     W2B[W2b Speech Front End]
-    W3[W3 Camera and Calibration]:::crit
+    W3[W3 Camera and Calibration]:::doing
     W4[W4 Architecture A End to End]
     W5[W5 Demonstration Capture]:::crit
     W6[W6 Architecture B Training]:::crit
@@ -40,11 +40,12 @@ flowchart TD
     classDef blocker fill:#78350f,stroke:#f59e0b,color:#fff
     classDef doing fill:#14532d,stroke:#22c55e,color:#fff
     classDef deliver fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    classDef done fill:#374151,stroke:#9ca3af,color:#fff
 ```
 
-Red is the critical path. Amber is the thing blocking it. Green is in progress.
+Red is the critical path. Green is in progress. Grey is done.
 
-The shape of the risk is visible here: **four of the five red boxes sit downstream of one amber box.** No amount of software work changes that, which is why lab access matters more than any code.
+Lab access was the amber blocker until about 22 Sep, when the arm became available after the lab move. The critical path now runs through W3 on the real cell, then demonstration capture, then training.
 
 ## Runtime, both architectures
 
@@ -93,7 +94,7 @@ flowchart LR
     MARK[Calibration marker: none]:::ok --> W3[W3 Calibration]
     CAM[Camera setup]:::ok --> W3
     TELE[Teleoperation method]:::ok --> W5[W5 Capture]
-    ACT[Action space]:::pending --> W5
+    ACT[Action space]:::ok --> W5
     ACT --> W2[W2 Primitives]
     SPEECH[Speech stack]:::ok --> W2B[W2b Speech]
 
@@ -101,9 +102,9 @@ flowchart LR
     classDef pending fill:#78350f,stroke:#f59e0b,color:#fff
 ```
 
-One decision is still open. [[Decisions to Make#Action space\|Action Space]] has to be settled before a single episode is recorded, because it must match what the primitives command.
+No decision is open. [[Decisions to Make#Action space\|Action Space]] was the last one, settled on 23 Sep when the rotation format was fixed, before any episode was recorded.
 
-[[Decisions to Make#Calibration marker\|Calibration Marker]] closed on 12 Aug with no marker, so W3 is now gated on lab access alone.
+[[Decisions to Make#Calibration marker\|Calibration Marker]] closed on 12 Aug with no marker.
 
 ## Keeping these current
 

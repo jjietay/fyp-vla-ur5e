@@ -1,7 +1,7 @@
 """check_orientation.py
 
-It takes a stationary arm and gives you whether its orientation numbers are
-stable, which decides how the dataset should store rotation.
+It takes a stationary arm and gives you whether the state vector Architecture B
+sees is stable, with the raw rotation vector shown beside it.
 
     uv run python scripts/check_orientation.py --seconds 10
 
@@ -24,21 +24,23 @@ Your gripper-pointing-down pose sits on the boundary of BOTH formats in use:
   converting that to Euler gives roll of pi, which is the wrap point, so roll can
   read +3.14 on one frame and -3.14 on the next
 
-`observation.state` carries roll, so if this flips, the policy sees one of its
-seven inputs jump by 6.28 at random while the arm is perfectly still, on the
-exact pose used for every pick. Action deltas are unaffected, because they are
-computed through rotation matrices.
+## What happened
 
-## Reading the result
+On 23 Sep 2026 this script showed Euler roll flipping between -pi and +pi on the
+lab arm at the vertical pose. `observation.state` therefore no longer carries
+Euler angles. It carries the first two columns of the rotation matrix, which
+change smoothly everywhere (see `build_state` in lerobot_export.py). Action
+deltas were never affected, because they are computed through rotation matrices.
 
-A stationary arm should show ranges of roughly sensor noise, which is small
-fractions of a millimetre and of a milliradian. Any component whose range is
-near 2*pi is flipping, not moving.
+## Reading the result now
 
-If it flips, store rotation as a continuous six-number form, being the first two
-columns of the rotation matrix, instead of Euler. If it does not flip on your
-hardware, note that in the report and carry on with Euler, because it is a
-property of this controller's firmware rather than a law.
+A stationary arm should show ranges of roughly sensor noise. Any component whose
+range is near 2*pi is flipping, not moving.
+
+The raw rotation vector (`tcp_pose.rx` to `rz`) may still flip at this pose. That
+is expected and harmless, because nothing feeds it to the policy directly. The
+verdict is decided by the `state.*` rows only, and with the 6D state they should
+be stable. A flip there now means `build_state` is wrong.
 """
 
 from __future__ import annotations
@@ -83,7 +85,6 @@ def main() -> int:
               f"  check robot.host in config.yaml is the arm's IP", file=sys.stderr)
         return 1
 
-    pin = int(cfg["robot"]["gripper"]["control_pin"])
     print(f"watching for {args.seconds:.0f}s. DO NOT MOVE THE ARM.\n")
 
     poses, states = [], []
@@ -91,7 +92,9 @@ def main() -> int:
     while time.monotonic() < deadline:
         t0 = time.monotonic()
         pose = np.asarray(rtde_r.getActualTCPPose(), dtype=float)
-        gripper = 0 if rtde_r.getDigitalOutState(pin) else 1
+        # The gripper value does not affect the flip check, and Python cannot
+        # read the RG2 width anyway, so a fixed 1 stands in for it.
+        gripper = 1
         poses.append(pose)
         states.append(build_state(pose, gripper))
         time.sleep(max(0.0, period - (time.monotonic() - t0)))
@@ -120,7 +123,7 @@ def _report(poses: np.ndarray, states: np.ndarray, state_names) -> int:
         print(f"  tcp_pose.{name:<3} {col.min():+.4f} to {col.max():+.4f}  "
               f"range {spread:.4f}{flag}")
         if spread > FLIP_THRESHOLD_RAD:
-            flipped.append(f"tcp_pose.{name}")
+            print("    (raw rotation vector, not seen by the policy)")
 
     for i, name in enumerate(state_names):
         col = states[:, i]
@@ -137,13 +140,12 @@ def _report(poses: np.ndarray, states: np.ndarray, state_names) -> int:
         for name in flipped:
             print(f"  {name}")
         print("\nThe policy would see these jump at random on the pose used for every\n"
-              "pick. Store rotation as the first two columns of the rotation matrix\n"
-              "instead of Euler, and change STATE_NAMES, the converter and the\n"
-              "adapter together, BEFORE recording any episodes.")
+              "pick. The state has been 6D since 23 Sep 2026 and should not flip, so\n"
+              "check build_state in lerobot_export.py BEFORE recording any episodes.")
         return 1
 
     print("VERDICT: stable. Nothing flipped over this window.\n"
-          "Euler is safe to record with on this controller. Worth repeating at the\n"
+          "The 6D state is safe to record with. Worth repeating at the\n"
           "other tool orientations you plan to use, since this only proves the one\n"
           "pose you just held.")
     return 0

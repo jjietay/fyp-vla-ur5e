@@ -74,7 +74,7 @@ venv. That split is visible in the tree rather than something you remember.
 
 ## Status
 
-Week 4 of 13, Sep 2026.
+Week 7 of 13, 23 Sep 2026.
 
 Both architectures are written. Architecture A is complete end to end: grounding,
 perception, skills, planning, the clarification loop and per-stage tracing.
@@ -82,10 +82,12 @@ Architecture B's robot side runs on LeRobot's own `policy_server` and
 `robot_client` through the UR5e adapter in `integrations/`. The safety envelope,
 the camera driver and the evaluation harness all exist.
 
-**Nothing has run against hardware except speech.** The speech front end
-transcribes on the GPU and drives Architecture A. There are zero recorded
-episodes, so Architecture B has no checkpoint and nothing can be trained yet.
+**The arm moves.** The first session on the real UR5e was 23 Sep 2026: the arm
+moves from Python, the hardware tests pass, the OnRobot RG2 gripper is driven
+over its URCap protocol, and the down pose, table height and reach limit are
+measured. Speech transcribes on the GPU and drives Architecture A.
 
-Lab access is the blocker on everything downstream: calibration, demonstration
-capture, every trial and every number. Current tasks live in
+Still to do on the cell: the camera and `T_base_cam`, the detector on real frames,
+the workspace x and y bounds. There are zero recorded episodes, so Architecture B
+has no checkpoint yet. Current tasks live in
 `docs/plan_vault/To Do (Non-Technical).md`.

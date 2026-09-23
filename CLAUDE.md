@@ -82,7 +82,7 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
 
 - **`pytest tests` should be GREEN.** Tests split by whether a device is needed:
   `tests/unit/` needs nothing, `tests/hardware/` needs a UR controller. The hardware ones
-  carry the `integration` marker and auto-skip when nothing answers on `127.0.0.1:30004`.
+  carry the `integration` marker and auto-skip when nothing answers on `robot.host`, port 30004.
   Force them with `--integration`. If you see 5 errors instead of 5 skips, `tests/conftest.py`
   is missing. A new file in `tests/hardware/` without `pytestmark` turns the suite red on a
   laptop, which is the one mistake this layout does not prevent by itself.
@@ -99,12 +99,24 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   crashes with `CUBLAS_STATUS_NOT_SUPPORTED` on sm_120.
 - **`detect()` reloads the model on every call.** Fine for `check_detector.py`, fatal in a
   loop. `ArchitectureA` is built once and reused for exactly this reason.
-- **Four config values in `architecture_a` are placeholders and WILL misbehave on hardware:**
-  `workspace.{x,y,z}` bounds, `skills.down_rotvec` (measure by hand-guiding the arm and
-  reading `get_state()["tcp_pose"][3:]`), `robot.home_q` (absent entirely, `home()` fails
-  until added), and `open_drawer(pull_axis=...)`. Measure all four before the first run.
+- **Two config values are still placeholders and WILL misbehave on hardware:**
+  `workspace.x` and `workspace.y` (wait for the table layout to be agreed with Koji), and
+  `open_drawer(pull_axis=...)`. Measured on 23 Sep 2026 and in `config.yaml`: `robot.host`,
+  `robot.home_q`, `workspace.z`, `workspace.max_radius` and `skills.down_rotvec`.
+- **Read poses from RTDE, never from the pendant.** The pendant shows TCP z in another frame
+  (-0.020 where RTDE reported 0.380 on 23 Sep).
+- **The RG2 gripper is driven by URScript through `sendCustomScriptFunction`.** The pendant
+  must be in Remote Control mode. Each call stops the ur_rtde control script, so it ends any
+  open servo stream, and it returns only after the fingers stop: about 0.2 s with no motion,
+  about 1.5 s for a full stroke. The grip-detected tool input is unreliable, so nothing may
+  use it. The protocol numbers in `ur5e_controller.py` are protocol facts, kept out of config
+  on purpose.
 - **Everything in `skills.py` goes through `WorkspaceEnvelope` first**, including intermediate
   approach and retreat waypoints. Never add a motion path that skips it.
+- **Every joint move goes through `WorkspaceEnvelope.check_joint_move` first.** UR joints turn
+  +/-360 degrees, so a `moveJ` to the other joint value of the same wrist angle spins the wrist
+  a full turn. `skills.home()` and `go_home.py` both use it. Rotations are built with rotation
+  matrices, never by adding angles to rotation-vector or Euler numbers.
 - **OWLv2 takes short noun phrases, never sentences.** It encodes each query into ONE CLIP
   embedding matched against image patches, so a sentence has no corresponding region and the
   match is meaningless. This is why `planner.py::extract_queries` exists at all. The 77-token
@@ -114,45 +126,46 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   vocabulary and skips grounding, which hands A a list of what is on the table that B never
   receives. Debugging aid only. `run_evaluation.py` deliberately passes nothing.
 
-## What exists right now (1 Sep 2026)
+## What exists right now (23 Sep 2026)
 
-Week 4 of 13. **Nothing has run against hardware except speech.**
+Week 7 of 13. The arm became available about 22 Sep, after the lab move, and the first
+session at the real UR5e was 23 Sep.
 
-**Written, never run against hardware:** Architecture A end to end (grounding, perception,
-skills, planner, clarification, tracing), `shared/hardware/{camera,safety}.py`, the evaluation
-harness, and as of 31 Aug the Architecture B robot side. `pytest tests/unit` collects 173,
-verified 1 Sep 2026. The count is higher than the number of test functions because several are
-parametrised, and it is far higher than the 59 this file claimed in August because the demos,
-perception, policy-action and skills suites landed since.
+**Working on real hardware:** the speech front end; `URController` motion (`go_home.py`
+reached `home_q` within 0.012 degrees, and `tests/hardware -k "not gripper"` passed 7 of 7
+twice); the RG2 gripper protocol (`scripts/check_gripper.py`); `check_orientation.py`.
 
-**Working on real hardware:** the speech front end only. `shared/speech.py` transcribes on the
-GPU and `scripts/run_architecture_a.py` drives the pipeline from it, with speech as the
-DEFAULT and `--text` or `--instruction` as the escape.
+**Written, not yet run on hardware:** the rewritten gripper control with its controller-side
+check and one resend (23 Sep); Architecture A's skills, perception and planner on the real
+cell; `shared/hardware/camera.py` on the cell (benched without the arm on 1 Sep); the
+evaluation harness; Architecture B's robot side. `pytest tests/unit` collects 233 as of
+23 Sep 2026, all green. `tests/hardware/test_orientation.py` (not yet run) checks that
+rotations at the down pose take the short way.
+
+**Settled on 23 Sep:** Architecture B's state stores rotation as the first two columns of the
+rotation matrix (10 numbers), because Euler roll flipped on the real arm. The action stays
+7 numbers with an Euler rotation delta. `WorkspaceEnvelope` also limits the horizontal
+distance from the base axis to `workspace.max_radius`.
 
 **Architecture B, 31 Aug:** inference runs on LeRobot's own `policy_server` and `robot_client`,
 driving the UR5e adapter at `integrations/lerobot_robot_ur5e/`, which is installed into the
-lerobot venv rather than this one. `URController` gained a non-blocking `servo_to_pose`,
-because `moveL` blocks and a 20 Hz policy loop built on it waits every cycle. See
-`docs/plan_vault/Decisions to Make.md`.
+lerobot venv rather than this one. `URController` has a non-blocking `servo_to_pose`,
+because `moveL` blocks and a 20 Hz policy loop built on it waits every cycle. There is no
+Architecture B agent for the evaluation harness yet: `run_evaluation.py --architecture B`
+prints a message and exits.
 
-**Not started:** all of W3 calibration, which is gated on lab access, and W5 demonstration
-capture, which is gated on W3. There is also no Architecture B agent for the evaluation
-harness: `run_evaluation.py --architecture B` prints a message and exits, because nothing yet
-wraps `policy_server` and `robot_client` behind `run(instruction) -> outcome`.
-
-**Blocked on lab access:** calibration, all demonstration capture, every trial, every number.
-One decision must be made the moment access arrives: the action space. The calibration marker
-question closed on 12 Aug 2026 with **no marker** (see below). See
-`docs/plan_vault/To Do (Non-Technical).md`.
+**Not done:** the camera on the cell and `T_base_cam`, the detector on real frames, the
+workspace x and y bounds, the e-stop recovery test, and all demonstration capture. There are
+zero episodes. Demonstrations will be driven with a 3D jog device, not freedrive.
 
 **No fiducial markers, anywhere.** `T_base_cam` is written by hand into
-`config/calibration/T_base_cam.json` from the measured camera mount geometry, not fitted.
+`config/calibration/T_base_cam.json` from the measured camera position, not fitted. The lab
+is shared, so the camera is taped in place and re-measured each session.
 `solve_rigid_transform` in `hand_eye.py` stays in the repo as the documented fallback (matte
-ball on the gripper, still tag-free) if the measured transform proves too coarse to grasp
+ball in the gripper, still tag-free) if the measured transform proves too coarse to grasp
 with. Expect a systematic 1-3 cm bias: 1 degree of mount orientation error is ~17 mm at a 1 m
-standoff. The reach test in W3 is the only check on stage 4, because a hand-measured transform
-produces no residual of its own. Reasoning in
-`docs/plan_vault/Decisions to Make.md`.
+standoff. The reach test is the only check on stage 4, because a hand-measured transform
+produces no residual of its own. Reasoning in `docs/plan_vault/Decisions to Make.md`.
 
 ## Evaluation harness
 

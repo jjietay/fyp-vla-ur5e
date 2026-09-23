@@ -3,13 +3,14 @@
 Convert recorded HDF5 episodes into a LeRobot dataset for SmolVLA.
 
 Bridges two formats. DemoRecorder writes ABSOLUTE states with AXIS-ANGLE
-orientation; SmolVLA / LeRobot want per-frame observations plus DELTA actions
-with orientation in EULER angles. Format-agnostic by construction: the same
+orientation; SmolVLA / LeRobot want per-frame observations plus DELTA actions.
+The state gives orientation as the first two columns of the rotation matrix
+(the "6D" form) and the action gives it as EULER angle deltas. Format-agnostic by construction: the same
 code converts every episode regardless of how it was teleoperated, because all share
 the recorder's schema (see hdf5_store.py).
 
 Output LeRobot features:
-    observation.state         (7,)   float32  [x,y,z, roll,pitch,yaw, gripper]  ABSOLUTE, Euler
+    observation.state         (10,)  float32  [x,y,z, r00,r10,r20, r01,r11,r21, gripper]  ABSOLUTE, 6D
     action                    (7,)   float32  [dx,dy,dz, droll,dpitch,dyaw, gripper]  DELTA + gripper target
     observation.images.<cam>  (H,W,3) video   fixed-camera RGB
 
@@ -35,14 +36,33 @@ from fyp.shared.helpers.transforms import pose_inv, pose_trans
 # up in the robot's raw observation dict, and unpacks the policy's action tensor
 # by the ORDER of the action names. Change either tuple and every previously
 # trained checkpoint silently reads the wrong element.
-STATE_NAMES = ("x", "y", "z", "roll", "pitch", "yaw", "gripper")
+#
+# rIJ is R[I, J], row I and column J. The state holds column 0 and then column 1,
+# which is the order `R[:, :2].T.ravel()` gives.
+STATE_NAMES = ("x", "y", "z", "r00", "r10", "r20", "r01", "r11", "r21", "gripper")
 ACTION_NAMES = ("dx", "dy", "dz", "droll", "dpitch", "dyaw", "gripper")
 
 
 def build_state(tcp_pose: np.ndarray, gripper: int) -> np.ndarray:
+    """
+    It takes a TCP pose and a gripper state and gives you the state vector the
+    policy sees: position, the first two columns of the rotation matrix, gripper.
+
+    Not Euler angles, and the reason is the lab arm itself. With the gripper
+    pointing straight down, roll sits at +pi or -pi, and a tilt of a fraction of
+    a degree flips it from one to the other (seen on 23 Sep 2026 with
+    check_orientation.py). Two poses a hair apart then give states 2*pi apart,
+    and the policy is asked to learn a jump that is not in the motion. The two
+    columns change smoothly with the rotation everywhere, and the third column is
+    their cross product, so nothing is lost by leaving it out.
+
+    Only the state changed. The action stays an Euler delta, because a delta
+    near zero is far from any flip, and `apply_delta_action` is unchanged.
+    """
+    tcp_pose = np.asarray(tcp_pose, dtype=float).reshape(-1)
     xyz = tcp_pose[:3]
-    rpy = rotvec_to_euler(tcp_pose[3:])
-    return np.concatenate([xyz, rpy, [float(gripper)]]).astype(np.float32)
+    two_columns = rotvec_to_R(tcp_pose[3:])[:, :2].T.ravel()
+    return np.concatenate([xyz, two_columns, [float(gripper)]]).astype(np.float32)
 
 
 def compute_delta_action(pose_t: np.ndarray,
@@ -188,11 +208,11 @@ def convert(episodes_dir: str, repo_id: str, task: str,
 
     features = {
         "observation.state": {
-            "dtype": "float32", "shape": (7,),
+            "dtype": "float32", "shape": (len(STATE_NAMES),),
             "names": list(STATE_NAMES),
         },
         "action": {
-            "dtype": "float32", "shape": (7,),
+            "dtype": "float32", "shape": (len(ACTION_NAMES),),
             "names": list(ACTION_NAMES),
         },
         f"observation.images.{camera}": {

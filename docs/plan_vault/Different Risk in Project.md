@@ -7,11 +7,13 @@ tags: [reference]
 | Risk | Impact | What to do |
 |---|---|---|
 | lab access slips past week 4 | eats the Nov target and the buffer with it | chase it in week 1, see [[To Do (Non-Technical)]] |
-| hands in frame contaminate demos | retrain from scratch, about 2 weeks | SpaceMouse ordered week 1, inspect the first 5 episodes |
+| hands in frame contaminate demos | retrain from scratch, about 2 weeks | no freedrive, demonstrations driven with a 3D jog device, inspect the first 5 episodes |
 | demos recorded with one templated instruction | phrasing hypothesis becomes untestable, unfixable without re recording | paraphrase sets written **before** recording starts |
 | measured `T_base_cam` off by more than grasp tolerance | A fails everywhere, B unaffected | reach test against known points, since a hand measured transform reports no residual of its own. Fall back to the ball and Kabsch procedure in [[Decisions to Make#Calibration marker\|Calibration Marker]] |
 | B fails to converge on 50 episodes | no comparison at all | constrain the workspace first, widen later |
-| 12 GB VRAM too tight for the fine tune | W6 stalls on the critical path | test a short run in week 2, long before real data exists |
+| 12 GB VRAM too tight for the fine tune | W6 stalls on the critical path | test a short run on the first real episodes, before recording the rest |
+| a gripper command is lost | a grasp silently does not happen | the controller checks each command and sends it once more, and a skill that still fails returns a failed result. Seen once in about 66 commands on 23 Sep, before the fix |
+| an e stop mid motion leaves the software in a bad state | a trial or a demo cannot restart cleanly | test the recovery (e stop, release, power on, re run) before demonstration capture |
 | spill damages equipment | project ending | tray, tinted water, capped speed |
 | lab noise wrecks speech recognition | trials fail for reasons unrelated to either architecture | headset mic, push to talk, transcript logged per trial |
 | report underruns 40 pages | resubmission | start writing week 11, not week 13 |

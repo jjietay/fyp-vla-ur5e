@@ -34,6 +34,16 @@ class WorkspaceEnvelope:
     subtly wrong. The real UR5e already enforces its own joint and singularity
     limits, so this only has to stop the obvious catastrophes: driving into the
     table, reaching off the bench, or commanding a speed nobody intended.
+
+    One limit is added to the box: `max_radius`, the horizontal distance from the
+    base axis. A box has corners, and the arm's reach is round. On 23 Sep 2026 a
+    target 0.81 m out was inside the box and still out of reach, because its
+    approach and retreat poses could not be reached. The controller refuses such
+    a pose itself, but only after the skill has started, so the arm stops half
+    way through a pick. Rejecting it here stops the skill before it moves.
+
+    The radius is horizontal, not spherical, because the table is close to the
+    base height and a tape measure on the table gives exactly this number.
     """
 
     def __init__(self, cfg: dict | None = None):
@@ -41,6 +51,8 @@ class WorkspaceEnvelope:
         self.x = tuple(float(v) for v in ws["x"])
         self.y = tuple(float(v) for v in ws["y"])
         self.z = tuple(float(v) for v in ws["z"])
+        self.max_radius = float(ws["max_radius"])
+        self.max_joint_step_deg = float(ws["max_joint_step_deg"])
         self.max_speed = float(ws["max_speed"])
         self.max_acc = float(ws["max_acc"])
 
@@ -49,7 +61,8 @@ class WorkspaceEnvelope:
         x, y, z = (float(v) for v in np.asarray(xyz, dtype=float).reshape(3))
         return (self.x[0] <= x <= self.x[1]
                 and self.y[0] <= y <= self.y[1]
-                and self.z[0] <= z <= self.z[1])
+                and self.z[0] <= z <= self.z[1]
+                and float(np.hypot(x, y)) <= self.max_radius)
 
     def check_point(self, xyz, what: str = "point") -> np.ndarray:
         """
@@ -72,6 +85,13 @@ class WorkspaceEnvelope:
                 raise SafetyViolation(
                     f"{what} {axis}={value:.3f} is above max {hi:.3f} "
                     f"(by {value - hi:.3f} m)")
+        # After the box on purpose. A point that fails both is reported by axis,
+        # which is the more specific message.
+        radius = float(np.hypot(p[0], p[1]))
+        if radius > self.max_radius:
+            raise SafetyViolation(
+                f"{what} radius={radius:.3f} is above max {self.max_radius:.3f} "
+                f"(by {radius - self.max_radius:.3f} m)")
         return p
 
     def check_pose(self, pose, what: str = "pose") -> list[float]:
@@ -89,6 +109,37 @@ class WorkspaceEnvelope:
             raise SafetyViolation(f"{what} is not finite: {p.tolist()}")
         self.check_point(p[:3], what)
         return [float(v) for v in p]
+
+    def check_joint_move(self, current_q, target_q, what: str = "joint move") -> list[float]:
+        """
+        It takes the joint angles now and a joint target, and gives the target back
+        as a plain list, or raises naming the joint that would turn too far.
+
+        A joint move takes every joint the direct way from its current angle to
+        its target angle, and UR joints turn +/-360 degrees. So one physical
+        wrist angle has two joint values, for example 253 and -107 degrees, and a
+        target written with the other value turns the wrist a full circle, with
+        the gripper and its cable on it. The box and radius checks cannot see
+        this, because the TCP ends in the right place. Refusing any joint that
+        must turn more than `max_joint_step_deg` stops it.
+
+        Refuses rather than wraps the target to the nearer value. Wrapping would
+        silently change which way the cable is wound, and a person should see
+        that and jog the arm instead.
+        """
+        now = np.asarray(current_q, dtype=float).reshape(-1)
+        target = np.asarray(target_q, dtype=float).reshape(-1)
+        if now.size != 6 or target.size != 6:
+            raise SafetyViolation(f"{what} needs 6 joint angles, got {now.size} and {target.size}")
+        if not (np.all(np.isfinite(now)) and np.all(np.isfinite(target))):
+            raise SafetyViolation(f"{what} has a non-finite joint angle")
+        change = np.degrees(target - now)
+        worst = int(np.argmax(np.abs(change)))
+        if abs(change[worst]) > self.max_joint_step_deg:
+            raise SafetyViolation(
+                f"{what} would turn joint {worst} by {change[worst]:+.1f} deg, over the "
+                f"{self.max_joint_step_deg:.0f} deg limit. Jog the arm nearer on the pendant")
+        return [float(v) for v in target]
 
     def clamp_motion(self, speed: float | None, acc: float | None) -> tuple[float, float]:
         """
@@ -109,4 +160,5 @@ class WorkspaceEnvelope:
         """It takes nothing and gives you the envelope as one line, for prompts and logs."""
         return (f"x[{self.x[0]:.3f},{self.x[1]:.3f}] "
                 f"y[{self.y[0]:.3f},{self.y[1]:.3f}] "
-                f"z[{self.z[0]:.3f},{self.z[1]:.3f}] metres, base frame")
+                f"z[{self.z[0]:.3f},{self.z[1]:.3f}] "
+                f"radius<={self.max_radius:.3f} metres, base frame")

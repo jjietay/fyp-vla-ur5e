@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
+from fyp.shared.hardware.ur5e_controller import GripperError
 from fyp.shared.helpers.config import get_config
 
 GRIPPER_CLOSED = 0
@@ -72,8 +73,11 @@ class Skills:
         self.grasp_depth_offset = float(s["grasp_depth_offset"])
         self.speed = float(s["speed"])
         self.acc = float(s["acc"])
-        self.settle_s = float(s["settle_s"])
         self.down_rotvec = [float(v) for v in s["down_rotvec"]]
+        # From the same cfg as everything else, not a fresh get_config(), so a
+        # test that hands in its own config really controls where home is.
+        home_q = cfg.get("robot", {}).get("home_q")
+        self.home_q = None if home_q is None else [float(v) for v in home_q]
 
     # ---------------------------------------------------------------- helpers
 
@@ -99,9 +103,22 @@ class Skills:
             raise SkillError(f"controller refused pose {['%.3f' % v for v in pose]}")
 
     def _gripper(self, state: int) -> None:
-        """It takes an open or closed state and gives you the gripper there, settled."""
-        self.ctrl.gripper_toggle(state)
-        time.sleep(self.settle_s)
+        """
+        It takes an open or closed state and gives you the gripper there, or
+        raises SkillError.
+
+        No sleep afterwards. `gripper_toggle` returns only after the fingers have
+        stopped, so there is nothing left to wait for.
+
+        `GripperError` becomes `SkillError` here, in one place, so every skill
+        reports a gripper that did not respond as `ok=False` with the reason,
+        like any other failure. Left as it was, it would escape the skill and stop
+        the whole run with the arm wherever it happened to be.
+        """
+        try:
+            self.ctrl.gripper_toggle(state)
+        except GripperError as e:
+            raise SkillError(f"gripper did not respond: {e}") from e
 
     def _above(self, xyz, height: float) -> list[float]:
         """It takes a target and gives you the pose directly above it."""
@@ -276,13 +293,22 @@ class Skills:
 
         Joint space, not Cartesian. A Cartesian move to "home" from an arbitrary
         pose can route through a singularity; a joint move cannot.
+
+        The joint move is checked first, with the same limit `go_home.py` uses. A
+        joint move with no size check can turn wrist 3 a full circle when the
+        wrist sits at the other joint value of the same physical angle.
         """
         r = SkillResult("home", True, "")
-        q = get_config().get("robot", {}).get("home_q")
-        if q is None:
+        if self.home_q is None:
             r.ok, r.message = False, "no robot.home_q in config; measure it and add it"
             return r
-        ok = self.ctrl.move_joints(q, self.speed, self.acc)
+        try:
+            now = self.ctrl.get_state()["joint_pos"]
+            self.env.check_joint_move(now, self.home_q, "home")
+        except SafetyViolation as e:
+            r.ok, r.message = False, str(e)
+            return r
+        ok = self.ctrl.move_joints(self.home_q, self.speed, self.acc)
         if ok is False:
             r.ok, r.message = False, "controller refused the home joint target"
             return r
