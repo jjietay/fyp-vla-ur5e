@@ -92,19 +92,21 @@ def camera_to_pixel(p_cam, intr: CameraIntrinsics) -> tuple:
     return u, v, depth
 
 
-def surface_to_centroid(p_cam: np.ndarray, half_height: float) -> np.ndarray:
+def surface_to_centroid(p_cam: np.ndarray, half_depth: float) -> np.ndarray:
     """
     It takes the point where the camera sees the near FACE of an object and
     gives you the point at its centre.
 
     The depth reading lands on the surface facing the camera, and a grasp wants
-    the middle, so this pushes the point half the object's thickness further
-    away. Away is +z in OpenCV axes, which is why this ADDS. It subtracted while
-    the file used OpenGL axes, where away was negative.
+    the middle, so this pushes the point `half_depth` metres further away ALONG
+    ITS OWN RAY from the camera. For a round object the centre lies on that ray.
+    Pushing along the optical axis instead, as this did until 1 Oct 2026, is the
+    same only at the image centre: 30 degrees off axis it lands about half the
+    push to one side.
     """
     out = np.array(p_cam, dtype=float, copy=True)
-    out[..., 2] += half_height
-    return out
+    norm = np.linalg.norm(out, axis=-1, keepdims=True)
+    return out * (1.0 + half_depth / norm)
 
 
 def depth_at(depth: np.ndarray, u: float, v: float, radius: int = 2,

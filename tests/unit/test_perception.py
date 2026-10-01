@@ -210,7 +210,10 @@ def test_surface_to_centroid_pushes_the_point_away_from_the_camera():
     the point moves further away. Away is +z in OpenCV axes.
     """
     p = np.array([0.1, 0.2, 0.5])
-    assert surface_to_centroid(p, 0.02)[2] == pytest.approx(0.52)
+    out = surface_to_centroid(p, 0.02)
+    assert out[2] > p[2]
+    # The push is 0.02 along the ray, so z grows by 0.02 * cos(angle off axis).
+    assert out[2] == pytest.approx(0.5 + 0.02 * 0.5 / np.linalg.norm(p))
 
 
 def test_depth_scales_the_offset_linearly():
@@ -233,11 +236,12 @@ def test_an_impossible_field_of_view_is_refused(bad):
         intrinsics_from_fovy(bad, 640, 480)
 
 
-def test_surface_to_centroid_moves_along_the_view_axis_only():
+def test_surface_to_centroid_moves_along_the_ray():
+    """Off axis, the centre of a round object is further along the SAME ray."""
     p = np.array([0.1, 0.2, 0.5])
     out = surface_to_centroid(p, 0.02)
-    assert out[0] == p[0] and out[1] == p[1]
-    assert out[2] != p[2]
+    assert np.linalg.norm(np.cross(out, p)) == pytest.approx(0.0, abs=1e-12)
+    assert np.linalg.norm(out) == pytest.approx(np.linalg.norm(p) + 0.02)
 
 
 def test_surface_to_centroid_does_not_modify_its_input():
@@ -274,6 +278,36 @@ def test_a_detection_with_no_depth_is_kept_but_marked_invalid():
     assert len(located) == 1
     assert not located[0].valid
     assert located[0].p_cam is None
+
+
+def test_a_detection_without_a_box_is_not_pushed():
+    located = locate([{"query": "cube", "center_uv": [320.0, 240.0]}], a_depth_map(), INTR)
+    assert located[0].p_cam[2] == pytest.approx(0.8)
+    assert located[0].centre_offset_m == 0.0
+
+
+def test_a_boxed_detection_is_pushed_back_by_half_its_size():
+    # 20 px at 0.8 m is 20 * 0.8 / fx metres wide, so the centre is half that further.
+    box = [310.0, 230.0, 330.0, 250.0]
+    located = locate([{"query": "ball", "center_uv": [320.0, 240.0], "box_xyxy": box}],
+                     a_depth_map(), INTR, max_centre_offset=1.0)
+    half = 0.5 * 20 * 0.8 / INTR.fx
+    assert located[0].centre_offset_m == pytest.approx(half)
+    assert np.linalg.norm(located[0].p_cam) == pytest.approx(0.8 + half, abs=1e-3)
+
+
+def test_a_flat_object_uses_its_smaller_side():
+    box = [220.0, 235.0, 420.0, 245.0]          # 200 px wide, 10 px tall
+    located = locate([{"query": "tray", "center_uv": [320.0, 240.0], "box_xyxy": box}],
+                     a_depth_map(), INTR, max_centre_offset=1.0)
+    assert located[0].centre_offset_m == pytest.approx(0.5 * 10 * 0.8 / INTR.fy)
+
+
+def test_the_push_is_capped():
+    box = [220.0, 140.0, 420.0, 340.0]          # 200 px, about 0.39 m at 0.8 m
+    located = locate([{"query": "box", "center_uv": [320.0, 240.0], "box_xyxy": box}],
+                     a_depth_map(), INTR, max_centre_offset=0.04)
+    assert located[0].centre_offset_m == pytest.approx(0.04)
 
 
 def test_a_missing_score_does_not_crash_the_localiser():

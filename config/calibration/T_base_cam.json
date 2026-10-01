@@ -1,0 +1,45 @@
+{
+  "T_base_cam": [
+    [
+      -0.9981476462275093,
+      0.0010506870299390103,
+      0.06082904230092781,
+      0.7084
+    ],
+    [
+      -0.054407192017166775,
+      0.43199610697937774,
+      -0.9002328704349054,
+      0.525
+    ],
+    [
+      -0.027223772466175425,
+      -0.901874858065922,
+      -0.4311387324299253,
+      0.6366
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "meta": {
+    "method": "measured mount geometry, no marker",
+    "xyz_m": [
+      0.7084,
+      0.525,
+      0.6366
+    ],
+    "rpy_deg": [
+      -115.55,
+      1.56,
+      -176.88
+    ],
+    "euler_convention": "intrinsic Z-Y-X, matching helpers.rotations.euler_to_R",
+    "written_at": "2026-10-01T11:43:12",
+    "note": "1 Oct 2026 SESSION FIX: measured mount shifted by (+22,+62,+23) mm so the orange at (0.652,-0.249) matches the TCP. Local only, redo with the new stand",
+    "validated": false
+  }
+}

@@ -119,7 +119,9 @@ def test_bad_enum_is_rejected(env):
 
 
 def test_valid_call_passes_through(env):
-    args = validate_call("pick", {"xyz": [0.1, 0.1, 0.2], "approach_height": 0.15}, env)
+    # INSIDE, not a fixed point. [0.1, 0.1, 0.2] was rejected for its position once
+    # the workspace was measured on 1 Oct 2026, the same trap as the enum test above.
+    args = validate_call("pick", {"xyz": INSIDE, "approach_height": 0.15}, env)
     assert args["approach_height"] == 0.15
 
 
@@ -283,12 +285,19 @@ def test_grounding_respects_max_queries():
     assert len(extract_queries("x", client, "m", max_queries=3)) == 3
 
 
-def test_grounding_forces_the_tool_call():
-    """Without tool_choice the model can reply with prose and the parse returns nothing."""
+def test_grounding_asks_for_the_tool_call():
+    """
+    Without the tool call the parse returns nothing. Sonnet 5.5 refuses a forced
+    tool_choice, so the call is asked for with a strict tool and a prompt rule
+    instead, and a reply in prose still ends in GroundingFailed, never a fallback.
+    """
     from fyp.architecture_a.planner import extract_queries
     client = _FakeClient(["cube"])
     extract_queries("put the cube away", client, "m")
-    assert client.calls[0]["tool_choice"] == {"type": "tool", "name": "look_for"}
+    call = client.calls[0]
+    assert call["tool_choice"] == {"type": "auto"}
+    assert call["tools"][0]["strict"] is True
+    assert "calling look_for" in call["system"]
 
 
 def test_grounding_raises_rather_than_falling_back():

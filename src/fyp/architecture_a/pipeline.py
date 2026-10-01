@@ -275,16 +275,25 @@ class ArchitectureA:
                 results = self.execute(reply.steps, trace)
                 outcome.executed += [s.tool for s in reply.steps[:len(results)]]
 
-                if self.reperceive:
+                # The API wants exactly one tool_result for every tool_use, or the
+                # next request is a 400. Steps after a failure never ran, so each
+                # gets a result that says so rather than none at all.
+                ran = {tid for tid, _ in results}
+                results += [(s.tool_use_id, "SKIPPED: not run, an earlier step failed")
+                            for s in reply.steps if s.tool_use_id not in ran]
+
+                if self.reperceive and results:
+                    # The scene goes INTO the last result, not after it as a new one.
+                    # A second result with the same id is refused outright (found on
+                    # the first real run, 1 Oct 2026).
+                    tid, text = results[-1]
                     try:
                         objects = self.perceive(queries, trace)
-                        results.append((results[-1][0], results[-1][1] +
-                                        f"\nScene now: {[o['name'] for o in objects]}"))
+                        results[-1] = (tid, text + f"\nScene now: {[o['name'] for o in objects]}")
                     except Exception as e:
                         # Losing the scene mid-task is informative but not fatal;
                         # the planner can still finish from what it is holding.
-                        results.append((results[-1][0], results[-1][1] +
-                                        f"\nRe-perception failed: {e}"))
+                        results[-1] = (tid, text + f"\nRe-perception failed: {e}")
 
                 with trace.stage(Stage.PLANNING):
                     reply = planner.report_results(results)

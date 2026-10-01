@@ -65,6 +65,7 @@ the task implies. "pour me a drink" has no named object, so return things a drin
 could come from and go into: "bottle", "glass", "cup".
 - Lower case, no articles, no verbs, no quantities.
 - At most {max_queries} entries.
+- Always answer by calling look_for exactly once. Never answer in plain text.
 
 You are choosing what the robot looks at. Too narrow and it will not find the \
 object; too broad and the detector returns clutter."""
@@ -72,6 +73,11 @@ object; too broad and the detector returns clutter."""
 GROUNDING_TOOL = {
     "name": "look_for",
     "description": "Report the objects the detector should search the scene for.",
+    # strict, because Sonnet 5.5 refuses a forced tool_choice. A strict tool still
+    # guarantees that IF the model calls it, the input matches this schema, and the
+    # prompt rule above is what makes it call it. additionalProperties is required
+    # by strict mode.
+    "strict": True,
     "input_schema": {
         "type": "object",
         "properties": {
@@ -82,8 +88,17 @@ GROUNDING_TOOL = {
             },
         },
         "required": ["queries"],
+        "additionalProperties": False,
     },
 }
+
+# Sonnet 5.5 (adopted 1 Oct 2026, when Sonnet 4.5 was deprecated) thinks by default
+# and rejects thinking "disabled". "between_tools" is the lowest setting it accepts,
+# and it keeps the planner as it was designed: no up-front thinking, so latency and
+# token use stay comparable across runs. It is refused above effort "high", so the
+# two settings travel together. Sent through extra_body so that an SDK older than
+# these fields passes them on rather than rejecting them.
+MODEL_OPTIONS = {"thinking": {"type": "between_tools"}, "output_config": {"effort": "high"}}
 
 
 class GroundingFailed(Exception):
@@ -113,8 +128,9 @@ def extract_queries(instruction: str, client, model: str,
         max_tokens=max_tokens,
         system=GROUNDING_PROMPT.format(max_queries=max_queries),
         tools=[GROUNDING_TOOL],
-        tool_choice={"type": "tool", "name": "look_for"},
+        tool_choice={"type": "auto"},   # "tool" and "any" are a 400 on Sonnet 5.5
         messages=[{"role": "user", "content": instruction}],
+        extra_body=MODEL_OPTIONS,
     )
 
     raw: list = []
@@ -307,6 +323,7 @@ class Planner:
             system=SYSTEM_PROMPT.format(workspace=self.env.describe()),
             tools=TOOLS,
             messages=self.messages,
+            extra_body=MODEL_OPTIONS,
         )
         self.usage["calls"] += 1
         self.usage["input_tokens"] += getattr(response.usage, "input_tokens", 0)

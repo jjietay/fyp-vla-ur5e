@@ -15,7 +15,7 @@ robot:
     max_sends: 2          # the command is sent again once if the fingers do not start to move
     result_register: 12   # output int 12 and 13 and output double 12. ur_rtde leaves 12 to 19 to the user
     result_timeout_s: 0.5 # wait for the result to reach RTDE after the script ends
-  home_q: [5.6173, -1.4937, -1.4575, -1.7097, 1.5933, 4.4209]  # rad. Pendant 23 Sep 2026: [321.85, -85.58, -83.51, -97.96, 91.29, 253.30] deg, TCP down
+  home_q: [-0.6730, -1.5575, -1.5866, -1.5507, 1.5844, 4.3802]  # rad. RTDE 1 Oct 2026: [-38.56, -89.24, -90.90, -88.85, 90.78, 250.97] deg, TCP down at (0.306, -0.406, 0.302). Base on the negative side, so it has room to turn both ways
   motion:
     default_speed: 0.25   # m/s, m/s^2, for blocking moveL and moveJ
     default_acc: 0.50
@@ -25,8 +25,8 @@ robot:
     gain: 300             # 100 to 2000. Higher chases harder and can oscillate
 
 workspace:                # base frame, not world. Every commanded pose is checked
-  x: [-0.700, 0.700]      # MEASURE, and err tight
-  y: [-0.700, 0.700]      # MEASURE
+  x: [ 0.150, 0.823]      # RTDE 1 Oct 2026, bounding box of the 4 table corners. Table is ~41 deg to the base axes, so half this box is OFF the table
+  y: [-0.724, 0.030]      # corners (0.756,0.030) (0.824,-0.139) (0.415,-0.725) (0.149,-0.499). max_radius cuts the far arc
   z: [ 0.177, 0.700]      # table 0.172 in base frame (fingertips ~1 mm above it, 23 Sep 2026) + 5 mm
   max_radius: 0.75        # m, horizontal distance from the base axis. 0.81 was out of reach on 23 Sep 2026
   max_joint_step_deg: 30  # a joint move turning any joint more than this is refused. Stops a full wrist spin
@@ -69,18 +69,19 @@ architecture_a:
     nms_iou: 0.5
   perception:
     duplicate_separation_mm: 20.0  # closer than this is one object seen twice
+    max_centre_offset_mm: 40.0     # most a point is pushed from the seen face to the centre. A 65 mm orange needs ~33
   grounding:
     model: null           # null means use the planner model, so no new component enters A
     max_queries: 8        # more queries slow OWLv2 and add false positives
     max_tokens: 512
   planner:
-    model: "claude-sonnet-4-5"
+    model: "claude-sonnet-5-5"  # 1 Oct 2026. sonnet-4-5 deprecated 30 Sep 2026 and 404s for this key
     max_tokens: 2048
     max_turns: 6          # planner/tool exchanges before the run is abandoned
   skills:
     approach_height: 0.12 # m above the target before descending
     retreat_height: 0.15
-    grasp_depth_offset: 0.0  # + lowers the grasp point, tune per gripper
+    grasp_depth_offset: 0.028  # + lowers the grasp point. 1 Oct: 0.020 lifted the orange and dropped it (held above its middle). 0.028 is the most the z floor allows when the centre reads 0.205. Was 0.025 to reach a SURFACE point; the localiser now gives the centre (1 Oct 2026), which is ~15 mm lower already. RG2 pads sit above the TCP tip
     speed: 0.10           # m/s during descent and transport
     acc: 0.30
     down_rotvec: [0.580, 3.087, 0.0]  # RG URCap TCP, vertical, home yaw. RTDE 23 Sep 2026. Roll flips here, see check_orientation.py
