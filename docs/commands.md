@@ -249,52 +249,68 @@ anything.
 
 Writes `data/cache/frame_top.png`, which the detector check needs later.
 
-(21) Measure the mount
-
-- **jog the TCP in +x and watch which way it goes** before measuring anything. Guessing the
-  base axes is a 90 degree error that looks like a calibration fault
-- measure from the arm base to the **middle lens**, the RGB one. The imager sits a few mm
-  behind the glass and that offset is unpublished, so measure to the glass
-- square the tripod to the table edge. One degree is about 17 mm at 1 m
-
-(22) Write it. Metres and degrees. Refuses to overwrite without `--force`
+(21) Fit `T_base_cam` with the ball. **Every session, and it moves the arm** through the
+middle of the table, so clear the table and keep a hand on the e-stop
 
 ```bash
-uv run python scripts/write_calibration.py --xyz X Y Z --rpy ROLL PITCH YAW
+uv run python scripts/go_home.py
+uv run python scripts/calibrate_ball.py --plan-only   # the poses it will visit, no arm
+uv run python scripts/calibrate_ball.py
 ```
 
-(23) Prove it. **The real run moves the arm**, so Koji stays at the e-stop
+When asked, put the ball between the fingers with its **bottom flush with the fingertips**, the
+same way every time, because a ball placed 3 mm differently shifts the fit about 3 mm in z.
+At the end, hold the ball before pressing Enter, or it drops when the fingers open.
+
+Read two lines of the output:
+
+- the RMS, which should be a few mm. Above `calibration.max_rms_mm` it asks before writing.
+  Usual causes are the ball slipping in the fingers or depth holes on the ball
+- how far the camera moved since the last file, which says how well the tape marks held
+
+The previous calibration is kept as `T_base_cam.<time>.json`, never overwritten. About 2 to 4
+minutes in all, mostly OWLv2 reloading at each of the 16 poses.
+
+(22) **First session only, or after changing the ball or how it is placed.** Prove the ball
+offset with the reach test, because the fit's own RMS cannot see a wrong
+`calibration.ball_offset_tool_m`: every sample has the same tool orientation, so that error is
+the same shift at every point. Koji stays at the e-stop
 
 ```bash
 uv run python scripts/check_calibration.py --dry-run   # compute targets, do not move
 uv run python scripts/check_calibration.py --points 5
 ```
 
-Run `--dry-run` first. If the printed positions are not somewhere on your table, (21) is wrong
-and there is no point moving anything.
+Click an object, it hovers the TCP above where it thinks the object is, and **you measure the
+miss with a rule and type it in**. Manual on purpose, because anything the software measured
+would come from the transform being tested. A consistent offset, mostly in z, means
+`ball_offset_tool_m` is wrong by that amount: correct it in config and re-run (21).
 
-Then the real run: click an object, it hovers the TCP above where it thinks the object is, and
-**you measure the miss with a rule and type it in**. Manual on purpose, because anything the
-software measured would come from the transform being tested.
+Before the first session, once: measure the ball and set `calibration.ball_radius_m`, set
+`calibration.ball_query` to a noun phrase for it ("orange ball"), and check that OWLv2 finds it
+with `check_detector.py`.
 
-Expect 1 to 3 cm. Large mean with small scatter means the six numbers are slightly off, so
-re-measure the angles. Large scatter means depth alignment or the datum, not the numbers.
+**Fallback, if the ball fit will not run:** measure the mount with a rule and write it by hand.
+Jog the TCP in +x first to see the base axes, measure from the arm base to the middle (RGB)
+lens, square the tripod to the table edge (1 degree is about 17 mm at 1 m), then run (22) to
+check it, expecting 1 to 3 cm
 
-If it is too large to grasp with, the fallback is the ping-pong ball in the gripper and a
-fitted transform, reusing code that already exists.
+```bash
+uv run python scripts/write_calibration.py --xyz X Y Z --rpy ROLL PITCH YAW --force
+```
 
 ### Last 15 min
 
-(24) Photos of the taped positions, the gripper label, and the pendant TCP and payload screens
+(23) Photos of the taped positions, the gripper label, and the pendant TCP and payload screens
 
-(25) Commit the config and calibration, then take the camera down
+(24) Commit the config and calibration, then take the camera down
 
 ```bash
 git add config/
 git commit -m "Lab session: robot host, home_q, workspace, down_rotvec, calibration"
 ```
 
-If (20) to (23) do not fit, do them first in recess week, before Architecture A. Architecture
+If (20) to (22) do not fit, do them first in recess week, before Architecture A. Architecture
 A cannot run without `T_base_cam`.
 
 ## Architecture A

@@ -16,8 +16,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fyp.architecture_a.calibration.hand_eye import (base_to_camera, camera_to_base,
-                                                     load, report, residuals, save,
+from fyp.architecture_a.calibration.hand_eye import (ball_centre_in_base, base_to_camera,
+                                                     calibration_grid, camera_to_base,
+                                                     fit_with_outlier_rejection, load,
+                                                     report, residuals, save,
                                                      solve_rigid_transform)
 from fyp.shared.helpers.rotations import euler_to_R
 
@@ -162,3 +164,110 @@ def test_loading_something_that_is_not_a_transform_is_refused(tmp_path):
     path.write_text('{"T_base_cam": [[1, 0], [0, 1]]}')
     with pytest.raises(ValueError, match=r"\(2, 2\)"):
         load(path)
+
+
+# ------------------------------------------------- the per-session ball fit
+
+def _config_grid():
+    from fyp.shared.hardware.safety import WorkspaceEnvelope
+    from fyp.shared.helpers.config import get_config
+    cfg = get_config()
+    cc = cfg["architecture_a"]["calibration"]
+    env = WorkspaceEnvelope(cfg)
+    poses, rejected = calibration_grid(cc["grid_centre_xy"], cc["grid_half_extent_m"],
+                                       cc["grid_n"], cc["z_levels"],
+                                       cfg["architecture_a"]["skills"]["down_rotvec"], env)
+    return cfg, env, poses, rejected
+
+
+def test_the_configured_grid_gives_enough_poses_inside_the_envelope():
+    """
+    Checked against the REAL config, because a grid that mostly falls outside the
+    envelope is found at the start of a lab session otherwise, with the camera set
+    up and the clock running.
+    """
+    cfg, env, poses, _ = _config_grid()
+    assert len(poses) >= int(cfg["architecture_a"]["calibration"]["min_points"])
+    for pose in poses:
+        env.check_pose(pose)
+
+
+def test_the_configured_grid_is_not_coplanar():
+    """A flat set of points leaves the rotation undetermined and the solver refuses it."""
+    _, _, poses, _ = _config_grid()
+    pts = np.asarray([p[:3] for p in poses])
+    assert np.linalg.matrix_rank(pts - pts.mean(axis=0), tol=1e-6) == 3
+
+
+def test_the_grid_keeps_one_tool_orientation():
+    cfg, _, poses, _ = _config_grid()
+    down = np.asarray(cfg["architecture_a"]["skills"]["down_rotvec"], dtype=float)
+    assert all(np.allclose(p[3:], down) for p in poses)
+
+
+def test_the_grid_walks_in_short_steps():
+    """
+    Snake order. A raster that jumps back across the table each row is a long
+    unwatched moveL with a ball held only by friction.
+    """
+    _, _, poses, _ = _config_grid()
+    from fyp.shared.helpers.config import get_config
+    cc = get_config()["architecture_a"]["calibration"]
+    step = 2 * cc["grid_half_extent_m"] / (cc["grid_n"] - 1)
+    zs = cc["z_levels"]
+    longest = np.sqrt(2) * step + max(abs(a - b) for a in zs for b in zs) + 1e-9
+    for a, b in zip(poses, poses[1:]):
+        assert np.linalg.norm(np.subtract(a[:3], b[:3])) <= longest
+
+
+def test_one_height_is_refused():
+    from fyp.shared.hardware.safety import WorkspaceEnvelope
+    with pytest.raises(ValueError, match="coplanar"):
+        calibration_grid([0.5, -0.3], 0.1, 3, [0.3, 0.3], [0, 3.14, 0], WorkspaceEnvelope())
+
+
+def test_positions_outside_the_envelope_are_left_out():
+    from fyp.shared.hardware.safety import WorkspaceEnvelope
+    env = WorkspaceEnvelope()
+    poses, rejected = calibration_grid([0.5, -0.3], 5.0, 3, [0.3, 0.4], [0, 3.14, 0], env)
+    assert rejected, "a 10 m wide grid cannot fit"
+    assert all(env.contains(p[:3]) for p in poses)
+
+
+def test_the_ball_offset_is_rotated_with_the_tool():
+    """
+    Pointing down, tool z is base -z, so an offset back towards the flange
+    (negative tool z) is UP in base frame. Adding the offset unrotated would put
+    the ball 4 cm away from where it is.
+    """
+    down = [0.0, np.pi, 0.0]          # tool z along base -z
+    c = ball_centre_in_base([0.5, -0.3, 0.3, *down], [0.0, 0.0, -0.02])
+    assert np.allclose(c, [0.5, -0.3, 0.32])
+
+
+def test_the_ball_offset_at_identity_is_added_as_it_is():
+    c = ball_centre_in_base([0.1, 0.2, 0.3, 0.0, 0.0, 0.0], [0.01, 0.02, 0.03])
+    assert np.allclose(c, [0.11, 0.22, 0.33])
+
+
+def test_one_wrong_detection_is_dropped_and_the_fit_recovered():
+    """
+    The case the rejection exists for: one point centimetres off, the rest within
+    a millimetre. The kept fit must recover the true transform.
+    """
+    T = a_transform()
+    p_cam = cloud(15)
+    p_base = camera_to_base(p_cam, T) + RNG.normal(0, 0.0005, size=(15, 3))
+    p_base[4] += [0.05, -0.03, 0.02]
+    T_fit, keep = fit_with_outlier_rejection(p_cam, p_base)
+    assert not keep[4]
+    assert keep.sum() == 14
+    assert np.allclose(T_fit, T, atol=2e-3)
+
+
+def test_a_clean_fit_drops_nothing():
+    T = a_transform()
+    p_cam = cloud(12)
+    p_base = camera_to_base(p_cam, T) + RNG.normal(0, 0.0005, size=(12, 3))
+    _, keep = fit_with_outlier_rejection(p_cam, p_base)
+    assert keep.all()

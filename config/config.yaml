@@ -85,8 +85,21 @@ architecture_a:
     speed: 0.10           # m/s during descent and transport
     acc: 0.30
     down_rotvec: [0.580, 3.087, 0.0]  # RG URCap TCP, vertical, home yaw. RTDE 23 Sep 2026. Roll flips here, see check_orientation.py
+    min_grasp_width_mm: 5.0  # a close ending below this held nothing. RG2 closes to about 0 on air. Keep it below the thinnest object or handle
   trace:
     dir: "logs/traces/"
+  calibration:            # scripts/calibrate_ball.py, the per-session fit of T_base_cam. A ball in the gripper, no markers
+    ball_query: "ball"    # OWLv2 noun phrase. Name the colour if the ball is plain, e.g. "orange ball"
+    ball_radius_m: 0.020  # MEASURE the ball once. 0.020 is a 40 mm table tennis ball
+    ball_offset_tool_m: [0.0, 0.0, -0.020]  # ball centre in the TOOL frame from the TCP. Tool z points out of the flange, so negative is back towards it. -radius = ball bottom flush with the fingertips (the TCP is at the tips). A wrong value shifts the whole fit and the residual CANNOT see it
+    grid_centre_xy: [0.536, -0.333]  # mean of the 4 table corners measured 1 Oct 2026
+    grid_half_extent_m: 0.12
+    grid_n: 3             # n x n positions per height
+    z_levels: [0.30, 0.42]  # TCP heights. At least two, or the points are coplanar and the fit is refused
+    speed: 0.10           # m/s, slow because the ball is held only by friction
+    settle_s: 0.5         # wait after each move so the frame is not blurred
+    min_points: 8         # fewer usable points than this and nothing is written
+    max_rms_mm: 8.0       # a fit worse than this is written only if you confirm it
 
 architecture_b:
   camera: "top"           # MUST match the --camera used at export

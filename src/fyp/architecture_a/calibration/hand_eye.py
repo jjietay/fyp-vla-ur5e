@@ -15,6 +15,9 @@ How it is obtained (decided 12 Aug 2026, no fiducial marker):
 - MEASURED from the mount with a rule and written by scripts/write_calibration.py.
   This file only loads it. check_calibration.py is the only check on it, because
   a measured transform has no residual of its own.
+- FITTED per session by scripts/calibrate_ball.py (added 13 Oct 2026), which
+  runs the fallback below automatically. `ball_centre_in_base` and
+  `calibration_grid` below are its testable parts.
 - FALLBACK if the measured one is too coarse to grasp with: a matte ball held in
   the gripper, the arm moved to N poses, the ball centre seen in the camera and
   the TCP read from get_state. That gives N pairs of the SAME physical point in
@@ -37,6 +40,7 @@ from pathlib import Path
 
 import numpy as np
 
+from fyp.shared.helpers.rotations import rotvec_to_R
 from fyp.shared.helpers.transforms import transform_point
 
 
@@ -156,3 +160,91 @@ def base_to_camera(p_base: np.ndarray, T_base_cam: np.ndarray) -> np.ndarray:
     T_inv[:3, :3] = R.T
     T_inv[:3, 3] = -R.T @ t
     return transform_point(T_inv, p_base)
+
+
+def ball_centre_in_base(tcp_pose, offset_tool) -> np.ndarray:
+    """
+    It takes the TCP pose the arm reports and where the ball centre sits in the
+    tool frame, and gives you the ball centre in base frame.
+
+    The offset is rotated by the tool orientation before it is added. Adding it
+    straight onto the TCP position is the same only while the tool points
+    exactly down, and the error appears the first time anything else is tried.
+
+    CAREFUL: with every sample at the same tool orientation, as
+    `calibrate_ball.py` does, an error in `offset_tool` is the same base-frame
+    shift at every point. The fit absorbs it into the translation and the
+    residual stays small, so the residual cannot see it. Only a reach test can.
+    """
+    p = np.asarray(tcp_pose, dtype=float).reshape(6)
+    return p[:3] + rotvec_to_R(p[3:]) @ np.asarray(offset_tool, dtype=float).reshape(3)
+
+
+def calibration_grid(centre_xy, half_extent: float, n: int, z_levels,
+                     rotvec, envelope) -> tuple[list[list[float]], list[list[float]]]:
+    """
+    It takes the middle of the area to sample, its half width, a grid size and
+    a list of heights, and gives you (poses inside the envelope, positions left
+    out because they were not).
+
+    An n by n square at every height, all at one tool orientation. Rows are
+    walked in a snake so consecutive moves are short and none crosses the whole
+    table. More than one height is required, because points that all share a z
+    are coplanar and `solve_rigid_transform` refuses them, rightly: a flat cloud
+    leaves the rotation about the table plane undetermined.
+    """
+    z_levels = [float(z) for z in z_levels]
+    if len(set(z_levels)) < 2:
+        raise ValueError("need at least two different heights, or the points are coplanar")
+    if int(n) < 2:
+        raise ValueError(f"grid size must be at least 2, got {n}")
+
+    cx, cy = (float(v) for v in centre_xy)
+    offsets = np.linspace(-float(half_extent), float(half_extent), int(n))
+    rv = [float(v) for v in np.asarray(rotvec, dtype=float).reshape(3)]
+
+    # One level walked as a snake, then every second level walked backwards, so
+    # the step up to the next height starts where the last level ended.
+    level = [(float(dx), float(dy))
+             for i, dx in enumerate(offsets)
+             for dy in (offsets if i % 2 == 0 else offsets[::-1])]
+
+    poses, rejected = [], []
+    for k, z in enumerate(z_levels):
+        for dx, dy in (level if k % 2 == 0 else level[::-1]):
+            xyz = [cx + dx, cy + dy, z]
+            if envelope.contains(xyz):
+                poses.append(xyz + rv)
+            else:
+                rejected.append(xyz)
+    return poses, rejected
+
+
+def fit_with_outlier_rejection(p_cam, p_base, factor: float = 3.0,
+                               floor_m: float = 0.010) -> tuple[np.ndarray, np.ndarray]:
+    """
+    It takes matched camera and base points and gives you (T_base_cam, a mask of
+    the points it kept).
+
+    Fits once, drops points whose residual is more than `factor` times the
+    median and above `floor_m`, and fits again. One wrong detection, such as the
+    detector boxing a gripper finger instead of the ball, pulls a least squares
+    fit by centimetres, while the honest points disagree by millimetres. The floor
+    stops a very good fit from discarding points over sub-millimetre noise.
+
+    One pass only. Repeating it until nothing is dropped can eat a calibration
+    one point at a time.
+    """
+    p_cam = np.asarray(p_cam, dtype=float).reshape(-1, 3)
+    p_base = np.asarray(p_base, dtype=float).reshape(-1, 3)
+    T = solve_rigid_transform(p_cam, p_base)
+    e = residuals(T, p_cam, p_base)
+    keep = (e <= max(factor * float(np.median(e)), floor_m))
+    if keep.all() or keep.sum() < 3:
+        return T, np.ones(len(e), dtype=bool)
+    try:
+        return solve_rigid_transform(p_cam[keep], p_base[keep]), keep
+    except ValueError:
+        # What is left is coplanar. Keeping everything is the lesser evil, and the
+        # large residual it reports says so.
+        return T, np.ones(len(e), dtype=bool)

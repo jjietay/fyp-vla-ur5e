@@ -62,10 +62,14 @@ class FakeController:
 
     `gripper_fails_on` makes that gripper state raise `GripperError`, as the real
     controller does when the RG2 does not respond.
+
+    `held_mm` is the width a close stops at, which is what the real controller
+    returns. 0 is a close on nothing; the default is something held.
     """
 
     def __init__(self, refuse_after: int | None = None, gripper_fails_on: int | None = None,
-                 joint_pos=None):
+                 joint_pos=None, held_mm=40.0):
+        self.held_mm = held_mm
         self.calls: list[tuple] = []
         self.joint_pos = [0.0] * 6 if joint_pos is None else [float(v) for v in joint_pos]
         self.refuse_after = refuse_after
@@ -87,6 +91,7 @@ class FakeController:
         self.calls.append(("gripper_toggle", state))
         if state == self.gripper_fails_on:
             raise GripperError("NO_RESPONSE, width 99.8 mm")
+        return 99.8 if state == GRIPPER_OPEN else self.held_mm
 
     def get_state(self):
         self.calls.append(("get_state",))
@@ -396,3 +401,68 @@ def test_pick_stops_moving_after_a_failed_close():
     ctrl = FakeController(gripper_fails_on=GRIPPER_CLOSED)
     Skills(ctrl, cfg=CFG).pick(TARGET)
     assert ctrl.sequence[-1] == "gripper_toggle"
+
+
+# ------------------------------------------------- a close on nothing
+
+def test_a_close_on_nothing_is_a_failed_pick():
+    """
+    The fingers travelling all the way in is a normal return from the gripper,
+    so only the width can say the pick missed. A pick that reports success here
+    sends the planner on to place an object the arm is not holding.
+    """
+    result = Skills(FakeController(held_mm=0.0), cfg=CFG).pick(TARGET)
+    assert not result.ok
+    assert "grasp missed" in result.message
+
+
+def test_a_held_object_is_reported_with_its_width(skills):
+    result = skills.pick(TARGET)
+    assert result.ok, result.message
+    assert "holding 40 mm" in result.message
+
+
+def test_a_missed_grasp_opens_and_backs_off_above_the_target():
+    """
+    After a miss the arm must not stay at the grasp pose, where the gripper hides
+    the object from the fixed camera during the re-perception that follows.
+    """
+    ctrl = FakeController(held_mm=0.0)
+    Skills(ctrl, cfg=CFG).pick(TARGET)
+    grippers = [c[1] for c in ctrl.calls if c[0] == "gripper_toggle"]
+    assert grippers[-1] == GRIPPER_OPEN
+    assert ctrl.sequence[-1] == "move_to_pose"
+    assert ctrl.poses[-1][2] > TARGET[2]
+
+
+def test_the_threshold_is_the_configured_one():
+    """A width just above the threshold is a hold, just below it is a miss."""
+    limit = float(CFG["architecture_a"]["skills"]["min_grasp_width_mm"])
+    assert Skills(FakeController(held_mm=limit + 0.1), cfg=CFG).pick(TARGET).ok
+    assert not Skills(FakeController(held_mm=limit - 0.1), cfg=CFG).pick(TARGET).ok
+
+
+def test_no_width_is_not_taken_as_a_grasp():
+    """No number is no evidence, and guessing "held" drops things from a height."""
+    result = Skills(FakeController(held_mm=None), cfg=CFG).pick(TARGET)
+    assert not result.ok
+    assert "cannot be confirmed" in result.message
+
+
+def test_pour_stops_when_the_grasp_missed():
+    """Nothing is tilted over the target when the container was never picked up."""
+    ctrl = FakeController(held_mm=0.0)
+    result = Skills(ctrl, cfg=CFG).pour(TARGET, [TARGET[0] - 0.2, TARGET[1], TARGET[2]],
+                                        hold_s=0.0, steps=3)
+    assert not result.ok
+    assert "grasp missed" in result.message
+    down = np.asarray(CFG["architecture_a"]["skills"]["down_rotvec"], dtype=float)
+    assert all(np.allclose(p[3:], down) for p in ctrl.poses), "it tilted anyway"
+
+
+def test_open_drawer_does_not_pull_when_it_missed_the_handle():
+    ctrl = FakeController(held_mm=0.0)
+    result = Skills(ctrl, cfg=CFG).open_drawer(TARGET, pull_axis="-x")
+    assert not result.ok
+    assert "grasp missed" in result.message
+    assert all(p[0] >= TARGET[0] - 1e-9 for p in ctrl.poses[2:]), "it pulled along -x"

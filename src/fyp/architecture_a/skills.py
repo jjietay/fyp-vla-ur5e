@@ -43,6 +43,14 @@ class SkillError(Exception):
     """Raised when a skill cannot complete. Carries the reason, not just a failure."""
 
 
+class GraspMissed(SkillError):
+    """
+    Raised when the fingers closed on nothing. Its own type because the skill
+    answers it differently from a gripper that did not respond: it backs off so
+    the object can be seen again, instead of stopping where it is.
+    """
+
+
 @dataclass
 class SkillResult:
     """What a skill did, in enough detail to appear in a trace and a report."""
@@ -74,6 +82,7 @@ class Skills:
         self.speed = float(s["speed"])
         self.acc = float(s["acc"])
         self.down_rotvec = [float(v) for v in s["down_rotvec"]]
+        self.min_grasp_width_mm = float(s["min_grasp_width_mm"])
         # From the same cfg as everything else, not a fresh get_config(), so a
         # test that hands in its own config really controls where home is.
         home_q = cfg.get("robot", {}).get("home_q")
@@ -102,10 +111,10 @@ class Skills:
         if ok is False:
             raise SkillError(f"controller refused pose {['%.3f' % v for v in pose]}")
 
-    def _gripper(self, state: int) -> None:
+    def _gripper(self, state: int):
         """
-        It takes an open or closed state and gives you the gripper there, or
-        raises SkillError.
+        It takes an open or closed state and gives you the gripper there, with the
+        final finger width in mm, or raises SkillError.
 
         No sleep afterwards. `gripper_toggle` returns only after the fingers have
         stopped, so there is nothing left to wait for.
@@ -116,9 +125,56 @@ class Skills:
         the whole run with the arm wherever it happened to be.
         """
         try:
-            self.ctrl.gripper_toggle(state)
+            return self.ctrl.gripper_toggle(state)
         except GripperError as e:
             raise SkillError(f"gripper did not respond: {e}") from e
+
+    def _grasp(self) -> float:
+        """
+        It takes nothing and gives you the fingers closed on something, with the
+        width they stopped at, or raises GraspMissed when they closed on nothing.
+
+        A close that misses is not a gripper error. The fingers did exactly what
+        they were told and travelled all the way in, so `gripper_toggle` returns
+        normally and only the width tells a miss from a hold. Without this check a
+        missed pick lifts an empty gripper, reports success, and the planner goes
+        on to place nothing.
+
+        The width is the one `gripper_toggle` returns, not the RG2 grip-detected
+        input, which is unreliable on this cell.
+        """
+        width = self._gripper(GRIPPER_CLOSED)
+        try:
+            width = float(width)
+        except (TypeError, ValueError):
+            # No number means no evidence either way, and "probably holding it" is
+            # the guess that drops things from a height.
+            raise SkillError(f"gripper returned no width ({width!r}), "
+                             "so the grasp cannot be confirmed") from None
+        if width < self.min_grasp_width_mm:
+            raise GraspMissed(f"grasp missed: fingers closed to {width:.1f} mm, below "
+                             f"{self.min_grasp_width_mm:.1f} mm, so nothing is held")
+        return width
+
+    def _back_off(self, xyz, result: SkillResult, speed=None) -> str:
+        """
+        It takes the target of a missed grasp and gives you the fingers open and
+        the arm above it, plus a note when that did not work.
+
+        Backing off before reporting matters because the pipeline re-perceives the
+        scene straight after a failure. Left at the grasp pose, the gripper sits
+        between the fixed camera and the object it just missed, the object is not
+        seen, and the planner re-plans against a scene with the target missing.
+
+        Never raises. The miss is the failure being reported, and a back-off that
+        also failed is added to that message rather than replacing it.
+        """
+        try:
+            self._gripper(GRIPPER_OPEN)
+            self._move(self._above(xyz, self.retreat_height), result, speed=speed)
+        except (SkillError, SafetyViolation) as e:
+            return f"; back-off failed, arm left at the grasp pose: {e}"
+        return ""
 
     def _above(self, xyz, height: float) -> list[float]:
         """It takes a target and gives you the pose directly above it."""
@@ -149,13 +205,17 @@ class Skills:
             self._gripper(GRIPPER_OPEN)
             self._move(self._above(xyz, h), r, speed=speed)
             self._move(self._pose(grasp), r, speed=speed)
-            self._gripper(GRIPPER_CLOSED)
+            try:
+                width = self._grasp()
+            except GraspMissed as e:
+                r.ok, r.message = False, str(e) + self._back_off(xyz, r, speed)
+                return r
             self._move(self._above(xyz, self.retreat_height), r, speed=speed)
         except (SkillError, SafetyViolation) as e:
             r.ok, r.message = False, str(e)
             return r
 
-        r.message = f"picked at {np.round(grasp, 3).tolist()}"
+        r.message = f"picked at {np.round(grasp, 3).tolist()}, holding {width:.0f} mm"
         return r
 
     def place(self, xyz, approach_height: float | None = None,
@@ -276,7 +336,13 @@ class Skills:
             self._gripper(GRIPPER_OPEN)
             self._move(self._pose(approach), r, speed=speed)
             self._move(self._pose(handle_xyz), r, speed=speed)
-            self._gripper(GRIPPER_CLOSED)
+            try:
+                self._grasp()
+            except GraspMissed as e:
+                # Pulling with empty fingers sweeps the gripper through the space in
+                # front of the drawer and reports a drawer that never moved.
+                r.ok, r.message = False, str(e) + self._back_off(handle_xyz, r, speed)
+                return r
             self._move(self._pose(pulled), r, speed=speed)
             self._gripper(GRIPPER_OPEN)
             self._move(self._above(pulled, self.retreat_height), r, speed=speed)
