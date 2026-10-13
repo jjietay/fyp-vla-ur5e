@@ -134,3 +134,31 @@ def depth_at(depth: np.ndarray, u: float, v: float, radius: int = 2,
     if not valid.any():
         return float("nan")
     return float(np.median(patch[valid]))
+
+
+def smooth_depth(depth: np.ndarray, radius: int = 2,
+                 max_depth: float | None = None) -> np.ndarray:
+    """
+    It takes a whole depth image and gives you the depth `depth_at` would return
+    at every pixel, NaN where it would return NaN.
+
+    Only for LOOKING at what the pipeline sees. The pipeline itself still calls
+    `depth_at` on the few pixels it needs, which is far cheaper than this.
+
+    Same rule as `depth_at`, pixel for pixel: the median of the valid readings in
+    a (2r+1)^2 patch, where valid means finite, above 0 and below max_depth, and
+    a patch at the border is cut short rather than padded with made-up values.
+    The NaN padding below does that cutting, because nanmedian skips it.
+    """
+    d = np.asarray(depth, dtype=np.float32)
+    bad = ~np.isfinite(d) | (d <= 0)
+    if max_depth is not None:
+        bad |= d >= max_depth
+    d = np.where(bad, np.nan, d)
+    padded = np.pad(d, radius, mode="constant", constant_values=np.nan)
+    win = np.lib.stride_tricks.sliding_window_view(padded, (2 * radius + 1,) * 2)
+    import warnings
+    with warnings.catch_warnings():
+        # an all-hole patch is the expected NaN, not something to warn about
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        return np.nanmedian(win, axis=(-2, -1))

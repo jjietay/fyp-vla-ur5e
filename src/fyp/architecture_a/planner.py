@@ -36,6 +36,9 @@ Rules:
 coordinates, never estimate a position for something that was not detected.
 - If the instruction names an object that is not in the list, say so instead of \
 substituting a similar one.
+- Objects under "Seen but out of reach" were detected but are too far for the arm. \
+They have no position and must not be used. If the task needs one, do not move \
+anything: tell the user it is out of reach and should be moved closer to the arm.
 - The gripper holds one object at a time. Always place what you are holding \
 before picking something else.
 - If the instruction does not determine which object to act on, call ask_user. \
@@ -281,12 +284,24 @@ class Planner:
             self._client = anthropic.Anthropic()   # reads ANTHROPIC_API_KEY
         return self._client
 
-    def start(self, instruction: str, objects: list[dict]) -> PlannerReply:
-        """It takes the instruction and the object table and gives you the first reply."""
+    def start(self, instruction: str, objects: list[dict],
+              out_of_reach: list[dict] | None = None) -> PlannerReply:
+        """
+        It takes the instruction, the object table and the objects seen but out of
+        reach, and gives you the first reply.
+
+        Out-of-reach objects carry a name and a reason, never a position, so they
+        can be explained to the user but cannot be acted on.
+        """
+        unreachable = ""
+        if out_of_reach:
+            unreachable = ("Seen but out of reach (no position, cannot be used):\n"
+                           + json.dumps(out_of_reach, indent=2) + "\n\n")
         self.messages = [{
             "role": "user",
             "content": (
                 f"Detected objects:\n{json.dumps(objects, indent=2)}\n\n"
+                f"{unreachable}"
                 f"Instruction: {instruction}"
             ),
         }]

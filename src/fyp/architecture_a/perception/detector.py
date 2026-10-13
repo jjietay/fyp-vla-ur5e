@@ -29,6 +29,38 @@ detector. Something has to turn "place that red cube into that metal tray" into
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=2)
+def _load(model_name):
+    """
+    It takes a model name and gives you (processor, model, device), loaded from
+    disk once per process and reused after that.
+
+    Loading is the slow part, not inference. Until 13 Oct 2026 this ran inside
+    `detect()` on every call, and the 1 Oct traces show the cost: 23 detection
+    stages, 10.7 s median and none under 6 s, inside A's re-perception loop. That is load time recorded as A's latency in the
+    comparison. Keyed by name, so a second model can still be tried in the same
+    process.
+    """
+    try:
+        import torch
+        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+    except ImportError as e:
+        # The FYP venv has no torch by design, so this is the usual mistake, and
+        # the bare "No module named 'torch'" says nothing about the fix
+        raise ImportError(
+            f"OWLv2 needs torch and transformers, which live in the lerobot venv, not "
+            f"the FYP one ({e}). From the FYP folder run the script as:\n"
+            f"    PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/<script>.py") from e
+
+    processor = AutoProcessor.from_pretrained(model_name) # converts to tensor
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.to(device).eval() # switch to evaluation mode
+    return processor, model, device
+
 
 def detect(pil_img, queries, model_name):
     """
@@ -43,13 +75,10 @@ def detect(pil_img, queries, model_name):
     no torch in it, and it is why the counts at each filter stage can be reported
     in the trace.
     """
+    # Loaded once per process, see `_load`. The first call still pays the load.
+    # Before `import torch` on purpose, so a missing torch gets `_load`'s message.
+    processor, model, device = _load(model_name)
     import torch
-    from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-
-    processor = AutoProcessor.from_pretrained(model_name) # converts to tensor
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device).eval() # switch to evaluation mode
 
     inputs = processor(text=[queries], images=pil_img, return_tensors="pt").to(device)
     with torch.no_grad(): # no need to calculate gradient for backpropagation

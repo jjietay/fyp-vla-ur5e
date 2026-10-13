@@ -13,7 +13,7 @@ Choices that shape the project, each with the reasoning attached. These become t
 | [[Decisions to Make#Detector query format|Detector query format]] | decided, forced by how OWLv2 works |
 | [[Decisions to Make#Teleoperation method|Teleoperation method]] | decided 23 Sep, 3D jog device, no freedrive |
 | [[Decisions to Make#Action space|Action space]] | frame decided 31 Aug, rotation format decided 23 Sep |
-| [[Decisions to Make#Calibration marker|Calibration marker]] | decided 12 Aug, no marker |
+| [[Decisions to Make#Calibration marker|Calibration marker]] | decided 12 Aug, no marker. Ball fit each session since 13 Oct |
 | [[Decisions to Make#Architecture B inference|Architecture B inference]] | decided 31 Aug |
 
 A decision recorded without its reason is not much use six months later when an examiner asks why.
@@ -243,6 +243,8 @@ Also to lock before recording: the observation set of two RGB views plus the sta
 
 **No marker. `T_base_cam` comes from the measured mount geometry instead.** Decided 12 Aug 2026.
 
+Changed in part on 13 Oct 2026: still no marker, but the transform is now fitted each session with a ball, see [[Decisions to Make#Update 13 Oct, the ball fit became the plan]]. The reasoning below is kept as the record of the first choice.
+
 The fixed camera stands at a measured offset from the arm base, so `T_base_cam` is one transform. Rather than recover it by observing a target, it is written directly from the measured position into `config/calibration/T_base_cam.json`. The lab is shared, so the camera is taped in place and taken down between sessions, and the transform is re-measured at the start of each session. Nothing in the pipeline changes, because `hand_eye.py` loads the transform from JSON and never cares how the numbers got there.
 
 Two reasons, and the second decided it. Within a session the camera does not move, so a geometric answer exists without observing anything. And Prof Cheah's view is that a printed board in the cell looks out of place against a real deployment, while the project argues for an interface a person could actually use.
@@ -262,6 +264,16 @@ Two things that make it work better: measure to the camera's **optical origin**,
 Ball on the gripper, Kabsch, no fiducial. A matte sphere of known radius held in the jaws, the arm driven to 15 to 20 poses at fixed down orientation, sphere centres paired against `tcp_pose` and fed to the solver that is already written and tested. Tag free, so the objection above still holds, and it reuses `depth_at`, `pixel_to_camera`, `surface_to_centroid`, `solve_rigid_transform` and `report` without new maths.
 
 Kept as rung two rather than the plan, because the measured transform may well be good enough and costs an hour instead of an afternoon.
+
+### Update 13 Oct, the ball fit became the plan
+
+On 1 Oct the measured transform needed a hand correction of (+22, +62, +23) mm, about 70 mm, before the orange could be grasped. That is well past the 1 to 3 cm the cost section expected. The ball fit is now the per session procedure, in `scripts/calibrate_ball.py`.
+
+- it carries the ball to 16 poses at two heights, fits with `solve_rigid_transform`, drops one wrong detection if there is one, and reports the RMS
+- it costs one to two minutes a session instead of an afternoon, so the original cost argument no longer holds
+- it still uses no marker, so the objection to a printed board in the cell still holds
+- its blind spot is the ball offset in the gripper. Every pose has the same tool orientation, so an offset error is the same shift at every point and the fit absorbs it. The reach test checks that once, and again if the ball or its placement changes
+- measuring the mount by hand is now the fallback
 
 ---
 

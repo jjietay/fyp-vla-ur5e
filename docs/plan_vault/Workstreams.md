@@ -53,9 +53,9 @@ Why it matters: Architecture A now starts from exactly the string Architecture B
 ### What still gates a first run
 
 - ~~measure `down_rotvec`, `robot.home_q` and the table height~~, done 23 Sep
-- measure `workspace.x` and `workspace.y`, after the table layout is agreed with Koji
-- write `T_base_cam.json` from the measured camera position, since the pipeline refuses to start without it
-- set `ANTHROPIC_API_KEY`
+- ~~measure `workspace.x` and `workspace.y`~~, done 1 Oct
+- ~~write `T_base_cam.json`~~, done 1 Oct by hand, replaced by the per session ball fit from 13 Oct
+- ~~set `ANTHROPIC_API_KEY`~~, done, the first run was 1 Oct
 
 ---
 
@@ -98,12 +98,13 @@ The single biggest unblocker in the project. Nothing downstream can address a re
 
 - [x] real camera driver with intrinsics read from the SDK, in `shared/hardware/camera.py`
 - [x] camera confirmed as a **RealSense D435i**, which that driver already supports
-- [x] marker decided: **no marker, the transform is measured from the mount**
+- [x] marker decided: **no marker**. Measured from the mount at first, fitted with a ball each session since 13 Oct
 - [x] `scripts/check_camera.py`, which proves the device works and reports intrinsics, coverage and the USB link
 - [x] `scripts/write_calibration.py`, which writes `T_base_cam.json` from six measured numbers
 - [x] `scripts/check_calibration.py`, which reaches for N points and reports the error in mm
+- [x] `scripts/calibrate_ball.py`, the per session ball fit of `T_base_cam`, 13 Oct
 - [x] `check_orientation.py` run on the arm, 23 Sep
-- [ ] run the rest, which needs the camera on the cell
+- [ ] first ball fit, then the one time reach test that checks the ball offset
 
 ### Bench order
 
@@ -111,9 +112,9 @@ Each of these fails in a way that looks like the next one's problem, so doing th
 
 1. `check_camera.py`. Proves frames arrive, reports intrinsics at this resolution, warns on a USB 2 link, and prints the centre pixel as a 3D point so the axis convention is visible
 2. `check_orientation.py`, arm parked pointing down, read only. Run on 23 Sep: Euler roll flipped, which settled the rotation format in [[Decisions to Make#Action space]]. It now checks that the 6D state is stable
-3. measure the mount, camera optical origin to arm base, translation and orientation
-4. `write_calibration.py` with those six numbers
-5. `check_calibration.py`, the only evidence stage 4 works
+3. `calibrate_ball.py`, every session. A ball in the gripper, 16 poses, a fitted transform with its own RMS
+4. `check_calibration.py`, once, and again if the ball or its placement changes. It checks the ball offset, which the fit cannot see
+5. fallback only: measure the mount and run `write_calibration.py` with the six numbers, then step 4
 
 Depth coverage below 50 percent in step 1 means the scene, not the camera. Matte objects read far better than shiny ones, and anything closer than 0.3 m is below the sensor minimum and returns noise.
 
@@ -123,7 +124,7 @@ Depth coverage below 50 percent in step 1 means the scene, not the camera. Matte
 
 ### Why validation is not optional
 
-A calibration you did not check numerically is a calibration you do not have, and every downstream failure will get blamed on it. This got sharper once the transform became hand measured rather than fitted. A fit reports its own residual and tells you when it is wrong. A measured transform reports nothing, so the reach test is the **only** number that says whether stage 4 works. Expect a systematic offset in one direction rather than scatter.
+A calibration you did not check numerically is a calibration you do not have, and every downstream failure will get blamed on it. Since 13 Oct the transform is fitted with a ball each session, so it reports its own residual again. That residual has one blind spot: every pose uses the same tool orientation, so a wrong ball offset in the gripper is the same shift at every point and the fit absorbs it. The reach test covers that, once, and again whenever the ball or its placement changes. If the hand measured fallback is ever used, the reach test is again the **only** number there is. Either way, expect a wrong offset to show as a systematic shift in one direction rather than scatter.
 
 ### Two things in the driver that are not optional
 

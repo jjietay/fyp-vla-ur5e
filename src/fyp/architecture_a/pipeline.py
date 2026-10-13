@@ -41,7 +41,7 @@ from fyp.architecture_a.planner import (GroundingFailed, PlanRejected, Planner,
 from fyp.architecture_a.skills import Skills
 from fyp.architecture_a.tools import validate_schemas_against_skills
 from fyp.architecture_a.trace import Stage, Trace
-from fyp.shared.hardware.safety import WorkspaceEnvelope
+from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
 from fyp.shared.helpers.config import get_config, resolve
 
 
@@ -93,6 +93,9 @@ class ArchitectureA:
         self.controller = controller
         self.ask = ask
         self.reperceive = reperceive
+        # Filled by perceive(): objects seen but outside the reachable workspace,
+        # as {name, confidence, reason}, never with a position. See perceive().
+        self.out_of_reach: list[dict] = []
 
         # `queries` pins the detector vocabulary and BYPASSES grounding. It is a
         # debugging aid only. Leave it None for any recorded trial: supplying it
@@ -112,6 +115,7 @@ class ArchitectureA:
         self.det_nms_iou = float(a["detector"]["nms_iou"])
         self.max_depth = float(self.cfg["camera"]["max_depth"])
         self.depth_radius = int(self.cfg["camera"]["depth_patch_radius"])
+        self.max_below_floor = float(a["perception"]["max_below_floor_mm"]) / 1000.0
 
         self.envelope = WorkspaceEnvelope(self.cfg)
         self.skills = Skills(controller, self.cfg, self.envelope)
@@ -195,20 +199,55 @@ class ArchitectureA:
             valid = [o for o in located if o.valid]
             ev.data["valid"] = len(valid)
             ev.data["dropped"] = [o.query for o in located if not o.valid]
+            ev.data["box_depth"] = [o.query for o in located
+                                    if o.valid and o.depth_from == "box"]
             if not valid:
                 raise RuntimeError("every detection had invalid depth; check the depth stream")
 
         with trace.stage(Stage.TRANSFORM) as ev:
             objects = describe_objects(valid, self.T_base_cam)
+            # Nothing on the table has its centre below the table. A point a little
+            # under the floor is the centre push overshooting, not a real position:
+            # for an open box the depth lands on its inner floor and the push goes
+            # through it (13 Oct 2026: a reachable box read z 0.156 against a
+            # 0.177 floor and was reported out of reach). Lift those to the floor
+            # and say so; anything further below is a bad reading and stays out.
+            floor = self.envelope.z[0]
+            lifted = []
+            for o in objects:
+                if floor - self.max_below_floor <= o["xyz"][2] < floor:
+                    lifted.append({"name": o["name"], "from_z": o["xyz"][2]})
+                    o["xyz"] = [o["xyz"][0], o["xyz"][1], round(floor, 4)]
+            if lifted:
+                ev.data["lifted_to_floor"] = lifted
             in_bounds = [o for o in objects if self.envelope.contains(o["xyz"])]
+            # Out-of-reach objects are kept by NAME, with the reason and without a
+            # position, so the planner can say "the box is too far" instead of "I
+            # do not see a box". 13 Oct 2026: twice a box found by OWLv2 was
+            # filtered here, and the planner told the user it saw no box at all.
+            self.out_of_reach = [{"name": o["name"], "confidence": o["confidence"],
+                                  "reason": self._why_out(o["xyz"])}
+                                 for o in objects if o not in in_bounds]
             ev.data["objects"] = objects
-            ev.data["out_of_workspace"] = [o["name"] for o in objects if o not in in_bounds]
+            ev.data["out_of_workspace"] = [o["name"] for o in self.out_of_reach]
+            if self.out_of_reach:
+                ev.data["out_of_workspace_reason"] = {o["name"]: o["reason"]
+                                                      for o in self.out_of_reach}
             if not in_bounds:
                 raise RuntimeError(
-                    "every detected object is outside the workspace envelope; "
-                    "the calibration or the bounds are wrong")
+                    "every detected object is out of reach: " + "; ".join(
+                        f"{o['name']} ({o['reason']})" for o in self.out_of_reach)
+                    + ". Move them closer to the arm, or check the calibration")
 
         return in_bounds
+
+    def _why_out(self, xyz) -> str:
+        """It takes a base-frame point and gives you the envelope's reason for refusing it."""
+        try:
+            self.envelope.check_point(xyz, "position")
+        except SafetyViolation as e:
+            return str(e)
+        return "outside the workspace"
 
     # -------------------------------------------------------------- dispatch
 
@@ -255,7 +294,7 @@ class ArchitectureA:
             objects = self.perceive(queries, trace)
 
             with trace.stage(Stage.PLANNING) as ev:
-                reply = planner.start(instruction, objects)
+                reply = planner.start(instruction, objects, self.out_of_reach)
                 ev.data["objects_offered"] = [o["name"] for o in objects]
 
             for _ in range(planner.max_turns):
@@ -289,7 +328,11 @@ class ArchitectureA:
                     tid, text = results[-1]
                     try:
                         objects = self.perceive(queries, trace)
-                        results[-1] = (tid, text + f"\nScene now: {[o['name'] for o in objects]}")
+                        scene = f"\nScene now: {[o['name'] for o in objects]}"
+                        if self.out_of_reach:
+                            scene += (f"\nSeen but out of reach: "
+                                      f"{[o['name'] for o in self.out_of_reach]}")
+                        results[-1] = (tid, text + scene)
                     except Exception as e:
                         # Losing the scene mid-task is informative but not fatal;
                         # the planner can still finish from what it is holding.

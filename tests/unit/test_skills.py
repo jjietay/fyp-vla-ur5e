@@ -194,6 +194,57 @@ def test_grasp_offset_lowers_the_grasp_point(ctrl):
     assert ctrl.poses[1][2] == pytest.approx(TARGET[2] - 0.01)
 
 
+def test_a_grasp_the_offset_would_put_under_the_floor_happens_at_the_floor(ctrl):
+    """
+    13 Oct 2026: a short orange read its centre 13 mm above the floor, the 28 mm
+    offset asked for a grasp below it, and every pick was refused. The offset
+    means "as low as is safe", so the grasp goes to the floor instead.
+    """
+    skills = Skills(ctrl, cfg=CFG)
+    low = [TARGET[0], TARGET[1], W["z"][0] + 0.013]
+    assert skills.pick(low, grasp_offset=0.028).ok
+    assert ctrl.poses[1][2] == pytest.approx(W["z"][0])
+
+
+def test_place_whose_retreat_is_over_the_ceiling_retreats_to_the_ceiling(ctrl):
+    """13 Oct 2026: a box at z 0.258 put the retreat over the 0.38 ceiling."""
+    skills = Skills(ctrl, cfg=CFG)
+    high = [TARGET[0], TARGET[1], W["z"][1] - 0.13]
+    assert skills.place(high).ok
+    assert ctrl.poses[-1][2] == pytest.approx(W["z"][1])
+
+
+def test_an_unfinishable_place_is_refused_before_anything_moves(ctrl):
+    """
+    The drop point is inside but the approach is not. Refusing before the first
+    motion means the gripper never opens over the wrong spot.
+    """
+    skills = Skills(ctrl, cfg=CFG)
+    result = skills.place([TARGET[0], TARGET[1], W["z"][1] - 0.05], approach_height=0.20)
+    assert not result.ok
+    assert ctrl.poses == []
+    assert "gripper_toggle" not in ctrl.sequence
+
+
+def test_a_close_that_never_happened_is_not_a_hold():
+    """
+    13 Oct 2026: the fingers stayed open and the pick reported success. A close
+    that ends at the open width means the command never ran.
+    """
+    ctrl = FakeController(held_mm=99.0)
+    result = Skills(ctrl, cfg=CFG).pick(TARGET)
+    assert not result.ok
+    assert "did not happen" in result.message
+
+
+def test_a_centre_below_the_floor_is_still_refused(ctrl):
+    """A centre under the floor is a bad detection, not a short object."""
+    skills = Skills(ctrl, cfg=CFG)
+    result = skills.pick([TARGET[0], TARGET[1], W["z"][0] - 0.01])
+    assert not result.ok
+    assert "z" in result.message
+
+
 # ------------------------------------------------------------------- place
 
 def test_place_releases_above_the_surface(skills, ctrl):

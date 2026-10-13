@@ -248,3 +248,67 @@ def fit_with_outlier_rejection(p_cam, p_base, factor: float = 3.0,
         # What is left is coplanar. Keeping everything is the lesser evil, and the
         # large residual it reports says so.
         return T, np.ones(len(e), dtype=bool)
+
+
+def fit_plane(points, threshold_m: float = 0.008, iterations: int = 300,
+              seed: int = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    It takes a cloud of 3D points and gives you (unit normal pointing up, a point
+    on the plane, a mask of the points that lie on it).
+
+    RANSAC first, so the objects on the table and the edge of the arm do not tilt
+    the answer, then a least-squares refit on the points it kept. The normal is
+    flipped to point towards +z, so "up" means the same thing on every call.
+    """
+    p = np.asarray(points, dtype=float).reshape(-1, 3)
+    if len(p) < 3:
+        raise ValueError(f"need at least 3 points for a plane, got {len(p)}")
+    rng = np.random.default_rng(seed)
+    best = np.zeros(len(p), dtype=bool)
+    for _ in range(iterations):
+        a, b, c = p[rng.choice(len(p), 3, replace=False)]
+        n = np.cross(b - a, c - a)
+        if np.linalg.norm(n) < 1e-12:
+            continue
+        n /= np.linalg.norm(n)
+        inliers = np.abs((p - a) @ n) < threshold_m
+        if inliers.sum() > best.sum():
+            best = inliers
+    if best.sum() < 3:
+        raise ValueError("no plane found")
+    centroid = p[best].mean(axis=0)
+    n = np.linalg.svd(p[best] - centroid)[2][-1]
+    if n[2] < 0:
+        n = -n
+    return n / np.linalg.norm(n), centroid, best
+
+
+def level_to_plane(T_base_cam, normal, centroid, plane_z: float) -> np.ndarray:
+    """
+    It takes a camera transform and the table plane as that transform sees it,
+    and gives you the transform corrected so the table comes out flat at
+    `plane_z`.
+
+    The table is the one surface whose base-frame height is known exactly, so it
+    fixes the three numbers a ball fit gets wrong when the ball sits differently
+    in the fingers than config says, or when depth reads a few percent long:
+    height, and tilt about x and y. The rotation turns about the table centroid,
+    so x and y near the table barely move, and x, y and yaw stay as the ball fit
+    found them.
+    """
+    n = np.asarray(normal, dtype=float).reshape(3)
+    n /= np.linalg.norm(n)
+    c = np.asarray(centroid, dtype=float).reshape(3)
+    up = np.array([0.0, 0.0, 1.0])
+    axis = np.cross(n, up)
+    s, cos = np.linalg.norm(axis), float(np.dot(n, up))
+    if s < 1e-12:
+        R = np.eye(3)
+    else:
+        k = axis / s
+        K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+        R = np.eye(3) + s * K + (1 - cos) * (K @ K)
+    C = np.eye(4)
+    C[:3, :3] = R
+    C[:3, 3] = np.array([c[0], c[1], plane_z]) - R @ c
+    return C @ np.asarray(T_base_cam, dtype=float)

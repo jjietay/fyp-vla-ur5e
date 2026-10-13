@@ -75,7 +75,7 @@ def main() -> int:
 
     _report_frame(frame, cfg)
     _report_backprojection(frame)
-    _save(frame, cache, args.prefix)
+    _save(frame, cache, args.prefix, float(cfg["camera"]["max_depth"]))
     return 0
 
 
@@ -180,7 +180,7 @@ def _report_backprojection(frame) -> None:
               "  camera. Stop and read A12 in Open Actions before calibrating.")
 
 
-def _save(frame, cache: Path, prefix: str) -> None:
+def _save(frame, cache: Path, prefix: str, max_depth: float) -> None:
     """It takes a frame and gives you two PNGs you can look at."""
     import matplotlib
     matplotlib.use("Agg")
@@ -193,7 +193,22 @@ def _save(frame, cache: Path, prefix: str) -> None:
 
     d = frame.depth.copy()
     d[~np.isfinite(d)] = 0.0
-    plt.imsave(depth_path, np.ma.masked_where(d <= 0, d), cmap="viridis")
+    # Histogram-equalised jet, the same look as realsense-viewer. A linear scale
+    # gives the table a sliver of the colours, because it spans ~0.7 m of a 1.7 m
+    # range, and one junk reading (65.535 m, the uint16 max) once flattened it to
+    # a single colour. Ranking the pixels spreads the colours over the depths that
+    # are actually in view. The price: a colour is NOT a fixed distance, so read
+    # distances from the printed numbers, not from this image.
+    # Beyond max_depth the pipeline treats depth as invalid, so it is blanked here
+    # (black) like the other invalid pixels.
+    valid = (d > 0) & (d <= max_depth)
+    eq = np.zeros_like(d)
+    if valid.any():
+        v = d[valid]
+        eq[valid] = np.searchsorted(np.sort(v), v, side="right") / v.size
+    cmap = plt.get_cmap("jet").copy()
+    cmap.set_bad("black")
+    plt.imsave(depth_path, np.ma.masked_where(~valid, eq), cmap=cmap, vmin=0.0, vmax=1.0)
 
     print(f"\nsaved {colour_path}")
     print(f"saved {depth_path}")

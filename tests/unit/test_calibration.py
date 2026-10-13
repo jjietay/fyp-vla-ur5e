@@ -271,3 +271,41 @@ def test_a_clean_fit_drops_nothing():
     p_base = camera_to_base(p_cam, T) + RNG.normal(0, 0.0005, size=(12, 3))
     _, keep = fit_with_outlier_rejection(p_cam, p_base)
     assert keep.all()
+
+
+# ------------------------------------------------------------ level to table
+
+def test_levelling_removes_a_height_and_tilt_error_from_the_table():
+    """
+    The real case of 13 Oct 2026: a ball fit that put the table about 35 mm low
+    and slightly tilted. Seen through the wrong transform, a flat table at z=0.172
+    comes out tilted and offset; after levelling it must be flat at 0.172 again,
+    and a point on the table must keep its x and y.
+    """
+    from fyp.architecture_a.calibration.hand_eye import fit_plane, level_to_plane
+    from fyp.shared.helpers.rotations import euler_to_R
+
+    T_true = a_transform(rpy=(-2.2, 0.05, 3.0), t=(0.70, 0.67, 0.88))
+    err = np.eye(4)
+    err[:3, :3] = euler_to_R([0.02, -0.015, 0.0])     # about 1 deg each way
+    err[:3, 3] = [0.0, 0.0, -0.035]
+    T_wrong = err @ T_true
+
+    xy = RNG.uniform([0.30, -0.55], [0.60, -0.25], size=(3000, 2))
+    table = np.column_stack([xy, np.full(len(xy), 0.172)])
+    table[:, 2] += RNG.normal(0, 0.002, len(table))
+    clutter = np.column_stack([RNG.uniform([0.40, -0.45], [0.45, -0.40], size=(200, 2)),
+                               RNG.uniform(0.18, 0.26, 200)])          # an object on it
+    p_cam = base_to_camera(np.vstack([table, clutter]), T_true)
+    seen = camera_to_base(p_cam, T_wrong)
+
+    normal, centroid, keep = fit_plane(seen)
+    T_fixed = level_to_plane(T_wrong, normal, centroid, 0.172)
+
+    table_fixed = camera_to_base(p_cam[:len(table)], T_fixed)
+    assert abs(table_fixed[:, 2].mean() - 0.172) < 0.001
+    assert table_fixed[:, 2].std() < 0.003
+    assert keep[len(table):].mean() < 0.2               # the object is not table
+    mid = np.array([0.45, -0.40, 0.172])
+    moved = camera_to_base(base_to_camera(mid, T_true), T_fixed)
+    assert np.allclose(moved, mid, atol=0.005)

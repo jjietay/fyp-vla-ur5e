@@ -1,0 +1,55 @@
+{
+  "T_base_cam": [
+    [
+      -0.9931362214322216,
+      -0.10820127858181602,
+      0.044417665321245435,
+      0.7368162965097611
+    ],
+    [
+      -0.09742025508547773,
+      0.5550674189921152,
+      -0.8260807795079798,
+      0.6685133402873302
+    ],
+    [
+      0.0647281977071073,
+      -0.8247379242442365,
+      -0.5617985552979805,
+      0.8863164705991804
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "meta": {
+    "method": "ball fit, scripts/calibrate_ball.py",
+    "written_at": "2026-10-13T12:07:41",
+    "note": "orange, grid moved to object area",
+    "n_points": 16,
+    "dropped_outliers": 0,
+    "fit_rms_mm": 16.266882229765777,
+    "fit_max_mm": 33.9828647270463,
+    "ball_query": "orange",
+    "ball_radius_m": 0.03425,
+    "ball_offset_tool_m": [
+      0.0,
+      0.0,
+      -0.027
+    ],
+    "validated": false,
+    "levelled_to_table": {
+      "written_at": "2026-10-13T12:24:01",
+      "table_z": 0.172,
+      "offset_before_mm": 0.5,
+      "tilt_before_deg": 0.279,
+      "flatness_after_mm": 3.7,
+      "n_points": 5074,
+      "from_file": "T_base_cam.20261013T122345.json",
+      "note": "after orange ball fit"
+    }
+  }
+}

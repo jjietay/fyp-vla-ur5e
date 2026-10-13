@@ -328,3 +328,23 @@ def test_grounding_is_its_own_trace_stage():
     from fyp.architecture_a.trace import Stage
     assert Stage.GROUNDING.value == "grounding"
     assert Stage.GROUNDING != Stage.DETECTION
+
+
+def test_out_of_reach_objects_reach_the_planner_by_name_only(env):
+    """
+    13 Oct 2026: a box found by OWLv2 but out of reach was filtered before the
+    planner, which then told the user it saw no box. It must be named, with a
+    reason, and must carry no position the planner could act on.
+    """
+    from fyp.architecture_a.planner import Planner
+    planner = Planner(CFG, env)
+    planner._turn = lambda: None
+    planner.start("put the orange in the box",
+                  [{"name": "orange", "confidence": 0.7, "xyz": INSIDE}],
+                  [{"name": "white box", "confidence": 0.44,
+                    "reason": "position radius=0.849 is above max 0.700"}])
+    text = planner.messages[0]["content"]
+    assert "Seen but out of reach" in text
+    assert "white box" in text and "radius=0.849" in text
+    after = text.split("Seen but out of reach")[1]
+    assert "xyz" not in after

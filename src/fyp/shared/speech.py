@@ -320,11 +320,20 @@ def _nvidia_lib_dirs() -> list[Path]:
     roots.update(getattr(site, "getsitepackages", lambda: [])())
     roots.update(p for p in sys.path if p.endswith("site-packages"))
 
+    # ONLY what CTranslate2 needs, never every nvidia/*/lib. In the FYP venv
+    # these three were all there was, so loading everything was harmless. In the
+    # lerobot venv torch brings ~15 more (cupti, nvperf, cufile, nccl, nvshmem,
+    # nvblas ...), and loading all of them RTLD_GLOBAL made the next
+    # RTDEControlInterface() abort with "free(): invalid pointer" (13 Oct 2026).
+    # A library fact, not a tunable, so it stays here rather than in config.
+    wanted = ("cublas", "cudnn", "cuda_nvrtc")
+
     dirs: list[Path] = []
     for root in roots:
         nvidia = Path(root) / "nvidia"
         if nvidia.is_dir():
-            dirs.extend(sorted(d for d in nvidia.glob("*/lib") if d.is_dir()))
+            dirs.extend(sorted(nvidia / name / "lib" for name in wanted
+                               if (nvidia / name / "lib").is_dir()))
     return dirs
 
 

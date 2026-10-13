@@ -3,8 +3,14 @@
 It takes a ball held in the gripper and gives you a FITTED
 `config/calibration/T_base_cam.json`, with the error of the fit in millimetres.
 
-    uv run python scripts/calibrate_ball.py              # the per-session run
-    uv run python scripts/calibrate_ball.py --plan-only  # list the poses, touch nothing
+    PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py
+    PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py --plan-only
+
+Run from the FYP folder, with the LEROBOT venv's python, because finding the ball
+needs OWLv2 and so torch, which the FYP venv does not have by design (13 Oct 2026:
+`uv run` here failed at the first pose). Calling the venv's python directly
+rather than `uv run` in ~/lerobot skips uv's sync, so it cannot remove the UR5e
+adapter and drivers installed there by hand. `--plan-only` would run in either.
 
 Run it at the start of every session, after the camera is back on its tape
 marks. It replaces measuring the mount with a rule. No markers: the only target

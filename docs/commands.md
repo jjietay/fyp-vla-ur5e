@@ -254,8 +254,18 @@ middle of the table, so clear the table and keep a hand on the e-stop
 
 ```bash
 uv run python scripts/go_home.py
-uv run python scripts/calibrate_ball.py --plan-only   # the poses it will visit, no arm
-uv run python scripts/calibrate_ball.py
+# lerobot venv's python, because finding the ball needs OWLv2 and so torch
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py --plan-only   # the poses it will visit, no arm
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py
+```
+
+Then level it to the table. Nothing moves; it reads the camera only. The table's base-frame
+height is known, so this removes the height and tilt error the ball fit cannot see (13 Oct
+2026: two fits both put objects about 35 mm low). Read `table offset` in the output
+
+```bash
+uv run python scripts/level_to_table.py --dry-run
+uv run python scripts/level_to_table.py
 ```
 
 When asked, put the ball between the fingers with its **bottom flush with the fingertips**, the
@@ -268,8 +278,8 @@ Read two lines of the output:
   Usual causes are the ball slipping in the fingers or depth holes on the ball
 - how far the camera moved since the last file, which says how well the tape marks held
 
-The previous calibration is kept as `T_base_cam.<time>.json`, never overwritten. About 2 to 4
-minutes in all, mostly OWLv2 reloading at each of the 16 poses.
+The previous calibration is kept as `T_base_cam.<time>.json`, never overwritten. About 1 to 2
+minutes in all. The first pose waits about 10 s while OWLv2 loads, and the rest reuse it.
 
 (22) **First session only, or after changing the ball or how it is placed.** Prove the ball
 offset with the reach test, because the fit's own RMS cannot see a wrong
@@ -277,6 +287,7 @@ offset with the reach test, because the fit's own RMS cannot see a wrong
 the same shift at every point. Koji stays at the e-stop
 
 ```bash
+# FYP venv (plain uv run). No torch needed, and it needs matplotlib for the click window
 uv run python scripts/check_calibration.py --dry-run   # compute targets, do not move
 uv run python scripts/check_calibration.py --points 5
 ```

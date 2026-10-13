@@ -54,6 +54,8 @@ class RealSenseCamera:
         self.height = int(cam["height"])
         self.fps = int(cam["fps"])
         self.align_depth = bool(cam["align_depth_to_color"])
+        self.cfg_depth = {"visual_preset": cam.get("visual_preset"),
+                          "laser_power_mw": cam.get("laser_power_mw")}
         self._pipeline = None
         self._align = None
         self._depth_scale = None
@@ -82,7 +84,9 @@ class RealSenseCamera:
 
         self._pipeline = rs.pipeline()
         profile = self._pipeline.start(cfg)
-        self._depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
+        sensor = profile.get_device().first_depth_sensor()
+        self._depth_scale = sensor.get_depth_scale()
+        self._set_depth_options(sensor, rs)
         self._align = rs.align(rs.stream.color) if self.align_depth else None
 
         # The first few frames come out before auto-exposure settles and are
@@ -90,6 +94,32 @@ class RealSenseCamera:
         # like a detector problem.
         for _ in range(10):
             self._pipeline.wait_for_frames()
+
+    def _set_depth_options(self, sensor, rs) -> None:
+        """
+        It takes the depth sensor and gives it the preset and laser power from
+        config, every time the stream starts.
+
+        A RealSense keeps these settings until it is unplugged, so a camera that
+        never sets them runs with whatever the last program left behind. On 13
+        Oct 2026 a diagnostic left "High Accuracy" on, which throws away any depth
+        it is unsure of: the next run lost the whole top of a white box and half
+        the table, and the box was dropped for having no depth.
+        """
+        preset = self.cfg_depth.get("visual_preset")
+        if preset and sensor.supports(rs.option.visual_preset):
+            r = sensor.get_option_range(rs.option.visual_preset)
+            names = {sensor.get_option_value_description(rs.option.visual_preset, i): i
+                     for i in range(int(r.min), int(r.max) + 1)}
+            if preset not in names:
+                raise RuntimeError(f"camera.visual_preset {preset!r} is not one of "
+                                   f"{sorted(names)}")
+            sensor.set_option(rs.option.visual_preset, names[preset])
+        if sensor.supports(rs.option.emitter_enabled):
+            sensor.set_option(rs.option.emitter_enabled, 1)
+        power = self.cfg_depth.get("laser_power_mw")
+        if power is not None and sensor.supports(rs.option.laser_power):
+            sensor.set_option(rs.option.laser_power, float(power))
 
     def stop(self) -> None:
         """It takes nothing and gives you a released device. Safe to call twice."""

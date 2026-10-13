@@ -1,0 +1,55 @@
+{
+  "T_base_cam": [
+    [
+      -0.9937028833213983,
+      -0.10122013854675323,
+      0.048052713048440436,
+      0.731460695984019
+    ],
+    [
+      -0.09553782543714288,
+      0.5413466923408238,
+      -0.835353986404801,
+      0.6805048448912265
+    ],
+    [
+      0.05854146897270055,
+      -0.8346845165954775,
+      -0.5476081209827816,
+      0.8762117896503374
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "meta": {
+    "method": "ball fit, scripts/calibrate_ball.py",
+    "written_at": "2026-10-13T12:58:42",
+    "note": "lacrosse ball, 26 poses",
+    "n_points": 26,
+    "dropped_outliers": 0,
+    "fit_rms_mm": 13.390808859861732,
+    "fit_max_mm": 28.447551483820842,
+    "ball_query": "orange",
+    "ball_radius_m": 0.03425,
+    "ball_offset_tool_m": [
+      0.0,
+      0.0,
+      -0.027
+    ],
+    "validated": false,
+    "levelled_to_table": {
+      "written_at": "2026-10-13T12:59:24",
+      "table_z": 0.172,
+      "offset_before_mm": -0.2,
+      "tilt_before_deg": 0.475,
+      "flatness_after_mm": 3.7,
+      "n_points": 6096,
+      "from_file": "T_base_cam.20261013T125845.json",
+      "note": ""
+    }
+  }
+}

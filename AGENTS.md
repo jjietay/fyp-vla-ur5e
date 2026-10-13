@@ -92,17 +92,20 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
 - **Never hardcode `parents[n]` to find the repo root.** `shared/helpers/config.py` walks up
   to `pyproject.toml` instead, because a hardcoded depth silently broke during the
   architecture split and every path in `config.yaml` resolves through it.
-- **`data/` is gitignored and has no backup.** Only `ep_001.h5` survives, recovered from
-  history after a reformat wiped it. Deleting anything there is permanent. Never `rm` under
-  `data/` without saying so first.
+- **`data/` is gitignored and has no backup.** It holds camera captures in `data/cache/` and
+  no episodes yet; the old `ep_001.h5` was simulation output and was deleted on purpose.
+  Deleting anything there is permanent. Never `rm` under `data/` without saying so first.
 - **faster-whisper on the RTX 50-series** must use `compute_type="float16"`; the default int8
   crashes with `CUBLAS_STATUS_NOT_SUPPORTED` on sm_120.
-- **`detect()` reloads the model on every call.** Fine for `check_detector.py`, fatal in a
-  loop. `ArchitectureA` is built once and reused for exactly this reason.
-- **Two config values are still placeholders and WILL misbehave on hardware:**
-  `workspace.x` and `workspace.y` (wait for the table layout to be agreed with Koji), and
-  `open_drawer(pull_axis=...)`. Measured on 23 Sep 2026 and in `config.yaml`: `robot.host`,
-  `robot.home_q`, `workspace.z`, `workspace.max_radius` and `skills.down_rotvec`.
+- **`detect()` loads OWLv2 once per process** and reuses it (`_load` in `detector.py`, 13 Oct
+  2026). Before that it reloaded on every call: 10.7 s median per detection on 1 Oct, inside
+  A's re-perception loop, all of it counted as A's latency. Never move the loading back into
+  `detect()`. The first detection in a process still pays the load.
+- **One value is still a placeholder and WILL misbehave on hardware:**
+  `open_drawer(pull_axis=...)`. Measured and in `config.yaml`: `robot.host`, `robot.home_q`,
+  `workspace.z`, `workspace.max_radius` and `skills.down_rotvec` (23 Sep 2026), and
+  `workspace.x` and `workspace.y` (1 Oct 2026, the bounding box of the table corners, so part
+  of the box lies off the table, which sits about 41 degrees to the base axes).
 - **Read poses from RTDE, never from the pendant.** The pendant shows TCP z in another frame
   (-0.020 where RTDE reported 0.380 on 23 Sep).
 - **The RG2 gripper is driven by URScript through `sendCustomScriptFunction`.** The pendant
@@ -126,21 +129,24 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   vocabulary and skips grounding, which hands A a list of what is on the table that B never
   receives. Debugging aid only. `run_evaluation.py` deliberately passes nothing.
 
-## What exists right now (23 Sep 2026)
+## What exists right now (13 Oct 2026)
 
-Week 7 of 13. The arm became available about 22 Sep, after the lab move, and the first
-session at the real UR5e was 23 Sep.
+Week 10 of 13. The arm became available about 22 Sep, after the lab move. The first
+session at the real UR5e was 23 Sep, and Architecture A ran end to end on the real cell on
+1 Oct 2026 ("pick up the orange").
 
 **Working on real hardware:** the speech front end; `URController` motion (`go_home.py`
 reached `home_q` within 0.012 degrees, and `tests/hardware -k "not gripper"` passed 7 of 7
-twice); the RG2 gripper protocol (`scripts/check_gripper.py`); `check_orientation.py`.
+twice); the RG2 gripper protocol (`scripts/check_gripper.py`); `check_orientation.py`; the
+fixed camera on the cell and OWLv2 on real frames; Architecture A's grounding, perception,
+planner and `pick`, end to end on 1 Oct.
 
-**Written, not yet run on hardware:** the rewritten gripper control with its controller-side
-check and one resend (23 Sep); Architecture A's skills, perception and planner on the real
-cell; `shared/hardware/camera.py` on the cell (benched without the arm on 1 Sep); the
-evaluation harness; Architecture B's robot side. `pytest tests/unit` collects 233 as of
-23 Sep 2026, all green. `tests/hardware/test_orientation.py` (not yet run) checks that
-rotations at the down pose take the short way.
+**Written, not yet run on hardware:** the finger-width grasp check in `skills.py` (a close
+below `min_grasp_width_mm` returns "grasp missed", opens and backs off) and
+`scripts/calibrate_ball.py`, both 13 Oct; the detector model cache, 13 Oct; the evaluation
+harness; Architecture B's robot side. `pytest tests/unit` collects 254 as of 13 Oct 2026.
+`tests/hardware/test_orientation.py` (not yet run) checks that rotations at the down pose
+take the short way.
 
 **Settled on 23 Sep:** Architecture B's state stores rotation as the first two columns of the
 rotation matrix (10 numbers), because Euler roll flipped on the real arm. The action stays
@@ -154,18 +160,21 @@ because `moveL` blocks and a 20 Hz policy loop built on it waits every cycle. Th
 Architecture B agent for the evaluation harness yet: `run_evaluation.py --architecture B`
 prints a message and exits.
 
-**Not done:** the camera on the cell and `T_base_cam`, the detector on real frames, the
-workspace x and y bounds, the e-stop recovery test, and all demonstration capture. There are
-zero episodes. Demonstrations will be driven with a 3D jog device, not freedrive.
+**Not done:** the first ball fit of `T_base_cam` (the current file is the 1 Oct hand-adjusted
+session fix, `validated: false`), the drawer `pull_axis`, the e-stop recovery test, and all
+demonstration capture. There are zero episodes. Demonstrations will be driven with a 3D jog
+device, not freedrive.
 
-**No fiducial markers, anywhere.** `T_base_cam` is written by hand into
-`config/calibration/T_base_cam.json` from the measured camera position, not fitted. The lab
-is shared, so the camera is taped in place and re-measured each session.
-`solve_rigid_transform` in `hand_eye.py` stays in the repo as the documented fallback (matte
-ball in the gripper, still tag-free) if the measured transform proves too coarse to grasp
-with. Expect a systematic 1-3 cm bias: 1 degree of mount orientation error is ~17 mm at a 1 m
-standoff. The reach test is the only check on stage 4, because a hand-measured transform
-produces no residual of its own. Reasoning in `docs/plan_vault/Decisions to Make.md`.
+**No fiducial markers, anywhere.** Since 13 Oct 2026 `T_base_cam` is FITTED at the start of
+each session by `scripts/calibrate_ball.py`: a matte ball held in the gripper is carried to 16
+poses, the camera finds it, and the pairs go to `solve_rigid_transform`. Tag-free, so the rule
+holds. The lab is shared, so the camera is taped in place and the fit is redone each session.
+The fit reports its own RMS, but it CANNOT see a wrong `calibration.ball_offset_tool_m`: every
+pose has the same tool orientation, so that error is the same shift at every point. The reach
+test (`check_calibration.py`) checks it once, and again whenever the ball or the way it is
+placed changes. Measuring the mount by hand (`write_calibration.py`) is now the fallback, with
+the 1-3 cm bias that implies: 1 degree of mount orientation error is ~17 mm at a 1 m standoff.
+Reasoning in `docs/plan_vault/Decisions to Make.md`.
 
 ## Evaluation harness
 

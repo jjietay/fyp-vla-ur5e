@@ -24,6 +24,7 @@ class LocatedObject:
     depth_m: float
     p_cam: np.ndarray | None
     centre_offset_m: float = 0.0   # how far p_cam was pushed from the seen surface
+    depth_from: str = "centre"     # "centre" patch, or "box" when the centre had no depth
 
     @property
     def valid(self) -> bool:
@@ -63,10 +64,19 @@ def locate(detections: list[dict], depth: np.ndarray, intr: CameraIntrinsics,
     for d in detections:
         u, v = d["center_uv"]
         z = depth_at(depth, u, v, radius=radius, max_depth=max_depth)
+        source = "centre"
+        box = d.get("box_xyxy")
+        if not np.isfinite(z) and box is not None:
+            # The centre patch can land on a hole: glare on a flat white lid, or
+            # the dark floor inside a container. 13 Oct 2026: a white box was
+            # found by OWLv2 every time and dropped every time for this. The
+            # middle half of its box is still the object, so use the median of
+            # whatever valid depth is there, and say so in the trace.
+            z = _box_depth(depth, box, max_depth)
+            source = "box"
         p = pixel_to_camera(u, v, z, intr) if np.isfinite(z) else None
 
         offset = 0.0
-        box = d.get("box_xyxy")
         if p is not None and box is not None:
             w_m = (box[2] - box[0]) * z / intr.fx
             h_m = (box[3] - box[1]) * z / intr.fy
@@ -75,8 +85,28 @@ def locate(detections: list[dict], depth: np.ndarray, intr: CameraIntrinsics,
 
         out.append(LocatedObject(query=d["query"], score=d.get("score", float("nan")),
                                  center_uv=(u, v), depth_m=z, p_cam=p,
-                                 centre_offset_m=float(offset)))
+                                 centre_offset_m=float(offset), depth_from=source))
     return out
+
+
+def _box_depth(depth: np.ndarray, box, max_depth: float | None) -> float:
+    """
+    It takes a depth image and a detection box and gives you the median valid
+    depth over the middle half of the box, or NaN when it has none.
+
+    The middle half, not the whole box: a box includes background at its edges,
+    and that is the table behind the object, not the object.
+    """
+    x0, y0, x1, y1 = (float(v) for v in box)
+    w, h = x1 - x0, y1 - y0
+    H, W = depth.shape
+    ya, yb = max(0, int(y0 + h / 4)), min(H, int(np.ceil(y1 - h / 4)))
+    xa, xb = max(0, int(x0 + w / 4)), min(W, int(np.ceil(x1 - w / 4)))
+    patch = np.asarray(depth[ya:yb, xa:xb], dtype=float)
+    ok = np.isfinite(patch) & (patch > 0)
+    if max_depth is not None:
+        ok &= patch < max_depth
+    return float(np.median(patch[ok])) if ok.any() else float("nan")
 
 
 def find_duplicates(located: list[LocatedObject],

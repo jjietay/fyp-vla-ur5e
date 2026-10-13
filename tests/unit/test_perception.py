@@ -25,6 +25,7 @@ from fyp.architecture_a.perception.localiser import (find_duplicates, locate,
 from fyp.architecture_a.perception.pixel_to_3d import (camera_to_pixel, depth_at,
                                                        intrinsics_from_fovy,
                                                        pixel_to_camera,
+                                                       smooth_depth,
                                                        surface_to_centroid)
 
 INTR = intrinsics_from_fovy(60.0, 640, 480)
@@ -141,6 +142,26 @@ def test_depth_at_rejects_readings_beyond_the_maximum():
 
 def test_depth_at_returns_nan_when_the_patch_is_empty():
     assert np.isnan(depth_at(np.zeros((20, 20)), 10, 10, radius=2))
+
+
+def test_smooth_depth_matches_depth_at_at_every_pixel():
+    """
+    The saved depth image claims to show what the pipeline sees. That is only
+    true if it agrees with depth_at everywhere, including at the borders, in
+    holes, and where a reading is past the maximum.
+    """
+    rng = np.random.default_rng(0)
+    depth = rng.uniform(0.4, 2.5, (24, 32))
+    depth[rng.random(depth.shape) < 0.2] = 0.0
+    depth[5:12, 8:16] = 0.0          # a patch with no readings at all
+    smooth = smooth_depth(depth, radius=2, max_depth=2.0)
+    for v in range(depth.shape[0]):
+        for u in range(depth.shape[1]):
+            want = depth_at(depth, u, v, radius=2, max_depth=2.0)
+            if np.isnan(want):
+                assert np.isnan(smooth[v, u]), (u, v)
+            else:
+                assert smooth[v, u] == pytest.approx(want, abs=1e-6), (u, v)
 
 
 def test_depth_at_outside_the_image_is_nan_rather_than_an_exception():
@@ -278,6 +299,21 @@ def test_a_detection_with_no_depth_is_kept_but_marked_invalid():
     assert len(located) == 1
     assert not located[0].valid
     assert located[0].p_cam is None
+
+
+def test_a_hole_at_the_centre_falls_back_to_the_middle_of_the_box():
+    """
+    13 Oct 2026: glare on a white lid left the centre patch empty and the box
+    was dropped every time, although most of its middle had depth.
+    """
+    depth = a_depth_map()
+    depth[235:246, 315:326] = 0.0                    # the hole under the centre patch
+    box = [300.0, 220.0, 340.0, 260.0]
+    located = locate([{"query": "box", "center_uv": [320.0, 240.0], "box_xyxy": box}],
+                     depth, INTR, max_centre_offset=0.0)
+    assert located[0].valid
+    assert located[0].depth_from == "box"
+    assert located[0].depth_m == pytest.approx(0.8)
 
 
 def test_a_detection_without_a_box_is_not_pushed():

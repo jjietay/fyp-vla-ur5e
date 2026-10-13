@@ -83,6 +83,9 @@ class Skills:
         self.acc = float(s["acc"])
         self.down_rotvec = [float(v) for v in s["down_rotvec"]]
         self.min_grasp_width_mm = float(s["min_grasp_width_mm"])
+        g = cfg.get("robot", {}).get("gripper", {})
+        # A close that ends this near the open width did not happen at all.
+        self.open_width_mm = float(g.get("open_mm", 100.0)) - float(g.get("tolerance_mm", 5.0))
         # From the same cfg as everything else, not a fresh get_config(), so a
         # test that hands in its own config really controls where home is.
         home_q = cfg.get("robot", {}).get("home_q")
@@ -151,6 +154,13 @@ class Skills:
             # the guess that drops things from a height.
             raise SkillError(f"gripper returned no width ({width!r}), "
                              "so the grasp cannot be confirmed") from None
+        if width >= self.open_width_mm:
+            # 13 Oct 2026: a pick went down, came up and reported success with
+            # the fingers never closed. The RG2 drops roughly one command in 66,
+            # and a close that never ran comes back still at the open width.
+            # Treating that as "held" lifts nothing and carries on.
+            raise SkillError(f"gripper close did not happen: fingers still at "
+                             f"{width:.1f} mm, the open width")
         if width < self.min_grasp_width_mm:
             raise GraspMissed(f"grasp missed: fingers closed to {width:.1f} mm, below "
                              f"{self.min_grasp_width_mm:.1f} mm, so nothing is held")
@@ -171,7 +181,7 @@ class Skills:
         """
         try:
             self._gripper(GRIPPER_OPEN)
-            self._move(self._above(xyz, self.retreat_height), result, speed=speed)
+            self._move(self._retreat(xyz), result, speed=speed)
         except (SkillError, SafetyViolation) as e:
             return f"; back-off failed, arm left at the grasp pose: {e}"
         return ""
@@ -180,6 +190,20 @@ class Skills:
         """It takes a target and gives you the pose directly above it."""
         p = np.asarray(xyz, dtype=float).reshape(3).copy()
         p[2] += height
+        return self._pose(p)
+
+    def _retreat(self, xyz) -> list[float]:
+        """
+        It takes a target and gives you the pose to back off to above it:
+        `retreat_height` up, or the workspace ceiling if that is lower.
+
+        The retreat only has to clear what is below, so "as high as allowed" is
+        the right meaning when the full height does not fit. 13 Oct 2026: a box
+        read at z 0.258 put the retreat at 0.408, over the 0.38 ceiling, and the
+        place was refused AFTER the gripper had opened.
+        """
+        p = np.asarray(xyz, dtype=float).reshape(3).copy()
+        p[2] = min(p[2] + self.retreat_height, max(self.env.z[1], p[2]))
         return self._pose(p)
 
     # ----------------------------------------------------------------- skills
@@ -199,18 +223,29 @@ class Skills:
         off = self.grasp_depth_offset if grasp_offset is None else float(grasp_offset)
 
         grasp = np.asarray(xyz, dtype=float).reshape(3).copy()
-        grasp[2] -= off
+        floor = self.env.z[0]
+        # The offset means "below the centre, as low as is safe", so a grasp it
+        # would push under the table floor is grasped AT the floor instead of
+        # refused. 13 Oct 2026: a 54 mm orange read its centre at 0.190, the
+        # offset asked for 0.162, the floor is 0.177, and every pick was refused
+        # although grasping at 0.177 held it fine. A centre that is itself below
+        # the floor is still refused by the move below: that is a bad detection,
+        # not a short object.
+        grasp[2] = max(grasp[2] - off, min(floor, grasp[2]))
 
         try:
+            # Every pose is checked BEFORE the first motion, so a path that cannot
+            # be finished is refused with the arm and gripper untouched.
+            path = [self._above(xyz, h), self._pose(grasp), self._retreat(xyz)]
             self._gripper(GRIPPER_OPEN)
-            self._move(self._above(xyz, h), r, speed=speed)
-            self._move(self._pose(grasp), r, speed=speed)
+            self._move(path[0], r, speed=speed)
+            self._move(path[1], r, speed=speed)
             try:
                 width = self._grasp()
             except GraspMissed as e:
                 r.ok, r.message = False, str(e) + self._back_off(xyz, r, speed)
                 return r
-            self._move(self._above(xyz, self.retreat_height), r, speed=speed)
+            self._move(path[2], r, speed=speed)
         except (SkillError, SafetyViolation) as e:
             r.ok, r.message = False, str(e)
             return r
@@ -233,10 +268,15 @@ class Skills:
         drop[2] += float(release_clearance)
 
         try:
-            self._move(self._above(xyz, h), r, speed=speed)
-            self._move(self._pose(drop), r, speed=speed)
+            # Checked before the first motion. On 13 Oct 2026 the retreat was
+            # found out of bounds only after the gripper had opened: the object
+            # was dropped and the skill still reported failure, so the planner
+            # placed again with an empty gripper.
+            path = [self._above(xyz, h), self._pose(drop), self._retreat(xyz)]
+            self._move(path[0], r, speed=speed)
+            self._move(path[1], r, speed=speed)
             self._gripper(GRIPPER_OPEN)
-            self._move(self._above(xyz, self.retreat_height), r, speed=speed)
+            self._move(path[2], r, speed=speed)
         except (SkillError, SafetyViolation) as e:
             r.ok, r.message = False, str(e)
             return r
@@ -345,7 +385,7 @@ class Skills:
                 return r
             self._move(self._pose(pulled), r, speed=speed)
             self._gripper(GRIPPER_OPEN)
-            self._move(self._above(pulled, self.retreat_height), r, speed=speed)
+            self._move(self._retreat(pulled), r, speed=speed)
         except (SkillError, SafetyViolation) as e:
             r.ok, r.message = False, str(e)
             return r

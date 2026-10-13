@@ -20,6 +20,19 @@ quietly clean up its own input, and the comparison would stop meaning anything.
 The detector vocabulary is derived from the instruction by the planner, so there
 is nothing to configure per task.
 
+Before every instruction it saves what the camera sees into the trace folder,
+named after the run so it sits next to `<run_id>.jsonl`:
+
+    <run_id>_colour.png   the colour frame, which is all OWLv2 ever sees
+    <run_id>_depth.png    the depth after the same patch median `depth_at` uses,
+                          histogram-equalised jet like realsense-viewer, black
+                          where the pipeline would get no depth
+
+Both are taken just BEFORE the run, outside its trace, so the second or so they
+cost never counts as Architecture A's latency. The arm is still at rest, so it is
+the same scene the run's own first capture sees, not literally the same frame.
+`run_evaluation.py` does not save them.
+
 Both interactive modes keep the camera, detector and arm connected between
 commands. Prefer them while developing: reloading OWLv2 per instruction takes
 longer than the run.
@@ -79,7 +92,9 @@ def main() -> int:
                             else _spoken(ears))
 
             for instruction in instructions:
+                scene = _save_scene(camera)
                 outcome = agent.run(instruction)
+                scene = _name_after_run(scene, outcome.run_id)
                 print(f"\n{'=' * 70}")
                 print(f"  {'SUCCESS' if outcome.ok else 'FAILED'}: {outcome.summary}")
                 if outcome.failed_stage:
@@ -94,6 +109,8 @@ def main() -> int:
                       f"{outcome.usage.get('output_tokens', 0)} out "
                       f"over {outcome.usage.get('calls', 0)} calls")
                 print(f"  trace: logs/traces/{outcome.run_id}.jsonl")
+                for path in scene.values():
+                    print(f"  scene: {path}")
                 print("=" * 70)
     finally:
         controller.close()
@@ -101,6 +118,72 @@ def main() -> int:
             ears.close()
 
     return 0
+
+
+def _save_scene(camera) -> dict:
+    """
+    It takes the open camera and gives you the paths of two PNGs of the table as
+    the run is about to see it: the colour frame, and the smoothed depth.
+
+    A failure here only prints a warning. The run's own capture stage is where a
+    camera fault belongs, because that is what the trace records, and crashing
+    here would stop that record from being written at all.
+    """
+    from datetime import datetime, timezone
+
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from fyp.architecture_a.perception.pixel_to_3d import smooth_depth
+    from fyp.shared.helpers.config import get_config, resolve
+
+    try:
+        cfg = get_config()
+        out = resolve(cfg["architecture_a"]["trace"]["dir"])
+        out.mkdir(parents=True, exist_ok=True)
+        stem = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-prerun"
+        paths = {"colour": out / f"{stem}_colour.png", "depth": out / f"{stem}_depth.png"}
+
+        frame = camera.capture()
+        d = smooth_depth(frame.depth, int(cfg["camera"]["depth_patch_radius"]),
+                         float(cfg["camera"]["max_depth"]))
+
+        # Histogram-equalised, as in check_camera.py: the table spans a small slice
+        # of the range, and a linear scale paints it all one colour. A colour is
+        # therefore NOT a fixed distance; the xyz in the trace are the numbers.
+        valid = np.isfinite(d)
+        eq = np.zeros_like(d)
+        if valid.any():
+            v = d[valid]
+            eq[valid] = np.searchsorted(np.sort(v), v, side="right") / v.size
+        cmap = plt.get_cmap("jet").copy()
+        cmap.set_bad("black")
+
+        plt.imsave(paths["colour"], frame.rgb)
+        plt.imsave(paths["depth"], np.ma.masked_where(~valid, eq),
+                   cmap=cmap, vmin=0.0, vmax=1.0)
+        return paths
+    except Exception as e:
+        print(f"  WARNING: could not save the pre-run images ({type(e).__name__}: {e})")
+        return {}
+
+
+def _name_after_run(paths: dict, run_id: str) -> dict:
+    """
+    It takes the pre-run image paths and gives you them renamed to
+    `<run_id>_colour.png` and `<run_id>_depth.png`.
+
+    The run id only exists once the run starts, and the images have to be taken
+    before it, so they are saved under a time stamp and renamed here.
+    """
+    renamed = {}
+    for kind, path in paths.items():
+        new = path.with_name(f"{run_id}_{kind}.png")
+        path.rename(new)
+        renamed[kind] = new
+    return renamed
 
 
 def _open_ears(args):

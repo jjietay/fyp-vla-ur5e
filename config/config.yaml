@@ -27,8 +27,8 @@ robot:
 workspace:                # base frame, not world. Every commanded pose is checked
   x: [ 0.150, 0.823]      # RTDE 1 Oct 2026, bounding box of the 4 table corners. Table is ~41 deg to the base axes, so half this box is OFF the table
   y: [-0.724, 0.030]      # corners (0.756,0.030) (0.824,-0.139) (0.415,-0.725) (0.149,-0.499). max_radius cuts the far arc
-  z: [ 0.177, 0.700]      # table 0.172 in base frame (fingertips ~1 mm above it, 23 Sep 2026) + 5 mm
-  max_radius: 0.75        # m, horizontal distance from the base axis. 0.81 was out of reach on 23 Sep 2026
+  z: [ 0.177, 0.380]      # table 0.172 in base frame (fingertips ~1 mm above it, 23 Sep 2026) + 5 mm. Max 0.38 from 13 Oct 2026, paired with max_radius 0.70, see below
+  max_radius: 0.70        # m, horizontal distance from the base axis. 0.81 was out of reach on 23 Sep 2026. 13 Oct 2026: reach limit MEASURED 0.769 at TCP z 0.32 (elbow -28.4 deg, tool down) and it shrinks with height (~0.71 at 0.40), so 0.75 had no margin above z 0.35 and the 0.42 calibration pose protective-stopped. 0.70 with z max 0.38 keeps >= 2 cm of reach margin everywhere
   max_joint_step_deg: 30  # a joint move turning any joint more than this is refused. Stops a full wrist spin
   max_speed: 0.25         # m/s ceiling. Architecture B derives its per-step limit from this
   max_acc: 0.50           # m/s^2
@@ -49,6 +49,8 @@ camera:
   align_depth_to_color: true  # not optional. Without it every object lands centimetres off
   max_depth: 2.0              # m, readings beyond this are invalid
   depth_patch_radius: 2       # median over a (2r+1)^2 patch, robust to speckle
+  visual_preset: "Default"    # SET on every start, because the camera keeps whatever the last program left. 13 Oct 2026: a leftover "High Accuracy" emptied a white box top and half the table
+  laser_power_mw: 150         # IR projector, the factory default. "High Accuracy" + 360 mW gave no gain on the orange and lost flat white surfaces
 
 speech:                   # ASR is a CONTROLLED VARIABLE, identical for both architectures
   model: "large-v3"
@@ -70,6 +72,7 @@ architecture_a:
   perception:
     duplicate_separation_mm: 20.0  # closer than this is one object seen twice
     max_centre_offset_mm: 40.0     # most a point is pushed from the seen face to the centre. A 65 mm orange needs ~33
+    max_below_floor_mm: 40.0       # an object centre this far under workspace.z min is lifted to it (centre push through an open box's floor); further is a bad reading
   grounding:
     model: null           # null means use the planner model, so no new component enters A
     max_queries: 8        # more queries slow OWLv2 and add false positives
@@ -89,17 +92,25 @@ architecture_a:
   trace:
     dir: "logs/traces/"
   calibration:            # scripts/calibrate_ball.py, the per-session fit of T_base_cam. A ball in the gripper, no markers
-    ball_query: "ball"    # OWLv2 noun phrase. Name the colour if the ball is plain, e.g. "orange ball"
-    ball_radius_m: 0.020  # MEASURE the ball once. 0.020 is a 40 mm table tennis ball
-    ball_offset_tool_m: [0.0, 0.0, -0.020]  # ball centre in the TOOL frame from the TCP. Tool z points out of the flange, so negative is back towards it. -radius = ball bottom flush with the fingertips (the TCP is at the tips). A wrong value shifts the whole fit and the residual CANNOT see it
-    grid_centre_xy: [0.536, -0.333]  # mean of the 4 table corners measured 1 Oct 2026
-    grid_half_extent_m: 0.12
-    grid_n: 3             # n x n positions per height
-    z_levels: [0.30, 0.42]  # TCP heights. At least two, or the points are coplanar and the fit is refused
+    ball_query: "orange"  # OWLv2 noun phrase. Name the colour if the ball is plain, e.g. "orange ball"
+    ball_radius_m: 0.03425  # MEASURE the ball once. 0.020 is a 40 mm table tennis ball. 13 Oct 2026: orange, 54 mm tall x 83 mm wide, so (h+w)/4 because it is not round
+    ball_offset_tool_m: [0.0, 0.0, -0.027]  # 13 Oct 2026: orange held stem up, so minus HALF THE HEIGHT, not the radius. ball centre in the TOOL frame from the TCP. Tool z points out of the flange, so negative is back towards it. -radius = ball bottom flush with the fingertips (the TCP is at the tips). A wrong value shifts the whole fit and the residual CANNOT see it
+    grid_centre_xy: [0.52, -0.30]  # 13 Oct 2026 (2nd): widened to the whole reachable table, see grid_half_extent_m. 13 Oct 2026: moved to cover the object area in front of the camera (an orange at (0.39,-0.44) read 34 mm low outside the old grid). Was [0.536, -0.333], the mean of the 4 table corners. Far corner (0.57,-0.52) is past max_radius 0.70 and is dropped
+    grid_half_extent_m: 0.20  # 13 Oct 2026: was 0.12. Picks were missing objects OUTSIDE the old 24 cm patch (extrapolation); 0.20 with n=5 gives 34 poses, x 0.32-0.62, y -0.50 to -0.10, all in frame
+    grid_n: 5             # n x n positions per height. 4 from 13 Oct 2026 (was 3): 26 usable poses instead of 16, about 2.5 min
+    z_levels: [0.19, 0.30]  # 13 Oct 2026: 0.19 so ball centres reach down to object height (~0.2) instead of extrapolating 5 cm below the grid; orange bottom ~18 mm above the table. Was [0.22, 0.30]. TCP heights. At least two, or the points are coplanar and the fit is refused. 13 Oct 2026: 0.42 hit a protective stop; JJ's rule, never above the home TCP z (0.302). 0.22 keeps the ball bottom ~5 cm above the table (0.172)
     speed: 0.10           # m/s, slow because the ball is held only by friction
     settle_s: 0.5         # wait after each move so the frame is not blurred
     min_points: 8         # fewer usable points than this and nothing is written
     max_rms_mm: 8.0       # a fit worse than this is written only if you confirm it
+    # scripts/level_to_table.py, run AFTER the ball fit (13 Oct 2026). The table is the one surface
+    # whose base-frame height is known, so it corrects the fit's height and tilt
+    table_z: 0.172        # table surface, base frame. Fingertips touched it on 23 Sep 2026 (workspace.z min is this + 5 mm)
+    level_frames: 15      # depth frames combined per pixel (median), so single-frame jitter (24 mm seen at 1.24 m) averages out
+    level_band_m: 0.08    # only points within this of table_z under the CURRENT transform are considered table
+    level_max_tilt_deg: 5.0    # a larger correction means something else is wrong; refused without --force
+    level_max_shift_mm: 60.0
+    place_look_n: 4       # scripts/place_and_look.py: n x n table spots over 3/4 of the grid, those inside reach. 4 gives 11 spots, about 4 min
 
 architecture_b:
   camera: "top"           # MUST match the --camera used at export

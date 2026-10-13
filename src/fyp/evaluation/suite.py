@@ -72,23 +72,23 @@ TASKS: dict[Tier, Task] = {
     Tier.PICK_PLACE: Task(
         tier=Tier.PICK_PLACE,
         name="pick and place",
-        objects=("red cube", "metal tray"),
+        objects=("orange", "box"),
         train_utterances=(
-            "place that red cube into that metal tray",
-            "put the red cube in the metal tray",
-            "pick up the red cube and drop it in the tray",
-            "move the red cube to the tray",
-            "the red cube goes in the metal tray",
+            "place that orange into that box",
+            "put the orange in the box",
+            "pick up the orange and drop it in the box",
+            "move the orange to the box",
+            "the orange goes in the box",
         ),
         heldout_utterances=(
-            "could you pop that red block into the metal tray",
-            "I need the red cube moved into the tray please",
-            "stick the red one in the tray",
+            "could you pop that fruit into the box",
+            "I need the orange moved into the box please",
+            "stick the orange one in the box",
         ),
         success_criterion=(
-            "The red cube is fully inside the metal tray, the gripper is clear of "
-            "the tray, and the arm has returned above the workspace. Cube resting "
-            "on the tray rim counts as a failure."
+            "The orange is fully inside the box, the gripper is clear of "
+            "the box, and the arm has returned above the workspace. Orange resting "
+            "on the box rim counts as a failure."
         ),
         notes="Verification only. Not a headline result. Deictic phrasing is deliberate.",
     ),
@@ -253,4 +253,13 @@ def build_layouts(tier: Tier, n: int = 20, seed: int = 20260811,
 
 CHANGELOG: list[str] = [
     "2026-08-11  Suite created before either pipeline was tuned.",
+    "2026-10-13  Tier 0 destination changed from 'metal tray' to 'box' in the objects, "
+    "every utterance and the success criterion, because no metal tray is in hand. The "
+    "layouts are unchanged: same seed, same object count. Tier 0 is verification only, "
+    "not a headline result, and no Tier 0 trial had been scored for either architecture. "
+    "Temporary: revisit before scored Tier 0 trials and say so in the report.",
+    "2026-10-13  Tier 0 object changed from 'red cube' to 'orange' (a fake orange) for "
+    "the same reason, no red cube in hand. Held-out phrasings keep their roles: 'red "
+    "block' became 'fruit' (a synonym the training set never uses) and 'the red one' "
+    "became 'the orange one' (a colour reference). Same layouts. Same caveat: temporary.",
 ]

@@ -1,0 +1,66 @@
+{
+  "T_base_cam": [
+    [
+      -0.9925320615412359,
+      -0.10924681182119877,
+      0.05427007388614409,
+      0.7192740356553078
+    ],
+    [
+      -0.1061624871925605,
+      0.5544814128317148,
+      -0.8253968070796219,
+      0.6689026361193026
+    ],
+    [
+      0.06008022241797509,
+      -0.8249942405441685,
+      -0.5619384930249552,
+      0.8881850047301544
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "meta": {
+    "method": "ball fit, scripts/calibrate_ball.py",
+    "written_at": "2026-10-13T13:06:52",
+    "note": "orange, 34 poses, full table",
+    "n_points": 34,
+    "dropped_outliers": 0,
+    "fit_rms_mm": 13.756822134440105,
+    "fit_max_mm": 27.271158945964373,
+    "ball_query": "orange",
+    "ball_radius_m": 0.03425,
+    "ball_offset_tool_m": [
+      0.0,
+      0.0,
+      -0.027
+    ],
+    "validated": false,
+    "levelled_to_table": {
+      "written_at": "2026-10-13T13:06:56",
+      "table_z": 0.172,
+      "offset_before_mm": -19.5,
+      "tilt_before_deg": 1.552,
+      "flatness_after_mm": 3.3,
+      "n_points": 6653,
+      "from_file": "T_base_cam.20261013T130652.json",
+      "note": ""
+    },
+    "place_and_look": {
+      "written_at": "2026-10-13T05:18:24",
+      "shift_mm": [
+        2.3,
+        10.3
+      ],
+      "spread_after_rms_mm": 9.8,
+      "n_spots": 11,
+      "from_file": "T_base_cam.20261013T050656.json",
+      "note": "applied by hand from the 13:17 dry run (same file it measured)"
+    }
+  }
+}
