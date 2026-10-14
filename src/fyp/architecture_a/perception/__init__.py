@@ -4,10 +4,13 @@
     filters.py      thresholding and NMS, applied separately so the detector
                     stays a pure model call
     pixel_to_3d.py  pinhole back-projection, CameraIntrinsics, depth_at
-    localiser.py    detections plus depth -> LocatedObject with camera XYZ
+    segmenter.py    SAM: one pixel mask per detector box (mask_ray only)
+    localiser.py    detections plus depth -> LocatedObject with camera XYZ.
+                    `localise()` picks the method from config: mask_ray (SAM
+                    mask, ray cut at the object's centre height) or box_depth
 
 Open-vocabulary detection is what gives Architecture A its generalisation
 story: a new object is a new text query, not a new dataset.
 
-Torch dependency: `detector.py` only. Everything else runs in the FYP venv.
+Torch dependency: `detector.py` and `segmenter.py` only. Everything else runs in the FYP venv.
 """

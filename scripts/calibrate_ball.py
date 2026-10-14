@@ -170,7 +170,9 @@ def _collect(controller, camera, poses, envelope, cfg) -> list[tuple[np.ndarray,
             continue
         time.sleep(float(cc["settle_s"]))
 
-        frame = camera.capture()
+        # Averaged like A's own captures, so the fit and the runs see the same depth.
+        frame = camera.capture(
+            depth_frames=int(cfg["architecture_a"]["perception"]["depth_frames"]))
         raw = detect(Image.fromarray(frame.rgb), [query], a["detector"]["model"])
         kept, _ = apply_filters(raw, threshold=float(a["detector"]["threshold"]),
                                 nms_iou=float(a["detector"]["nms_iou"]), keep_top1=True)

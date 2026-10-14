@@ -3,13 +3,18 @@
 It takes a spoken instruction and gives you the UR5e carrying it out through the
 modular pipeline, printing a per-stage trace.
 
-    uv run python scripts/run_architecture_a.py                 # speak to it
-    uv run python scripts/run_architecture_a.py --text          # type to it
-    uv run python scripts/run_architecture_a.py --instruction "put the cube in the tray"
+    PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/run_architecture_a.py
 
-Speech is the DEFAULT, because a spoken command is what the project claims to
-support and a recorded trial has to be one. `--text` is the debugging escape and
-skips loading the recogniser entirely, which is worth several seconds per run.
+The lerobot venv, not `uv run`, because OWLv2 needs PyTorch and the FYP venv has
+none.
+
+Speech is the ONLY input (13 Oct 2026). The instruction is spoken, and so is the
+answer to any clarifying question the planner asks. The typed escapes `--text`
+and `--instruction` were removed on purpose: a spoken command is what the project
+claims to support, and a run that can be typed into is a run that can quietly
+stop testing that. To debug the recogniser without the arm, use
+`scripts/listen.py`. Enter still starts and stops each recording (push to talk);
+only the words are spoken.
 
 The wiring lives here rather than in the pipeline on purpose. `ArchitectureA.run`
 takes a plain string and must keep taking one, because ASR is a CONTROLLED
@@ -33,9 +38,8 @@ cost never counts as Architecture A's latency. The arm is still at rest, so it i
 the same scene the run's own first capture sees, not literally the same frame.
 `run_evaluation.py` does not save them.
 
-Both interactive modes keep the camera, detector and arm connected between
-commands. Prefer them while developing: reloading OWLv2 per instruction takes
-longer than the run.
+The session keeps the camera, detector and arm connected between commands, so
+OWLv2 loads once rather than per instruction.
 
 Needs a real UR5e, a RealSense, a saved hand-eye calibration, and
 ANTHROPIC_API_KEY in the environment. Speech additionally needs a microphone and
@@ -56,14 +60,9 @@ def main() -> int:
                    help="DEBUG ONLY: pin the detector vocabulary and skip grounding. "
                         "Leave unset for any recorded trial, or Architecture A is handed "
                         "a list of what is on the table that Architecture B never gets.")
-    p.add_argument("--instruction", default=None,
-                   help="single instruction to run; omit for an interactive session")
     p.add_argument("--no-reperceive", action="store_true",
                    help="plan once against the opening scene instead of re-detecting each turn "
                         "(open-loop; use it to measure what closing the loop is worth)")
-    p.add_argument("--text", action="store_true",
-                   help="type instructions instead of speaking them; skips loading the "
-                        "recogniser, so use it while debugging anything that is not speech")
     p.add_argument("--input-device", default=None,
                    help="microphone index or name; scripts/listen.py --devices lists them")
     p.add_argument("--cpu", action="store_true",
@@ -84,14 +83,13 @@ def main() -> int:
 
     try:
         with RealSenseCamera() as camera:
+            # Clarifying questions are answered by voice too, through the same
+            # recogniser, so no step of a run reads the keyboard for user input.
             agent = ArchitectureA(camera, controller, args.queries,
+                                  ask=ears.answer,
                                   reperceive=not args.no_reperceive)
 
-            instructions = ([args.instruction] if args.instruction
-                            else _typed() if ears is None
-                            else _spoken(ears))
-
-            for instruction in instructions:
+            for instruction in _spoken(ears):
                 scene = _save_scene(camera)
                 outcome = agent.run(instruction)
                 scene = _name_after_run(scene, outcome.run_id)
@@ -114,8 +112,7 @@ def main() -> int:
                 print("=" * 70)
     finally:
         controller.close()
-        if ears is not None:
-            ears.close()
+        ears.close()
 
     return 0
 
@@ -188,17 +185,10 @@ def _name_after_run(paths: dict, run_id: str) -> dict:
 
 def _open_ears(args):
     """
-    It takes the parsed arguments and gives you a loaded recogniser, or None when
-    this run does not need one.
+    It takes the parsed arguments and gives you a loaded recogniser.
 
-    None means the caller reads from the keyboard. Returning it rather than
-    raising keeps the two text paths, `--instruction` and `--text`, free of any
-    speech import at all, so they still work on a machine with no microphone and
-    no PortAudio.
+    Always loaded: there is no typed path left to skip it for.
     """
-    if args.instruction or args.text:
-        return None
-
     from fyp.shared.speech import SpeechToText
 
     print("loading the recogniser, this takes a few seconds the first time ...")
@@ -208,19 +198,6 @@ def _open_ears(args):
           f"loaded in {ears.load_s:.1f}s")
     print(f"  transcripts and audio logged to {ears.log_dir}")
     return ears
-
-
-def _typed():
-    """It takes nothing and gives you instructions typed at the prompt, until EOF."""
-    print("Type an instruction, or Ctrl-D to quit.")
-    while True:
-        try:
-            line = input("\ninstruction > ").strip()
-        except EOFError:
-            print()
-            return
-        if line:
-            yield line
 
 
 def _spoken(ears):
@@ -235,26 +212,15 @@ def _spoken(ears):
     by `SpeechToText` is what later separates "the architecture failed" from "the
     microphone did".
     """
-    from fyp.shared.speech import NoAudioCaptured
-
     print("\nEnter starts recording, Enter stops it. Ctrl-D to quit.")
     while True:
         try:
-            transcript = ears.listen()
-        except NoAudioCaptured as e:
-            print(f"\n  {e}\n")
-            continue
+            # hear() retries on silence and echoes what it heard before the arm
+            # moves, where a mishearing is cheapest to catch.
+            transcript = ears.hear()
         except (EOFError, KeyboardInterrupt):
             print()
             return
-
-        if not transcript:
-            print("  nothing recognised, try again")
-            continue
-
-        # Echoed before running, because the arm is about to move on the strength
-        # of this string and a mishearing is much cheaper to catch here.
-        print(f'  heard: "{transcript.text}"')
         yield transcript.text
 
 

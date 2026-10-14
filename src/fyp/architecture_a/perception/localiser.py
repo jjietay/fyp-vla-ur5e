@@ -1,6 +1,16 @@
 """localiser.py
 
 This file converts the detections + depth into 3D object positions.
+
+Two methods, chosen by `architecture_a.perception.localiser` in config, and
+`localise()` is the one entry point both the pipeline and `place_and_look.py`
+call, so a measurement of one is a measurement of the other:
+
+    box_depth   the box centre's depth, pushed back along the ray by half the
+                box (`locate`). The original method.
+    mask_ray    SAM mask, then the ray through the mask's centre cut at the
+                object's centre height above the known table (`locate_on_table`).
+                Depth only measures how TALL the object is. 13 Oct 2026.
 """
 from __future__ import annotations
 
@@ -9,7 +19,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from fyp.architecture_a.perception.pixel_to_3d import (CameraIntrinsics, depth_at,
-                                                       pixel_to_camera, surface_to_centroid)
+                                                       pixel_to_camera, ray_to_plane,
+                                                       surface_to_centroid)
 
 
 
@@ -24,7 +35,10 @@ class LocatedObject:
     depth_m: float
     p_cam: np.ndarray | None
     centre_offset_m: float = 0.0   # how far p_cam was pushed from the seen surface
-    depth_from: str = "centre"     # "centre" patch, or "box" when the centre had no depth
+    depth_from: str = "centre"     # "centre" patch, "box" when the centre had no depth, or "mask_ray"
+    height_m: float = float("nan")  # mask_ray: object height above the table it used
+    height_from: str = ""           # mask_ray: "depth" (top of the mask's points) or "mask_size"
+    mask_px: int = 0                # mask_ray: object pixels after erosion
 
     @property
     def valid(self) -> bool:
@@ -144,3 +158,167 @@ def nearest_truth(p_cam: np.ndarray, truth_cam: dict) -> tuple:
         if e < dist:
             near, dist = name, e
     return near, dist
+
+
+# ------------------------------------------------------------------ mask_ray
+
+
+def erode(mask: np.ndarray, px: int) -> np.ndarray:
+    """
+    It takes a boolean mask and gives you it shrunk by `px` pixels all round.
+
+    The outline of an object is exactly where the stereo depth blends it with
+    the table behind, so those pixels are the ones not to trust.
+    """
+    m = np.asarray(mask, dtype=bool).copy()
+    for _ in range(max(0, int(px))):
+        inner = m.copy()
+        inner[1:, :] &= m[:-1, :]
+        inner[:-1, :] &= m[1:, :]
+        inner[:, 1:] &= m[:, :-1]
+        inner[:, :-1] &= m[:, 1:]
+        inner[0, :] = inner[-1, :] = False
+        inner[:, 0] = inner[:, -1] = False
+        m = inner
+    return m
+
+
+def locate_on_table(detections: list[dict], masks: list, depth: np.ndarray,
+                    intr: CameraIntrinsics, T_base_cam, table_z: float, *,
+                    height_from: str = "depth", erode_px: int = 3,
+                    percentile: float = 95.0, min_points: int = 30,
+                    resting_gap: float = 0.025,
+                    min_height: float = 0.01, max_height: float = 0.30,
+                    max_depth: float | None = None) -> list[LocatedObject]:
+    """
+    It takes detections, one mask per detection, the depth image, the camera
+    model and transform, and the table height, and gives you LocatedObjects whose
+    point is the object's centre.
+
+    For each object:
+      1. its pixel centre is the mean of its mask, shrunk by `erode_px` so the
+         outline, where depth blends the object into the table, is dropped
+      2. the height of its centre, by `height_from`:
+           depth      from its own depth points in base frame (percentiles, so
+                      stray pixels cannot set them). If its lowest points come
+                      within `resting_gap` of the table it is RESTING there, and
+                      its centre is halfway from the table to its top. If not
+                      (a drawer handle), its centre is halfway between its own
+                      lowest and highest points. Not the midpoint for a resting
+                      object: the camera looks down and sees more of the top than
+                      the bottom, so that midpoint sits high (15 to 18 mm off for
+                      the orange in the synthetic test)
+           mask_size  the table plus half its size, size = the full mask's
+                      smaller pixel extent times its camera depth over fx. Uses
+                      no object depth, so a depth bias cannot reach it, but it
+                      is only right for compact things RESTING on the table
+         `depth` falls back to `mask_size` when the object has too few depth
+         points.
+      3. the point is where the centre pixel's ray reaches that height
+
+    A height error h moves the point sideways by about h / tan(ray angle),
+    roughly 1.5 to 1.9 h for this camera. That is the only way depth error gets
+    in, where the old method put the whole of it along the line of sight.
+
+    `p_cam` is filled (the point taken back into camera frame) so everything
+    downstream, `describe_objects` included, is unchanged.
+    """
+    if height_from not in ("depth", "mask_size"):
+        raise ValueError(f"height_from is {height_from!r}; use 'depth' or 'mask_size'")
+    T = np.asarray(T_base_cam, dtype=float)
+    R, t = T[:3, :3], T[:3, 3]
+    T_inv = np.linalg.inv(T)
+    table_z = float(table_z)
+    out: list[LocatedObject] = []
+
+    for det, mask in zip(detections, masks):
+        if mask is None or not np.asarray(mask).any():
+            # No mask: the box itself, which is the old method's footprint.
+            mask = np.zeros(depth.shape, dtype=bool)
+            x0, y0, x1, y1 = (int(round(v)) for v in det["box_xyxy"])
+            mask[max(0, y0):y1, max(0, x0):x1] = True
+        full = np.asarray(mask, dtype=bool)
+        m = erode(full, erode_px)
+        if m.sum() < 10:
+            m = full
+        vs, us = np.nonzero(m)
+        uc, vc = float(us.mean()), float(vs.mean())
+
+        centre_z, height, source = None, float("nan"), "mask_size"
+        if height_from == "depth":
+            d = np.asarray(depth, dtype=float)[vs, us]
+            ok = np.isfinite(d) & (d > 0)
+            if max_depth is not None:
+                ok &= d < max_depth
+            if ok.sum() >= min_points:
+                P = np.stack([(us[ok] - intr.cx) / intr.fx * d[ok],
+                              (vs[ok] - intr.cy) / intr.fy * d[ok], d[ok]], axis=1)
+                z = P @ R.T[:, 2] + t[2]
+                z_hi = float(np.percentile(z, percentile))
+                z_lo = float(np.percentile(z, 100.0 - percentile))
+                if z_lo - table_z <= resting_gap:
+                    centre_z, source = (table_z + z_hi) / 2.0, "depth_top"
+                else:
+                    centre_z, source = (z_lo + z_hi) / 2.0, "depth_mid"
+                centre_z = max(centre_z, table_z + min_height / 2.0)
+                height = z_hi - table_z
+
+        if centre_z is None:
+            # Size from the FULL mask: shrinking it would shrink the object.
+            fv, fu = np.nonzero(full)
+            size_px = float(min(fu.max() - fu.min() + 1, fv.max() - fv.min() + 1))
+            height = 0.05
+            for _ in range(3):        # the depth to the object depends on its height
+                p = ray_to_plane(uc, vc, intr, T, table_z + height / 2.0)
+                if p is None:
+                    break
+                z_cam = float((T_inv @ np.append(p, 1.0))[2])
+                height = float(np.clip(size_px * z_cam / intr.fx, min_height, max_height))
+            centre_z = table_z + height / 2.0
+
+        p_base = ray_to_plane(uc, vc, intr, T, centre_z)
+        p_cam = None if p_base is None else (T_inv @ np.append(p_base, 1.0))[:3]
+        out.append(LocatedObject(
+            query=det["query"], score=det.get("score", float("nan")),
+            center_uv=(round(uc, 1), round(vc, 1)),
+            depth_m=float(p_cam[2]) if p_cam is not None else float("nan"),
+            p_cam=p_cam, depth_from="mask_ray", height_m=round(float(height), 4),
+            height_from=source, mask_px=int(m.sum())))
+    return out
+
+
+def localise(records: list[dict], frame, T_base_cam, cfg: dict) -> list[LocatedObject]:
+    """
+    It takes the kept detections as records, one camera frame, the transform and
+    the config, and gives you LocatedObjects by the method config names.
+
+    The single entry point, so the pipeline and `place_and_look.py` cannot drift
+    apart: whatever one measures, the other does.
+    """
+    a = cfg["architecture_a"]
+    p = a["perception"]
+    max_depth = float(cfg["camera"]["max_depth"])
+    method = p["localiser"]
+    if method == "box_depth":
+        return locate(records, frame.depth, frame.intrinsics, max_depth=max_depth,
+                      radius=int(cfg["camera"]["depth_patch_radius"]))
+    if method == "mask_ray":
+        from PIL import Image
+
+        from fyp.architecture_a.perception.segmenter import segment
+        seg = segment(Image.fromarray(frame.rgb), [r["box_xyxy"] for r in records],
+                      a["segmenter"]["model"])
+        return locate_on_table(
+            records, [m for m, _ in seg], frame.depth, frame.intrinsics, T_base_cam,
+            float(a["calibration"]["table_z"]),
+            height_from=str(p["height_from"]),
+            erode_px=int(p["mask_erode_px"]),
+            percentile=float(p["height_percentile"]),
+            resting_gap=float(p["resting_gap_mm"]) / 1000.0,
+            min_points=int(p["min_mask_points"]),
+            min_height=float(p["min_object_height_mm"]) / 1000.0,
+            max_height=float(p["max_object_height_mm"]) / 1000.0,
+            max_depth=max_depth)
+    raise ValueError(f"architecture_a.perception.localiser is {method!r}; "
+                     "use 'mask_ray' or 'box_depth'")
+

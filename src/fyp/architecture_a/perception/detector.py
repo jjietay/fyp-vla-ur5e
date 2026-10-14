@@ -107,3 +107,41 @@ def detect(pil_img, queries, model_name):
             q = queries[int(int_labels[i])]
         dets.append((q, float(score), [round(float(v), 1) for v in box.tolist()]))
     return sorted(dets, key=lambda d: -d[1])
+
+
+def detect_by_image(pil_img, query_img, model_name, label: str = "image query"):
+    """
+    It takes a photo and a small example picture of the thing to find, and gives
+    you every box in the photo that looks like the example, best first, in the
+    same (label, score, box_xyxy) form as `detect`.
+
+    OWLv2's image-guided mode: no text, the example IS the prompt. Made for
+    things a text prompt cannot name well, such as the RG2 fingertips (13 Oct
+    2026: "gripper fingers" scored 0.013 on brown_paper.png, and "robot gripper"
+    boxed the whole wrist). The example must be a TIGHT crop, because the model
+    takes the box in the example that best covers the whole crop as the object.
+
+    Scores are on a different scale from text prompts, so the text threshold in
+    config does not carry over. Nothing here uses this in the pipeline yet; it is
+    a diagnostic for whether the fingertips can be found at all.
+    """
+    processor, model, device = _load(model_name)
+    import torch
+
+    inputs = processor(images=pil_img, query_images=query_img,
+                       return_tensors="pt").to(device)
+    with torch.no_grad():
+        outputs = model.image_guided_detection(**inputs)
+
+    # Same target size convention as `detect`, so boxes land on the same pixels.
+    target_sizes = torch.tensor([pil_img.size[::-1]], device=device)
+    post = getattr(processor, "post_process_image_guided_detection", None) \
+        or processor.image_processor.post_process_image_guided_detection
+    # nms_threshold=1.0 turns the built-in NMS off; filters.apply_filters does it.
+    results = post(outputs=outputs, threshold=0.0, nms_threshold=1.0,
+                   target_sizes=target_sizes)[0]
+
+    dets = [(label, float(score), [round(float(v), 1) for v in box.tolist()])
+            for box, score in zip(results["boxes"], results["scores"])]
+    return sorted(dets, key=lambda d: -d[1])
+

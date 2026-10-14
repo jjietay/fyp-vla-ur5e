@@ -8,6 +8,13 @@ one method, `run(instruction) -> outcome`, and never imports Architecture A or B
 That is not tidiness: if the harness could see inside one of them it would grow
 an affordance for it, and the comparison would stop being like-for-like.
 
+Every trial is SPOKEN (13 Oct 2026). The suite's utterance is shown as a script,
+the operator says it, and the agent receives the transcript, never the script.
+`utterance` in the record is what was meant and `transcript` is what was heard,
+so a trial lost to a mishearing can be told apart from one the architecture lost.
+The harness takes the recogniser as `ears` rather than importing speech itself,
+which keeps it agnostic about how the transcript was produced.
+
 The human is in the loop on purpose. Success is judged by a person against a
 written criterion, because "the cube is in the tray" is not something the robot
 can be trusted to self-report, and a system grading its own homework is the
@@ -62,10 +69,12 @@ class Harness:
     the harness being bent to fit it.
     """
 
-    def __init__(self, agent, architecture: str, cfg: dict | None = None,
+    def __init__(self, agent, architecture: str, ears, cfg: dict | None = None,
                  out_dir: str | Path | None = None, n_trials: int = 20):
         self.cfg = cfg or get_config()
         self.agent = agent
+        # Anything with hear(prompt) -> Transcript; in practice SpeechToText.
+        self.ears = ears
         self.architecture = architecture
         self.n_trials = n_trials
         base = Path(out_dir) if out_dir else resolve("data/evaluation")
@@ -100,8 +109,17 @@ class Harness:
             if interactive and input("  set up, then Enter (or 's' to skip) > ").strip().lower() == "s":
                 continue
 
+            # layout.describe() above already printed the line to say.
+            try:
+                heard = self.ears.hear("Enter, then say it")
+            except (EOFError, KeyboardInterrupt):
+                print("\n  stopped before this trial ran; nothing recorded for it")
+                break
+
+            # The clock starts after the recogniser, so duration_s is the
+            # architecture's time alone. ASR latency is in the speech log.
             t0 = time.perf_counter()
-            outcome = self.agent.run(layout.utterance)
+            outcome = self.agent.run(heard.text)
             duration = time.perf_counter() - t0
 
             rec = TrialRecord(
@@ -114,6 +132,7 @@ class Harness:
                 duration_s=round(duration, 2),
                 asked_question=bool(getattr(outcome, "asked", [])),
                 question_text=" | ".join(getattr(outcome, "asked", [])),
+                transcript=heard.text,
                 run_id=getattr(outcome, "run_id", ""),
             )
 

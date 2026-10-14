@@ -214,13 +214,23 @@ def test_place_whose_retreat_is_over_the_ceiling_retreats_to_the_ceiling(ctrl):
     assert ctrl.poses[-1][2] == pytest.approx(W["z"][1])
 
 
+def test_place_whose_approach_is_over_the_ceiling_approaches_from_the_ceiling(ctrl):
+    """13 Oct 2026: a box at z 0.278 asked for an approach at 0.398, over 0.38."""
+    skills = Skills(ctrl, cfg=CFG)
+    result = skills.place([TARGET[0], TARGET[1], W["z"][1] - 0.10], approach_height=0.12)
+    assert result.ok
+    assert ctrl.poses[0][2] == pytest.approx(W["z"][1])
+    assert ctrl.poses[0][2] > ctrl.poses[1][2]      # still comes DOWN to the drop
+
+
 def test_an_unfinishable_place_is_refused_before_anything_moves(ctrl):
     """
-    The drop point is inside but the approach is not. Refusing before the first
-    motion means the gripper never opens over the wrong spot.
+    A drop point over the ceiling cannot be reached however the approach is
+    clamped. Refusing before the first motion means the gripper never opens over
+    the wrong spot.
     """
     skills = Skills(ctrl, cfg=CFG)
-    result = skills.place([TARGET[0], TARGET[1], W["z"][1] - 0.05], approach_height=0.20)
+    result = skills.place([TARGET[0], TARGET[1], W["z"][1] + 0.01])
     assert not result.ok
     assert ctrl.poses == []
     assert "gripper_toggle" not in ctrl.sequence

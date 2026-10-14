@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fyp.architecture_a.calibration.hand_eye import (ball_centre_in_base, base_to_camera,
+from fyp.architecture_a.calibration.hand_eye import (ball_centre_in_base,
                                                      calibration_grid, camera_to_base,
                                                      fit_with_outlier_rejection, load,
                                                      report, residuals, save,
@@ -24,6 +24,15 @@ from fyp.architecture_a.calibration.hand_eye import (ball_centre_in_base, base_t
 from fyp.shared.helpers.rotations import euler_to_R
 
 RNG = np.random.default_rng(7)
+
+
+def seen_by_camera(p_base, T_base_cam) -> np.ndarray:
+    """
+    It takes base-frame points and a transform and gives you the same points in
+    camera frame, to simulate what the camera measures. Test-only: the pipeline
+    never needs this direction.
+    """
+    return camera_to_base(p_base, np.linalg.inv(np.asarray(T_base_cam, dtype=float)))
 
 
 def a_transform(rpy=(0.3, -0.4, 1.1), t=(0.6, -0.3, 0.7)) -> np.ndarray:
@@ -129,14 +138,6 @@ def test_residuals_are_reported_per_point_in_metres():
 
 
 # ------------------------------------------------------------ use and store
-
-def test_camera_to_base_and_back_is_a_round_trip():
-    T = a_transform()
-    p_cam = cloud(5)
-
-    recovered = base_to_camera(camera_to_base(p_cam, T), T)
-    np.testing.assert_allclose(recovered, p_cam, atol=1e-9)
-
 
 def test_camera_to_base_moves_the_point_where_the_transform_says():
     T = a_transform()
@@ -296,7 +297,7 @@ def test_levelling_removes_a_height_and_tilt_error_from_the_table():
     table[:, 2] += RNG.normal(0, 0.002, len(table))
     clutter = np.column_stack([RNG.uniform([0.40, -0.45], [0.45, -0.40], size=(200, 2)),
                                RNG.uniform(0.18, 0.26, 200)])          # an object on it
-    p_cam = base_to_camera(np.vstack([table, clutter]), T_true)
+    p_cam = seen_by_camera(np.vstack([table, clutter]), T_true)
     seen = camera_to_base(p_cam, T_wrong)
 
     normal, centroid, keep = fit_plane(seen)
@@ -307,5 +308,5 @@ def test_levelling_removes_a_height_and_tilt_error_from_the_table():
     assert table_fixed[:, 2].std() < 0.003
     assert keep[len(table):].mean() < 0.2               # the object is not table
     mid = np.array([0.45, -0.40, 0.172])
-    moved = camera_to_base(base_to_camera(mid, T_true), T_fixed)
+    moved = camera_to_base(seen_by_camera(mid, T_true), T_fixed)
     assert np.allclose(moved, mid, atol=0.005)

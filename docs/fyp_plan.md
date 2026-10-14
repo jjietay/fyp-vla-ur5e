@@ -211,7 +211,7 @@ So the minimum correct configuration is:
 | Fixed overhead/side | **RGB-D** (existing lab unit) | detection + depth → 3D → base frame | `OBS_IMAGE_1` (RGB only) |
 | Wrist-mounted | **RGB is enough** | optional close-range re-detect | `OBS_IMAGE_2` (RGB only) |
 
-**When to claim RGB-D on the wrist anyway.** If the cost falls on the lab rather than you, an RGB-D wrist camera buys optionality: close-range grasp verification and visual servoing in Architecture A, which would strengthen the Tier 3 re-planning story. If you do claim one, **specify a short-minimum-range model** — a standard D435-class sensor has a minimum depth range around 0.3 m, which is useless at grasp distance; the D405-class short-range units are the ones designed for wrist mounting.
+**When to claim RGB-D on the wrist anyway.** If the cost falls on the lab rather than you, an RGB-D wrist camera buys optionality: close-range grasp verification, which would strengthen the Tier 3 re-planning story. If you do claim one, **specify a short-minimum-range model** — a standard D435-class sensor has a minimum depth range around 0.3 m, which is useless at grasp distance; the D405-class short-range units are the ones designed for wrist mounting.
 
 **Hard rule either way: nothing in the pipeline may depend on wrist depth.** Design as if the wrist camera is RGB. If depth arrives, it is a bonus branch you can delete without touching anything else. This keeps you shippable if procurement stalls.
 
@@ -331,7 +331,7 @@ Ordered by dependency, not by week. §9 places them in time.
 Deliberately a **separate module with no dependency on either architecture**, per §7.4.
 
 1. **`shared/speech.py`** — it takes a held key and gives you a transcript string. Push-to-talk capture (`sounddevice`) → `faster-whisper` → text. Nothing else. No cleanup, no normalisation, no LLM. Put the model choice behind config so a cloud provider can be swapped in as the §7.4 fallback without touching callers.
-2. **Wire it as the shared entry point.** Both A's orchestrator and B's inference loop accept an instruction string; speech just supplies it. Keep a `--text` flag so you can drive either architecture from the keyboard when debugging — you do not want to be talking to your laptop while chasing a transform bug.
+2. **Wire it as the shared entry point.** Both A's orchestrator and B's inference loop accept an instruction string; speech just supplies it. Keep a `--text` flag so you can drive either architecture from the keyboard when debugging — you do not want to be talking to your laptop while chasing a transform bug. *(Superseded 13 Oct 2026: `--text` and `--instruction` were removed and all user input is spoken, including clarification answers and evaluation trials.)*
 3. **Log every transcript** alongside the audio, timestamped. Needed for §6 and for diagnosing whether a failure was speech or robotics.
 4. **Optional TTS** for spoken clarification (§7.4). Ship it if Tier 2 is working by W9; it is an afternoon.
 5. **Write the paraphrase sets now** — 5–10 phrasings per task, split into a record-time set and a held-out evaluation set. This has to exist *before* W5 recording starts, or the H7 experiment is impossible after the fact.

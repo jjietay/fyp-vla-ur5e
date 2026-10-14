@@ -43,14 +43,18 @@ paths:                    # split by whether a script can rebuild it
   calibration_dir: "config/calibration/"  # git-tracked, so results stay attributable
 
 camera:
-  width: 1280
+  width: 1280                 # colour. What OWLv2, SAM and Architecture B see
   height: 720
+  depth_width: 848            # 13 Oct 2026: Intel's recommended D435 depth resolution. Aligned onto the colour
+  depth_height: 480           # image, so depth still arrives at 1280x720 on colour pixels and nothing downstream changes
   fps: 30
   align_depth_to_color: true  # not optional. Without it every object lands centimetres off
   max_depth: 2.0              # m, readings beyond this are invalid
   depth_patch_radius: 2       # median over a (2r+1)^2 patch, robust to speckle
   visual_preset: "Default"    # SET on every start, because the camera keeps whatever the last program left. 13 Oct 2026: a leftover "High Accuracy" emptied a white box top and half the table
-  laser_power_mw: 150         # IR projector, the factory default. "High Accuracy" + 360 mW gave no gain on the orange and lost flat white surfaces
+  laser_power_mw: 250         # IR projector; factory default 150, D435 max 360. 13 Oct 2026: raised for more dot texture on
+                              # smooth objects. Earlier "High Accuracy" + 360 mW gave no gain on the orange and lost flat white
+                              # surfaces, so if the white box top goes patchy in check_camera, step back towards 150
 
 speech:                   # ASR is a CONTROLLED VARIABLE, identical for both architectures
   model: "large-v3"
@@ -69,9 +73,26 @@ architecture_a:
     model: "google/owlv2-base-patch16-ensemble"
     threshold: 0.3
     nms_iou: 0.5
+  segmenter:
+    model: "facebook/sam-vit-base"   # SAM, prompted by each OWLv2 box; used only when perception.localiser is mask_ray
   perception:
+    # How a detection becomes a 3D point (13 Oct 2026). mask_ray: SAM mask, then the ray through
+    # its centre cut at table_z + height/2; depth only gives the height. box_depth: the original
+    # box-centre depth plus centre push, which put far picks about a radius BEHIND the orange.
+    localiser: "mask_ray"
+    height_from: "depth"           # mask_ray centre height. depth: middle of the object's own lowest/highest points (any object,
+                                   # drawer handles too). mask_size: table + half its pixel size, no object depth at all,
+                                   # only for compact things resting on the table. Compare both with place_and_look --dry-run
+    mask_erode_px: 3               # mask outline dropped before reading depth; that is where the table blends in
+    height_percentile: 95.0        # object top = this percentile of its points' base z, bottom = 100 minus it
+    resting_gap_mm: 25.0           # depth: lowest points this close to the table = resting on it (centre = half its top);
+                                   # further up (a drawer handle) the centre is the middle of its own points
+    min_mask_points: 30            # fewer valid depth points than this and the height comes from pixel size instead
+    min_object_height_mm: 10.0     # clamp on the estimated height; 10 keeps the centre at workspace.z min (table 0.172 + 5)
+    max_object_height_mm: 300.0
+    depth_frames: 5                # A's depth = per-pixel median over this many frames, arm at rest (~0.17 s at 30 fps). Noise only, not bias
     duplicate_separation_mm: 20.0  # closer than this is one object seen twice
-    max_centre_offset_mm: 40.0     # most a point is pushed from the seen face to the centre. A 65 mm orange needs ~33
+    max_centre_offset_mm: 40.0     # box_depth only. most a point is pushed from the seen face to the centre. A 65 mm orange needs ~33
     max_below_floor_mm: 40.0       # an object centre this far under workspace.z min is lifted to it (centre push through an open box's floor); further is a bad reading
   grounding:
     model: null           # null means use the planner model, so no new component enters A

@@ -57,9 +57,13 @@ uv sync
 uv run pytest tests/unit                             # no device needed, always green
 uv run pytest tests                                  # adds tests/hardware, which skip without a robot
 
-uv run python scripts/run_architecture_a.py --instruction "put the red cube in the tray"
 uv run python scripts/run_evaluation.py --tier 0 --layouts-only   # no robot needed
-uv run python scripts/run_evaluation.py --architecture A --tier 0
+
+# Architecture A needs the lerobot venv (OWLv2 needs PyTorch). Speech is the ONLY
+# input (13 Oct 2026): instructions, clarification answers and evaluation trials
+# are all spoken; there is no --text or --instruction any more.
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/run_architecture_a.py
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/run_evaluation.py --architecture A --tier 0
 ```
 
 **`ANTHROPIC_API_KEY` must be set** or Architecture A cannot run a single instruction:

@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from fyp.architecture_a.calibration.hand_eye import load as load_calibration
 from fyp.architecture_a.perception.detector import detect
 from fyp.architecture_a.perception.filters import apply_filters, to_json_records
-from fyp.architecture_a.perception.localiser import locate
+from fyp.architecture_a.perception.localiser import localise
 from fyp.architecture_a.planner import (GroundingFailed, PlanRejected, Planner,
                                         describe_objects, extract_queries)
 from fyp.architecture_a.skills import Skills
@@ -58,26 +58,15 @@ class Outcome:
     usage: dict = field(default_factory=dict)
 
 
-def ask_on_terminal(question: str, options: list[str]) -> str:
-    """
-    It takes a clarifying question and gives you the user's typed answer.
-
-    The default way the robot asks. Swap it for a text-to-speech prompt plus
-    speech capture and the clarification loop becomes spoken, which is what the
-    live demonstration wants; nothing else in the pipeline changes.
-    """
-    if options:
-        print(f"\n  ROBOT ASKS: {question}")
-        print(f"  options: {', '.join(options)}")
-    else:
-        print(f"\n  ROBOT ASKS: {question}")
-    return input("  your answer > ").strip()
-
-
 class ArchitectureA:
     """
-    It takes a camera, a controller and a calibration, and gives you something
-    that executes spoken or typed instructions.
+    It takes a camera, a controller and a way to ask the user, and gives you
+    something that executes spoken instructions.
+
+    `ask(question, options) -> str` is how a clarifying question gets answered.
+    It is required and has no default: user input is speech only (13 Oct 2026),
+    so callers pass `SpeechToText.answer`, and a typed fallback cannot creep back
+    in by someone forgetting the argument.
 
     Constructed once and reused. The detector loads an OWLv2 checkpoint on first
     use, and reloading it per instruction would dominate the latency numbers that
@@ -85,8 +74,7 @@ class ArchitectureA:
     """
 
     def __init__(self, camera, controller, queries: list[str] | None = None,
-                 cfg: dict | None = None, ask=ask_on_terminal,
-                 reperceive: bool = True):
+                 cfg: dict | None = None, *, ask, reperceive: bool = True):
         self.cfg = cfg or get_config()
         a = self.cfg["architecture_a"]
         self.camera = camera
@@ -113,8 +101,6 @@ class ArchitectureA:
         self.det_model = a["detector"]["model"]
         self.det_threshold = float(a["detector"]["threshold"])
         self.det_nms_iou = float(a["detector"]["nms_iou"])
-        self.max_depth = float(self.cfg["camera"]["max_depth"])
-        self.depth_radius = int(self.cfg["camera"]["depth_patch_radius"])
         self.max_below_floor = float(a["perception"]["max_below_floor_mm"]) / 1000.0
 
         self.envelope = WorkspaceEnvelope(self.cfg)
@@ -178,7 +164,9 @@ class ArchitectureA:
         trials" is.
         """
         with trace.stage(Stage.CAPTURE) as ev:
-            frame = self.camera.capture()
+            # Depth averaged over a few frames while the arm is at rest; see camera.capture.
+            frame = self.camera.capture(
+                depth_frames=int(self.cfg["architecture_a"]["perception"]["depth_frames"]))
             ev.data["resolution"] = [frame.intrinsics.width, frame.intrinsics.height]
 
         with trace.stage(Stage.DETECTION) as ev:
@@ -194,9 +182,13 @@ class ArchitectureA:
                     f"nothing detected above {self.det_threshold} for queries {queries}")
 
         with trace.stage(Stage.DEPTH) as ev:
-            located = locate(to_json_records(kept), frame.depth, frame.intrinsics,
-                             max_depth=self.max_depth, radius=self.depth_radius)
+            # The method (mask_ray or box_depth) comes from config; see localiser.py.
+            located = localise(to_json_records(kept), frame, self.T_base_cam, self.cfg)
             valid = [o for o in located if o.valid]
+            ev.data["method"] = self.cfg["architecture_a"]["perception"]["localiser"]
+            if ev.data["method"] == "mask_ray":
+                ev.data["heights"] = {o.query: [o.height_m, o.height_from, o.mask_px]
+                                      for o in located}
             ev.data["valid"] = len(valid)
             ev.data["dropped"] = [o.query for o in located if not o.valid]
             ev.data["box_depth"] = [o.query for o in located

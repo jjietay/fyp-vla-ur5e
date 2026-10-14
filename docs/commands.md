@@ -327,13 +327,23 @@ A cannot run without `T_base_cam`.
 ## Architecture A
 
 ```bash
-uv run python scripts/run_architecture_a.py    # speak to it. The default, and what a trial uses
-uv run python scripts/run_architecture_a.py --text
-uv run python scripts/run_architecture_a.py --instruction "place the red cube in the tray"
+cd ~/Documents/NTU/Y4S1/FYP
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/run_architecture_a.py
 ```
 
-`--text` and `--instruction` skip loading the recogniser entirely, which is worth several
-seconds per debugging run. Needs `ANTHROPIC_API_KEY` set.
+How a detection becomes a 3D point is `architecture_a.perception.localiser` in config (13 Oct 2026).
+`mask_ray`, the default, cuts the SAM mask's centre ray at the object's centre height above the table;
+`box_depth` is the old box-centre depth plus push, which put far picks a radius behind the orange.
+`height_from` picks how that height is found: `depth` (any object, drawer handles too) or `mask_size`
+(no object depth at all; best for compact things resting on the table). Compare them with
+`place_and_look.py --dry-run`, one config change per run. SAM (`facebook/sam-vit-base`, ~375 MB)
+downloads on first use.
+
+Speech is the only input (13 Oct 2026). Press Enter, say the instruction, press Enter. If the
+planner asks a clarifying question, answer it the same way. `--text` and `--instruction` were
+removed so no run can be typed into. To test the recogniser on its own, use
+`scripts/listen.py`. Needs `ANTHROPIC_API_KEY` set, and the lerobot venv because OWLv2 needs
+PyTorch.
 
 Detector check, which runs in the lerobot venv because that is where torch lives. It needs an
 image, so `check_camera.py` has to have run first.
@@ -488,7 +498,8 @@ uv run --extra smolvla python -m lerobot.async_inference.robot_client \
 ## Scoring
 
 ```bash
-uv run python scripts/run_evaluation.py --architecture A --tier 0 --trials 20
+# each trial: set up, Enter, then SAY the shown utterance (Enter to start and stop)
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/run_evaluation.py --architecture A --tier 0 --trials 20
 uv run python scripts/run_evaluation.py --tier 0 --layouts-only   # no robot needed
 uv run python scripts/run_evaluation.py --summarise               # rebuild the tables and exit
 ```

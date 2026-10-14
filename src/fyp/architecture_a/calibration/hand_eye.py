@@ -147,21 +147,6 @@ def camera_to_base(p_cam: np.ndarray, T_base_cam: np.ndarray) -> np.ndarray:
     return transform_point(T_base_cam, p_cam)
 
 
-def base_to_camera(p_base: np.ndarray, T_base_cam: np.ndarray) -> np.ndarray:
-    """
-    It takes a point in the robot's frame and gives you where the camera sees it.
-
-    The inverse direction, used for checking: project a pose the arm is holding
-    back into the image and confirm it lands on the marker.
-    """
-    T = np.asarray(T_base_cam, dtype=float)
-    R, t = T[:3, :3], T[:3, 3]
-    T_inv = np.eye(4)
-    T_inv[:3, :3] = R.T
-    T_inv[:3, 3] = -R.T @ t
-    return transform_point(T_inv, p_base)
-
-
 def ball_centre_in_base(tcp_pose, offset_tool) -> np.ndarray:
     """
     It takes the TCP pose the arm reports and where the ball centre sits in the

@@ -52,6 +52,12 @@ class RealSenseCamera:
         cam = cfg["camera"]
         self.width = int(cam["width"])
         self.height = int(cam["height"])
+        # Depth has its own size (13 Oct 2026): 848x480 is Intel's recommended
+        # depth resolution for the D435. Colour stays at width x height, and the
+        # depth is aligned (resampled) onto it, so every consumer still gets
+        # colour-sized depth on colour pixels and nothing downstream changes.
+        self.depth_width = int(cam.get("depth_width", self.width))
+        self.depth_height = int(cam.get("depth_height", self.height))
         self.fps = int(cam["fps"])
         self.align_depth = bool(cam["align_depth_to_color"])
         self.cfg_depth = {"visual_preset": cam.get("visual_preset"),
@@ -80,7 +86,8 @@ class RealSenseCamera:
 
         cfg = rs.config()
         cfg.enable_stream(rs.stream.color, self.width, self.height, rs.format.bgr8, self.fps)
-        cfg.enable_stream(rs.stream.depth, self.width, self.height, rs.format.z16, self.fps)
+        cfg.enable_stream(rs.stream.depth, self.depth_width, self.depth_height,
+                          rs.format.z16, self.fps)
 
         self._pipeline = rs.pipeline()
         profile = self._pipeline.start(cfg)
@@ -127,30 +134,62 @@ class RealSenseCamera:
             self._pipeline.stop()
             self._pipeline = None
 
-    def capture(self) -> Frame:
+    def capture(self, depth_frames: int = 1) -> Frame:
         """
-        It takes nothing and gives you one synchronised Frame.
+        It takes how many frames to average the depth over, and gives you one
+        synchronised Frame.
 
         Depth is converted to metres here rather than left in raw units, so that
         nothing downstream has to remember the device scale factor.
+
+        `depth_frames` > 1 takes that many framesets back to back and gives each
+        pixel the MEDIAN of its valid readings (13 Oct 2026). That lowers the
+        frame-to-frame noise; it does nothing for a reading that is wrong the same
+        way every frame. Colour is the last frame's. Only for a still scene: 5
+        frames is about 0.17 s at 30 fps, so Architecture A uses it while the arm
+        is at rest, and anything that streams (Architecture B) keeps the default 1.
         """
         if self._pipeline is None:
             raise RuntimeError("camera is not started; call start() or use it as a context manager")
 
-        frames = self._pipeline.wait_for_frames()
-        if self._align is not None:
-            frames = self._align.process(frames)
+        depths = []
+        for _ in range(max(1, int(depth_frames))):
+            frames = self._pipeline.wait_for_frames()
+            if self._align is not None:
+                frames = self._align.process(frames)
 
-        color_frame = frames.get_color_frame()
-        depth_frame = frames.get_depth_frame()
-        if not color_frame or not depth_frame:
-            raise RuntimeError("incomplete frameset from the camera")
+            color_frame = frames.get_color_frame()
+            depth_frame = frames.get_depth_frame()
+            if not color_frame or not depth_frame:
+                raise RuntimeError("incomplete frameset from the camera")
+            depths.append(np.asanyarray(depth_frame.get_data()).astype(np.float32)
+                          * self._depth_scale)
 
         bgr = np.asanyarray(color_frame.get_data())
         rgb = bgr[:, :, ::-1].copy()
-        depth = np.asanyarray(depth_frame.get_data()).astype(np.float32) * self._depth_scale
+        depth = median_depth(depths)
 
         i = color_frame.profile.as_video_stream_profile().intrinsics
         intr = CameraIntrinsics(fx=i.fx, fy=i.fy, cx=i.ppx, cy=i.ppy,
                                 width=i.width, height=i.height)
         return Frame(rgb=rgb, depth=depth, intrinsics=intr)
+
+
+def median_depth(depths: list[np.ndarray]) -> np.ndarray:
+    """
+    It takes depth images of the same still scene and gives you one, where each
+    pixel is the median of its valid (above 0) readings, and 0 where it had none.
+
+    Invalid readings are left out rather than counted as 0, or a pixel that
+    drops out in two of five frames would be pulled towards the camera.
+    """
+    if len(depths) == 1:
+        return depths[0]
+    stack = np.stack(depths).astype(np.float32)
+    stack[~(stack > 0)] = np.nan
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)   # all-NaN pixel is expected
+        out = np.nanmedian(stack, axis=0)
+    return np.nan_to_num(out, nan=0.0).astype(np.float32)
+

@@ -175,6 +175,47 @@ class SpeechToText:
         audio = record_push_to_talk(self.samplerate, self.input_device, prompt)
         return self.transcribe(audio, started_at=started_at)
 
+    def hear(self, prompt: str = "Enter to speak") -> Transcript:
+        """
+        It takes a prompt and gives you the first non-empty Transcript spoken after
+        it, asking again after silence or a clip too short to be speech.
+
+        The one way user input enters the project (13 Oct 2026: speech only, no
+        typed instructions, no typed answers). Retrying covers only "nothing was
+        heard". A transcript that is wrong is still returned as heard, because a
+        mishearing is data about the speech stack and re-recording until it comes
+        out right would hide it. EOFError and KeyboardInterrupt propagate, so the
+        caller decides what quitting means.
+
+        Echoes what it heard before returning, because the arm is about to move on
+        the strength of this string.
+        """
+        while True:
+            try:
+                t = self.listen(prompt)
+            except NoAudioCaptured as e:
+                print(f"\n  {e}\n")
+                continue
+            if not t:
+                print("  nothing recognised, say it again")
+                continue
+            print(f'  heard: "{t.text}"')
+            return t
+
+    def answer(self, question: str, options: list[str] | None = None) -> str:
+        """
+        It takes the planner's clarifying question and gives you the spoken reply
+        as text.
+
+        Matches the `ask(question, options) -> str` hook `ArchitectureA` takes, so
+        the clarification loop is spoken like the instruction is. The question is
+        printed, not spoken aloud; adding text-to-speech changes only this method.
+        """
+        print(f"\n  ROBOT ASKS: {question}")
+        if options:
+            print(f"  options: {', '.join(options)}")
+        return self.hear("Enter to answer").text
+
     def transcribe(self, audio: np.ndarray, started_at: str | None = None) -> Transcript:
         """
         It takes mono 16 kHz float32 audio and gives you a Transcript.

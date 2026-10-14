@@ -162,3 +162,24 @@ def smooth_depth(depth: np.ndarray, radius: int = 2,
         # an all-hole patch is the expected NaN, not something to warn about
         warnings.simplefilter("ignore", category=RuntimeWarning)
         return np.nanmedian(win, axis=(-2, -1))
+
+
+def ray_to_plane(u: float, v: float, intr: CameraIntrinsics, T_base_cam,
+                 z: float) -> np.ndarray | None:
+    """
+    It takes a pixel, the intrinsics, the camera-to-base transform and a height,
+    and gives you the base-frame point where that pixel's ray reaches that height,
+    or None when it never does (the ray points away from the plane).
+
+    No depth reading is used. The direction of a pixel is the thing this camera
+    measures well; how far away is the thing it measures worst.
+    """
+    T = np.asarray(T_base_cam, dtype=float)
+    d = T[:3, :3] @ np.array([(u - intr.cx) / intr.fx, (v - intr.cy) / intr.fy, 1.0])
+    o = T[:3, 3]
+    if abs(d[2]) < 1e-9:
+        return None
+    s = (float(z) - o[2]) / d[2]
+    if s <= 0:
+        return None
+    return o + s * d

@@ -187,9 +187,19 @@ class Skills:
         return ""
 
     def _above(self, xyz, height: float) -> list[float]:
-        """It takes a target and gives you the pose directly above it."""
+        """
+        It takes a target and gives you the pose directly above it: `height` up,
+        or the workspace ceiling if that is lower.
+
+        Same rule as `_retreat`. 13 Oct 2026: placing into the box (read at z
+        0.278) asked for an approach at 0.398, over the 0.38 ceiling, and the
+        planner retried the same refused place four times. The approach only has
+        to clear what is below, so the highest allowed point is the right one.
+        A target that is itself above the ceiling is still refused, by the move
+        down to it.
+        """
         p = np.asarray(xyz, dtype=float).reshape(3).copy()
-        p[2] += height
+        p[2] = min(p[2] + height, max(self.env.z[1], p[2]))
         return self._pose(p)
 
     def _retreat(self, xyz) -> list[float]:

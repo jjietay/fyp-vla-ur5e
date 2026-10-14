@@ -66,7 +66,7 @@ The user speaks, the system acts. ASR sits **outside both architectures** and is
 - [x] `shared/speech.py`: push to talk capture, then `faster-whisper`, then text, and nothing else
 - [x] `compute_type="float16"` set explicitly, since the default int8 crashes on RTX 50 series
 - [x] runnable alone as `scripts/listen.py`, so a bad transcript can be pinned on the microphone rather than the architecture
-- [x] `--text` flag, so either architecture can be driven from the keyboard while debugging
+- [x] speech only (13 Oct 2026): `--text` and `--instruction` removed, clarification answers and evaluation trials spoken too
 - [x] every transcript logged with its audio, timestamped
 - [x] paraphrase sets, living in `evaluation/suite.py` as `train_utterances` and `heldout_utterances` for all five tiers
 - [x] wired into `scripts/run_architecture_a.py`, and **speech is the default**

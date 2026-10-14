@@ -62,7 +62,7 @@ def main() -> int:
     from fyp.architecture_a.calibration.hand_eye import load, save
     from fyp.architecture_a.perception.detector import detect
     from fyp.architecture_a.perception.filters import apply_filters, to_json_records
-    from fyp.architecture_a.perception.localiser import locate
+    from fyp.architecture_a.perception.localiser import localise
     from fyp.architecture_a.planner import describe_objects
     from fyp.architecture_a.skills import GRIPPER_OPEN, Skills
     from fyp.shared.hardware.camera import RealSenseCamera
@@ -119,7 +119,7 @@ def main() -> int:
                 time.sleep(float(cc["settle_s"]))
 
                 seen = _perceive(cam, query, T, a, cfg, detect, apply_filters,
-                                 to_json_records, locate, describe_objects, Image)
+                                 to_json_records, localise, describe_objects, Image)
                 if seen is None:
                     print("not detected", end="")
                 else:
@@ -151,7 +151,8 @@ def main() -> int:
     miss = seen[:, :2] - truth[:, :2]
     shift = -miss.mean(axis=0)
     after = miss + shift
-    print(f"\n{'=' * 70}\n  {len(misses)} spots")
+    print(f"\n{'=' * 70}\n  {len(misses)} spots, localiser "
+          f"{a['perception']['localiser']}")
     print(f"  mean miss       dx {-shift[0] * 1000:+.1f}  dy {-shift[1] * 1000:+.1f} mm  "
           f"(|{np.linalg.norm(shift) * 1000:.1f}| mm)")
     print(f"  spread after the shift  RMS {np.sqrt((after ** 2).sum(1).mean()) * 1000:.1f} mm, "
@@ -176,6 +177,8 @@ def main() -> int:
         "shift_mm": [round(float(v) * 1000, 1) for v in shift],
         "spread_after_rms_mm": round(float(np.sqrt((after ** 2).sum(1).mean()) * 1000), 1),
         "n_spots": len(misses),
+        # A shift is only right for the localiser it was measured with.
+        "localiser": a["perception"]["localiser"],
         "from_file": archived.name,
         "note": args.note,
     }
@@ -204,22 +207,21 @@ def _near_home(ctrl, cfg) -> bool:
     return bool(np.max(np.abs(np.degrees(q - home))) < 2.0)
 
 
-def _perceive(cam, query, T, a, cfg, detect, apply_filters, to_json_records, locate,
+def _perceive(cam, query, T, a, cfg, detect, apply_filters, to_json_records, localise,
               describe_objects, Image):
     """
     It takes the camera and gives you where Architecture A puts the object in
     base frame, or None. The same calls, in the same order, with the same
     settings as `pipeline.perceive`.
     """
-    frame = cam.capture()
+    frame = cam.capture(depth_frames=int(a["perception"]["depth_frames"]))   # as pipeline.perceive
     raw = detect(Image.fromarray(frame.rgb), [query], a["detector"]["model"])
     kept, _ = apply_filters(raw, threshold=float(a["detector"]["threshold"]),
                             nms_iou=float(a["detector"]["nms_iou"]), keep_top1=True)
     if not kept:
         return None
-    located = locate(to_json_records(kept), frame.depth, frame.intrinsics,
-                     max_depth=float(cfg["camera"]["max_depth"]),
-                     radius=int(cfg["camera"]["depth_patch_radius"]))
+    # localise() is the pipeline's own call, so the method in config is measured.
+    located = localise(to_json_records(kept), frame, T, cfg)
     valid = [o for o in located if o.valid]
     if not valid:
         return None
