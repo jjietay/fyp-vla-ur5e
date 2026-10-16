@@ -222,26 +222,8 @@ def test_every_tier_has_a_written_success_criterion():
         assert TASKS[tier].heldout_utterances
 
 
-def test_harness_does_not_import_either_architecture():
-    """The harness must not be able to see inside A or B, or it grows an
-    affordance for one of them and the comparison stops being like-for-like.
-
-    Checks imports via the AST rather than raw text, because the package
-    docstring legitimately names both architectures while explaining this rule.
-    """
-    import ast
-    import pathlib
-
-    root = pathlib.Path(__file__).resolve().parents[1] / "src" / "fyp" / "evaluation"
-    offenders = []
-    for path in root.rglob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
-            names = ([node.module] if isinstance(node, ast.ImportFrom) and node.module
-                     else [a.name for a in node.names] if isinstance(node, ast.Import) else [])
-            for name in names:
-                if "architecture_a" in name or "architecture_b" in name:
-                    offenders.append(f"{path.name}:{node.lineno} imports {name}")
-    assert not offenders, offenders
+# The harness-must-not-import-A-or-B rule lives in test_imports.py, with the
+# other boundary rules.
 
 
 # ----------------------------------------------------------------- grounding

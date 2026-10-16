@@ -120,22 +120,6 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 
 ## Verify before claiming done
 
-There is no CI. After any move or rename, run this and expect `none`:
-
-```bash
-python3 - <<'PY'
-import ast, pathlib
-root = pathlib.Path('.'); mods = set()
-for p in (root/'src').rglob('*.py'):
-    if '__pycache__' in p.parts: continue
-    m = '.'.join(p.relative_to(root/'src').with_suffix('').parts)
-    mods |= {m, m.removesuffix('.__init__')}
-bad = [(str(p), n.lineno, m) for p in list((root/'src').rglob('*.py')) + list((root/'scripts').rglob('*.py')) + list((root/'tests').rglob('*.py'))
-       if '__pycache__' not in p.parts
-       for n in ast.walk(ast.parse(p.read_text()))
-       for m in ([n.module] if isinstance(n, ast.ImportFrom) and n.module else
-                 [a.name for a in n.names] if isinstance(n, ast.Import) else [])
-       if m.split('.')[0] == 'fyp' and m not in mods]
-print("BROKEN:", bad or "none")
-PY
-```
+There is no cloud CI. Run `uv run pytest tests` and expect green, with the hardware tests
+skipped. `tests/unit/test_imports.py` catches a stale `fyp.*` import after a move or rename,
+and any import across an architecture boundary.
