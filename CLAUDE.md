@@ -220,6 +220,20 @@ bullets never end in a full stop, one concept per note, sparse wikilinks. Verify
 find docs/plan_vault -name '*.md' -print0 | xargs -0 python3 <skill>/scripts/check_notes.py --vault docs/plan_vault
 ```
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles, written as `Status:` lines in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. `docs/plan_vault/Decisions to Make.md` is the main decision record, then `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Working with JJ
 
 - Be concise and direct. He notices padding and dislikes it.
