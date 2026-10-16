@@ -144,11 +144,8 @@ def _collect(controller, camera, poses, envelope, cfg) -> list[tuple[np.ndarray,
     A pose where the ball is not found, or has no depth, is skipped rather than
     guessed. A missing point costs a little precision; an invented one is bias.
     """
-    from PIL import Image
-
     from fyp.architecture_a.calibration.hand_eye import ball_centre_in_base
-    from fyp.architecture_a.perception.detector import detect
-    from fyp.architecture_a.perception.filters import apply_filters
+    from fyp.architecture_a.perception.scene import Perception
     from fyp.architecture_a.perception.pixel_to_3d import (depth_at, pixel_to_camera,
                                                            surface_to_centroid)
 
@@ -158,6 +155,9 @@ def _collect(controller, camera, poses, envelope, cfg) -> list[tuple[np.ndarray,
     radius = float(cc["ball_radius_m"])
     offset = cc["ball_offset_tool_m"]
     speed, acc = envelope.clamp_motion(float(cc["speed"]), float(a["skills"]["acc"]))
+    # No transform yet, that is what is being fitted. Only detection is used, so
+    # the detector settings are A's own without the identity matrix meaning anything.
+    perception = Perception(cfg, np.eye(4), envelope)
 
     pairs = []
     for i, pose in enumerate(poses, start=1):
@@ -171,9 +171,7 @@ def _collect(controller, camera, poses, envelope, cfg) -> list[tuple[np.ndarray,
         # Averaged like A's own captures, so the fit and the runs see the same depth.
         frame = camera.capture(
             depth_frames=int(cfg["architecture_a"]["perception"]["depth_frames"]))
-        raw = detect(Image.fromarray(frame.rgb), [query], a["detector"]["model"])
-        kept, _ = apply_filters(raw, threshold=float(a["detector"]["threshold"]),
-                                nms_iou=float(a["detector"]["nms_iou"]), keep_top1=True)
+        kept = perception.detect(frame, [query], strict=False)
         if not kept:
             print("ball not detected, skipped")
             continue

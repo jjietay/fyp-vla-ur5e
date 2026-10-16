@@ -5,7 +5,10 @@
                     stays a pure model call
     pixel_to_3d.py  pinhole back-projection, CameraIntrinsics, depth_at
     segmenter.py    SAM: one pixel mask per detector box (mask_ray only)
-    localiser.py    detections plus depth -> LocatedObject with camera XYZ.
+    scene.py        `Perception.see`: detect, filter, localise in one call, plus the
+                    floor lift and the in-reach / out-of-reach split. The only
+                    entry point the pipeline and the scripts use
+    localiser.py    detections plus depth -> LocatedObject with base-frame XYZ.
                     `localise()` picks the method from config: mask_ray (SAM
                     mask, ray cut at the object's centre height) or box_depth
 

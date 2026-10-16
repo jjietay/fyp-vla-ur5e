@@ -181,7 +181,7 @@ def cell(tmp_path, monkeypatch):
     box = [float(us.min()), float(vs.min()), float(us.max()), float(vs.max())]
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr("fyp.architecture_a.pipeline.detect",
+    monkeypatch.setattr("fyp.architecture_a.perception.scene.detect",
                         lambda img, queries, model: [(queries[0], 0.9, box)])
     monkeypatch.setattr("fyp.architecture_a.perception.segmenter.segment",
                         lambda img, boxes, model: [(mask, 0.95) for _ in boxes])

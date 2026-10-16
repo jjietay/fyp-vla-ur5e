@@ -69,6 +69,9 @@ def _record(mask):
 
 
 def _base(obj, T):
+    # box_depth works in camera frame; mask_ray already gives base.
+    if obj.p_base is not None:
+        return obj.p_base
     return (T @ np.append(obj.p_cam, 1.0))[:3]
 
 

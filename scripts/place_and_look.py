@@ -32,6 +32,13 @@ Height is not touched: the table levelling already owns z. The object's
 sideways position under the TCP is taken as exact, which is true to the few mm
 the fingers centre it.
 
+## Raw point, not the runtime one
+
+The miss is measured on the localiser's RAW base-frame point (`Seen.located`),
+not on what A acts on. At runtime A lifts a point just under the floor up to it
+and drops out-of-reach objects from the plan. Both would hide the error this
+script exists to remove, because it corrects the transform itself.
+
 ## Reading the output
 
 Each spot prints the miss in base x and y. If they all point the same way and
@@ -56,13 +63,8 @@ def main() -> int:
     p.add_argument("--note", default="", help="free text kept in the file")
     args = p.parse_args()
 
-    from PIL import Image
-
     from fyp.architecture_a.calibration.store import CalibrationStore
-    from fyp.architecture_a.perception.detector import detect
-    from fyp.architecture_a.perception.filters import apply_filters, to_json_records
-    from fyp.architecture_a.perception.localiser import localise
-    from fyp.architecture_a.planner import describe_objects
+    from fyp.architecture_a.perception.scene import Perception
     from fyp.architecture_a.skills import GRIPPER_OPEN, Skills
     from fyp.shared.hardware.camera import RealSenseCamera
     from fyp.shared.hardware.safety import WorkspaceEnvelope
@@ -75,6 +77,7 @@ def main() -> int:
     env = WorkspaceEnvelope(cfg)
     store = CalibrationStore(cfg)
     T, _ = store.current()
+    perception = Perception(cfg, T, env)
     query = str(cc["ball_query"])
     # The object's centre above the fingertips, as the ball fit uses it. For
     # an object resting on the table that is also its centre above the table.
@@ -117,8 +120,7 @@ def main() -> int:
                     float(a["skills"]["speed"]), float(a["skills"]["acc"])))
                 time.sleep(float(cc["settle_s"]))
 
-                seen = _perceive(cam, query, T, a, cfg, detect, apply_filters,
-                                 to_json_records, localise, describe_objects, Image)
+                seen = _perceive(cam, perception, query, a)
                 if seen is None:
                     print("not detected", end="")
                 else:
@@ -197,25 +199,22 @@ def _near_home(ctrl, cfg) -> bool:
     return bool(np.max(np.abs(np.degrees(q - home))) < 2.0)
 
 
-def _perceive(cam, query, T, a, cfg, detect, apply_filters, to_json_records, localise,
-              describe_objects, Image):
+def _perceive(cam, perception, query, a):
     """
-    It takes the camera and gives you where Architecture A puts the object in
-    base frame, or None. The same calls, in the same order, with the same
-    settings as `pipeline.perceive`.
+    It takes the camera and A's perception and gives you where the localiser puts
+    the object in base frame, or None.
+
+    This is the RAW point (`Seen.located`), not what A acts on. A at runtime lifts
+    a point just under the floor up to it and drops points outside the reach, and
+    both would hide the error measured here: this script corrects the transform,
+    so it must see the localiser's own answer. Capture, detect, filter and
+    localise are the same calls `ArchitectureA.perceive` makes, through
+    `Perception.see`.
     """
-    frame = cam.capture(depth_frames=int(a["perception"]["depth_frames"]))   # as pipeline.perceive
-    raw = detect(Image.fromarray(frame.rgb), [query], a["detector"]["model"])
-    kept, _ = apply_filters(raw, threshold=float(a["detector"]["threshold"]),
-                            nms_iou=float(a["detector"]["nms_iou"]), keep_top1=True)
-    if not kept:
-        return None
-    # localise() is the pipeline's own call, so the method in config is measured.
-    located = localise(to_json_records(kept), frame, T, cfg)
-    valid = [o for o in located if o.valid]
-    if not valid:
-        return None
-    return np.asarray(describe_objects(valid, T)[0]["xyz"], dtype=float)
+    frame = cam.capture(depth_frames=int(a["perception"]["depth_frames"]))
+    seen = perception.see(frame, [query], strict=False)
+    valid = [o for o in seen.located if o.valid]
+    return np.asarray(valid[0].p_base, dtype=float) if valid else None
 
 
 if __name__ == "__main__":

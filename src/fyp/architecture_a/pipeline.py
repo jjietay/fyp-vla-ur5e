@@ -33,15 +33,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from fyp.architecture_a.calibration.store import CalibrationStore
-from fyp.architecture_a.perception.detector import detect
-from fyp.architecture_a.perception.filters import apply_filters, to_json_records
-from fyp.architecture_a.perception.localiser import localise
-from fyp.architecture_a.planner import (GroundingFailed, PlanRejected, Planner,
-                                        describe_objects, extract_queries)
+from fyp.architecture_a.perception.scene import Perception
+from fyp.architecture_a.planner import GroundingFailed, PlanRejected, Planner, extract_queries
 from fyp.architecture_a.skills import Skills
 from fyp.architecture_a.tools import validate_schemas_against_skills
 from fyp.architecture_a.trace import Stage, Trace
-from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
+from fyp.shared.hardware.safety import WorkspaceEnvelope
 from fyp.shared.helpers.config import get_config
 
 
@@ -101,11 +98,6 @@ class ArchitectureA:
         self.max_queries = int(g["max_queries"])
         self.grounding_max_tokens = int(g["max_tokens"])
 
-        self.det_model = a["detector"]["model"]
-        self.det_threshold = float(a["detector"]["threshold"])
-        self.det_nms_iou = float(a["detector"]["nms_iou"])
-        self.max_below_floor = float(a["perception"]["max_below_floor_mm"]) / 1000.0
-
         self.envelope = WorkspaceEnvelope(self.cfg)
         self.skills = Skills(controller, self.cfg, self.envelope)
 
@@ -120,6 +112,7 @@ class ArchitectureA:
         if isinstance(calibration, CalibrationStore):
             calibration = calibration.current()[0]
         self.T_base_cam = calibration
+        self.perception = Perception(self.cfg, self.T_base_cam, self.envelope)
 
     # ------------------------------------------------------------ perception
 
@@ -162,6 +155,7 @@ class ArchitectureA:
         the table, in base frame, ready to hand to the planner.
 
         Capture, detect, depth and transform are separate trace stages on purpose.
+        Capture is opened here; the other three are opened by `Perception.see`.
         "The run failed" is not a result; "the run failed at depth on 3 of 20
         trials" is.
         """
@@ -171,77 +165,11 @@ class ArchitectureA:
                 depth_frames=int(self.cfg["architecture_a"]["perception"]["depth_frames"]))
             ev.data["resolution"] = [frame.intrinsics.width, frame.intrinsics.height]
 
-        with trace.stage(Stage.DETECTION) as ev:
-            from PIL import Image
-            raw = detect(Image.fromarray(frame.rgb), queries, self.det_model)
-            kept, counts = apply_filters(raw, threshold=self.det_threshold,
-                                         nms_iou=self.det_nms_iou, keep_top1=True)
-            ev.data["counts"] = {"raw": counts[0], "over_threshold": counts[1],
-                                 "after_nms": counts[2], "final": counts[3]}
-            ev.data["found"] = [d[0] for d in kept]
-            if not kept:
-                raise RuntimeError(
-                    f"nothing detected above {self.det_threshold} for queries {queries}")
-
-        with trace.stage(Stage.DEPTH) as ev:
-            # The method (mask_ray or box_depth) comes from config; see localiser.py.
-            located = localise(to_json_records(kept), frame, self.T_base_cam, self.cfg)
-            valid = [o for o in located if o.valid]
-            ev.data["method"] = self.cfg["architecture_a"]["perception"]["localiser"]
-            if ev.data["method"] == "mask_ray":
-                ev.data["heights"] = {o.query: [o.height_m, o.height_from, o.mask_px]
-                                      for o in located}
-            ev.data["valid"] = len(valid)
-            ev.data["dropped"] = [o.query for o in located if not o.valid]
-            ev.data["box_depth"] = [o.query for o in located
-                                    if o.valid and o.depth_from == "box"]
-            if not valid:
-                raise RuntimeError("every detection had invalid depth; check the depth stream")
-
-        with trace.stage(Stage.TRANSFORM) as ev:
-            objects = describe_objects(valid, self.T_base_cam)
-            # Nothing on the table has its centre below the table. A point a little
-            # under the floor is the centre push overshooting, not a real position:
-            # for an open box the depth lands on its inner floor and the push goes
-            # through it (13 Oct 2026: a reachable box read z 0.156 against a
-            # 0.177 floor and was reported out of reach). Lift those to the floor
-            # and say so; anything further below is a bad reading and stays out.
-            floor = self.envelope.z[0]
-            lifted = []
-            for o in objects:
-                if floor - self.max_below_floor <= o["xyz"][2] < floor:
-                    lifted.append({"name": o["name"], "from_z": o["xyz"][2]})
-                    o["xyz"] = [o["xyz"][0], o["xyz"][1], round(floor, 4)]
-            if lifted:
-                ev.data["lifted_to_floor"] = lifted
-            in_bounds = [o for o in objects if self.envelope.contains(o["xyz"])]
-            # Out-of-reach objects are kept by NAME, with the reason and without a
-            # position, so the planner can say "the box is too far" instead of "I
-            # do not see a box". 13 Oct 2026: twice a box found by OWLv2 was
-            # filtered here, and the planner told the user it saw no box at all.
-            self.out_of_reach = [{"name": o["name"], "confidence": o["confidence"],
-                                  "reason": self._why_out(o["xyz"])}
-                                 for o in objects if o not in in_bounds]
-            ev.data["objects"] = objects
-            ev.data["out_of_workspace"] = [o["name"] for o in self.out_of_reach]
-            if self.out_of_reach:
-                ev.data["out_of_workspace_reason"] = {o["name"]: o["reason"]
-                                                      for o in self.out_of_reach}
-            if not in_bounds:
-                raise RuntimeError(
-                    "every detected object is out of reach: " + "; ".join(
-                        f"{o['name']} ({o['reason']})" for o in self.out_of_reach)
-                    + ". Move them closer to the arm, or check the calibration")
-
-        return in_bounds
-
-    def _why_out(self, xyz) -> str:
-        """It takes a base-frame point and gives you the envelope's reason for refusing it."""
-        try:
-            self.envelope.check_point(xyz, "position")
-        except SafetyViolation as e:
-            return str(e)
-        return "outside the workspace"
+        # Detection, depth and transform are opened inside `see`, one trace stage
+        # each, so a failure is still blamed on the stage that caused it.
+        seen = self.perception.see(frame, queries, trace)
+        self.out_of_reach = seen.out_of_reach
+        return seen.in_reach
 
     # -------------------------------------------------------------- dispatch
 

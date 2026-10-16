@@ -190,29 +190,6 @@ class PlannerReply:
         return not self.steps and self.question is None and not self.gave_up
 
 
-def describe_objects(located, T_base_cam) -> list[dict]:
-    """
-    It takes camera-frame detections and the hand-eye transform, and gives you the
-    object table the model is allowed to plan over.
-
-    Objects without valid depth are dropped rather than passed through with a
-    null position. A model handed a null coordinate will sometimes use it anyway.
-    """
-    from fyp.architecture_a.calibration.hand_eye import camera_to_base
-
-    rows = []
-    for obj in located:
-        if not obj.valid:
-            continue
-        p_base = np.asarray(camera_to_base(obj.p_cam, T_base_cam), dtype=float).reshape(3)
-        rows.append({
-            "name": obj.query,
-            "confidence": round(float(obj.score), 3),
-            "xyz": [round(float(v), 4) for v in p_base],
-        })
-    return rows
-
-
 def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
                   object_names: set[str] | None = None) -> dict:
     """

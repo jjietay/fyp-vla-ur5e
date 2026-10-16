@@ -3,8 +3,8 @@
 This file converts the detections + depth into 3D object positions.
 
 Two methods, chosen by `architecture_a.perception.localiser` in config, and
-`localise()` is the one entry point both the pipeline and `place_and_look.py`
-call, so a measurement of one is a measurement of the other:
+`localise()` is the one entry point, called through `scene.Perception.see`, so a
+measurement by a script is a measurement by the pipeline:
 
     box_depth   the box centre's depth, pushed back along the ray by half the
                 box (`locate`). The original method.
@@ -34,6 +34,7 @@ class LocatedObject:
     center_uv: tuple
     depth_m: float
     p_cam: np.ndarray | None
+    p_base: np.ndarray | None = None  # the object's centre in base frame, unclamped
     centre_offset_m: float = 0.0   # how far p_cam was pushed from the seen surface
     depth_from: str = "centre"     # "centre" patch, "box" when the centre had no depth, or "mask_ray"
     height_m: float = float("nan")  # mask_ray: object height above the table it used
@@ -44,9 +45,22 @@ class LocatedObject:
     def valid(self) -> bool:
         """
         fn valid is written like a method but will be accessed like a field same as those above.
-        This valid function is never stored but computed from p_cam, therefore its a computed attribute.
+        This valid function is never stored but computed from the point, therefore its a computed attribute.
         """
-        return self.p_cam is not None and bool(np.all(np.isfinite(self.p_cam)))
+        p = self.position
+        return p is not None and bool(np.all(np.isfinite(p)))
+
+    @property
+    def position(self) -> np.ndarray | None:
+        """
+        It takes nothing and gives you the object's point in base frame when the
+        localiser made one, else in camera frame.
+
+        `mask_ray` works in base frame and fills only `p_base`. `box_depth` works
+        in camera frame, and `localise()` fills `p_base` for it. The camera-frame
+        fallback is for callers of `locate()` that have no transform.
+        """
+        return self.p_base if self.p_base is not None else self.p_cam
 
 
 def locate(detections: list[dict], depth: np.ndarray, intr: CameraIntrinsics,
@@ -143,7 +157,7 @@ def find_duplicates(located: list[LocatedObject],
         for j in range(i + 1, len(located)):
             a, b = located[i], located[j]
             if a.valid and b.valid:
-                sep = float(np.linalg.norm(a.p_cam - b.p_cam)) * 1000.0
+                sep = float(np.linalg.norm(a.position - b.position)) * 1000.0
                 if sep < separation_mm:
                     pairs.append((i, j, sep))
     return pairs
@@ -220,8 +234,8 @@ def locate_on_table(detections: list[dict], masks: list, depth: np.ndarray,
     roughly 1.5 to 1.9 h for this camera. That is the only way depth error gets
     in, where the old method put the whole of it along the line of sight.
 
-    `p_cam` is filled (the point taken back into camera frame) so everything
-    downstream, `describe_objects` included, is unchanged.
+    `p_base` is the result. `p_cam` stays None: the point is not converted back
+    to camera frame, because nothing downstream needs it there.
     """
     if height_from not in ("depth", "mask_size"):
         raise ValueError(f"height_from is {height_from!r}; use 'depth' or 'mask_size'")
@@ -277,12 +291,13 @@ def locate_on_table(detections: list[dict], masks: list, depth: np.ndarray,
             centre_z = table_z + height / 2.0
 
         p_base = ray_to_plane(uc, vc, intr, T, centre_z)
-        p_cam = None if p_base is None else (T_inv @ np.append(p_base, 1.0))[:3]
+        # Camera z of the point, only so `depth_m` still reports what the camera
+        # would have measured.
+        z_cam = float("nan") if p_base is None else float((T_inv @ np.append(p_base, 1.0))[2])
         out.append(LocatedObject(
             query=det["query"], score=det.get("score", float("nan")),
             center_uv=(round(uc, 1), round(vc, 1)),
-            depth_m=float(p_cam[2]) if p_cam is not None else float("nan"),
-            p_cam=p_cam, depth_from="mask_ray", height_m=round(float(height), 4),
+            depth_m=z_cam, p_cam=None, p_base=p_base, depth_from="mask_ray", height_m=round(float(height), 4),
             height_from=source, mask_px=int(m.sum())))
     return out
 
@@ -292,16 +307,21 @@ def localise(records: list[dict], frame, T_base_cam, cfg: dict) -> list[LocatedO
     It takes the kept detections as records, one camera frame, the transform and
     the config, and gives you LocatedObjects by the method config names.
 
-    The single entry point, so the pipeline and `place_and_look.py` cannot drift
-    apart: whatever one measures, the other does.
+    The single entry point, so every caller measures the same way. Every valid
+    result has `p_base` filled, whichever method made it.
     """
     a = cfg["architecture_a"]
     p = a["perception"]
     max_depth = float(cfg["camera"]["max_depth"])
     method = p["localiser"]
     if method == "box_depth":
-        return locate(records, frame.depth, frame.intrinsics, max_depth=max_depth,
-                      radius=int(cfg["camera"]["depth_patch_radius"]))
+        found = locate(records, frame.depth, frame.intrinsics, max_depth=max_depth,
+                       radius=int(cfg["camera"]["depth_patch_radius"]))
+        T = np.asarray(T_base_cam, dtype=float)
+        for o in found:
+            if o.valid:
+                o.p_base = T[:3, :3] @ o.p_cam + T[:3, 3]
+        return found
     if method == "mask_ray":
         from PIL import Image
 
