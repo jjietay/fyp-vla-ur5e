@@ -110,6 +110,14 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 - "Operation not permitted" on the mounted folder is a sandbox delete restriction, not a real
   error.
 
+## At the bench
+
+- JJ asks many short questions while he debugs live on the arm. Answer fast and short.
+- Do not start `diagnosing-bugs` unless he types it or says "diagnose". A report that
+  something is broken is a question, not a request for the full loop.
+- Never run anything that can move the arm (`tests/hardware/`, `--integration`, any
+  `scripts/` that connects to RTDE) without asking first in that same turn.
+
 ## Verify before claiming done
 
 There is no CI. After any move or rename, run this and expect `none`:
