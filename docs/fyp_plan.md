@@ -4,30 +4,21 @@
 
 *Title updated by Prof Cheah, 31 Aug 2026, from "Development of a Large Language Model-Based Interface for Robotic Systems".*
 **Student:** Tay Juen Jie · **Supervisor:** A/P Cheah Chien Chern · **Lab:** Robotics I (S2-B6a-01)
-**Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026, facts brought up to date 23 Sep 2026 · **Supersedes and replaces:** all earlier plans, `SESSION_HANDOVER.md`, and the old vault architecture note (deleted 11 Aug)
+**Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026 · **Trimmed:** 16 Oct 2026, completed work and history removed (see git history)
 
----
+**Research question:** a modular LLM pipeline (A) versus an end-to-end VLA (B), on the same UR5e, through the same controller interface — what does each buy and what does each cost?
 
-## 0 · Purpose of this document
-
-V4 answered *what code is missing*. This answers *what has to exist for the FYP to be assessed well, and in what order*.
-
-Two things changed after the supervisor meeting on/around 10 Aug 2026:
-
-1. **Application scope widened.** The comparison is no longer only pick-and-place. It now spans a tiered task suite including interactive clarification (pouring a drink the user must disambiguate) and dynamic, state-dependent tasks (drawer that gets closed mid-task). Pick-and-place is retained but demoted to a *verification tier*, not the headline result.
-2. **Work-complete target pulled forward to Nov 2026.** All technical work, the full evaluation, the final report and a demo-ready system are to be **finished** by Nov 2026. **Submission dates are unchanged** — the draft final report, final report, demonstration and oral presentation all go in on the official NTU dates in 2027. Nov 2026 is an internal completion deadline, not a submission one. See §2.
-
-The research question is unchanged: **a modular LLM pipeline (A) versus an end-to-end VLA (B), on the same UR5e, through the same controller interface — what does each buy and what does each cost?**
+**Nov 2026 is a completion deadline, not a submission deadline.** All work, the evaluation, the final report and a demo-ready system are finished by Nov 2026. Everything is submitted on the official NTU dates in 2027.
 
 ---
 
 ## 1 · NTU-mandated deliverables (D-series)
 
-From `docs/guidelines/fyp_guidelines.pdf` and the schedule table. **All submissions happen on the official dates.** The "ready by" column is the internal completion deadline — the artefact exists, finished, on that date and then sits until submission.
+From `docs/guidelines/fyp_guidelines.pdf` and the schedule table. The "ready by" column is the internal completion deadline.
 
 | ID | Deliverable | Submit on | Spec | Ready by |
 |----|-------------|-----------|------|----------|
-| **D1** | Project Plan/Strategy | **14 Sep 2026** (W6) | Objectives, background, proposed approach, weekly schedule in chart form | 14 Sep 2026 — derived from §8/§9 of this doc |
+| **D1** | Project Plan/Strategy | **14 Sep 2026** (W6) | Objectives, background, proposed approach, weekly schedule in chart form | Submitted |
 | **D2** | Interim Report + Video | **10 Nov 2026** (W13) | 5–10 A4 pages; video 2–3 min; Turnitin first | 10 Nov 2026 — content is near-final results, not "progress so far" |
 | **D3** | Draft Final Report | **25 Mar 2027** | To supervisor; Turnitin | **2 Nov 2026** (W12) |
 | **D4** | Final Report | **09 Apr 2027** | 40–60 pages main body, TNR 12, 1.5 spacing, 35 mm left / 30 mm other margins | **9 Nov 2026** (W13) |
@@ -41,40 +32,11 @@ From `docs/guidelines/fyp_guidelines.pdf` and the schedule table. **All submissi
 - Report, demonstration and oral presentation — 40 (writing/references 11, intro-theory-review-discussion 12, demo + oral 17)
 - Approach, development, achievement — 40 (initiative + supervisor updates 8, **design/implementation/data/results/complexity 24**, ability and independence 8)
 
-The 24-mark block is the largest single item and is explicitly about *design of experiments, appropriate experimental technique, mastery of data collection, understanding of tools and their limitations, new and interesting results*. §5, §6 and §7 of this document exist to hit that block directly.
+The 24-mark block is the largest single item and is explicitly about *design of experiments, appropriate experimental technique, mastery of data collection, understanding of tools and their limitations, new and interesting results*. §4, §5 and §6 exist to hit that block directly.
 
 ---
 
-## 2 · What the Nov 2026 target actually means
-
-Today is 11 Aug 2026. Week 1 of AY2026 S1 begins 10 Aug 2026; the recess week falls the week of 28 Sep. That gives **13 teaching weeks + 1 recess week to 10 Nov 2026**, i.e. **~13 usable weeks** to a finished project.
-
-**Nov 2026 is a completion deadline, not a submission deadline.** Everything still goes in on the official dates. This is a deliberately safe structure and it is worth being explicit about why:
-
-- **Submission risk goes to zero.** By the time the final report is due in Apr 2027, it has existed in finished form for five months. Nothing about the outcome depends on the last fortnight going well.
-- **Slippage is absorbed silently.** If lab access lands late or a fine-tune fails, the overrun eats buffer instead of eating the deadline. The plan degrades rather than breaks.
-- **The interim assessment gets results, not progress.** D2 on 10 Nov is the one date that is both a submission and a completion point. Submitting an interim report full of finished comparative results — rather than "I have built half a pipeline" — is worth real marks against the 13-mark interim criterion.
-
-Consequences for how the 13 weeks are run:
-
-- There is **no slack for a late lab start.** Every week without arm access comes straight out of Track B, which is on the critical path. §12-A1 is the highest-priority action in this document.
-- Data collection must be **batched, not incremental.** Recording 200–300 demonstrations in scattered one-hour sessions will not fit. Plan two or three dedicated multi-hour blocks.
-- The descope ladder in §11 is a live tool, not a contingency to think about later.
-
-### What Dec 2026 – May 2027 is for
-
-Do not let this window become scope creep, and do not let it become idle. In priority order:
-
-1. **Absorb whatever slipped.** Most likely candidate is the highest descoped tier.
-2. **Deepen the evidence.** More trials on the tiers that produced the most interesting results — a 20-trial result becomes a 50-trial result with tighter error bars for nothing but lab time. Cheapest possible quality gain.
-3. **Keep the demo alive.** A system that has not been run since Nov will not work in Apr. Re-run the full demo end-to-end **once a month, Dec through Mar**, and fix the rot when you find it. Hardware demos rot silently.
-4. **Report and oral polish.** Supervisor feedback on the Nov draft has months to be acted on. Oral prep from Mar.
-
-Put a monthly recurring reminder on items 3 and 4 now, while you are thinking about it.
-
----
-
-## 3 · Scope statement (for D1, reuse verbatim)
+## 2 · Scope statement (for D1, reuse verbatim)
 
 > This project compares two architectures for **spoken** natural-language control of a UR5e manipulator, evaluated on the same physical cell, the same controller interface, the same speech front-end, and the same task suite. The user speaks a command — *"place that red cube into that metal tray"* — and the system executes it.
 >
@@ -86,32 +48,32 @@ Put a monthly recurring reminder on items 3 and 4 now, while you are thinking ab
 >
 > The two are evaluated on a four-tier task suite spanning static pick-and-place, unambiguous liquid pouring, **ambiguous instructions that require clarifying the user's intent**, and **dynamic tasks whose world state changes mid-execution**. The contribution is a like-for-like characterisation of where each architecture succeeds, where each fails, how each fails, and what each costs in data, compute, money and engineering effort.
 
-**Explicitly out of scope:** simulated results of any kind, mobile manipulation, multi-arm, learned grasp synthesis, training a VLA from scratch, training or fine-tuning any speech model (an off-the-shelf ASR system is used as-is), wake-word detection and always-on listening (push-to-talk, see §7.5).
+**Explicitly out of scope:** simulated results of any kind, mobile manipulation, multi-arm, learned grasp synthesis, training a VLA from scratch, training or fine-tuning any speech model (an off-the-shelf ASR system is used as-is), wake-word detection and always-on listening (push-to-talk, see §6.3).
 
 ---
 
-## 4 · Technical deliverables (T-series)
+## 3 · Technical deliverables (T-series)
 
 Each has a **definition of done** — a binary condition, checkable, no judgement call.
 
 | ID | Deliverable | Definition of done |
 |----|-------------|--------------------|
 | **T1** | Physical cell, calibrated | Fixed RGB-D + wrist camera streaming; `T_base_cam` solved and saved to `config/calibration/`; validated residual RMS reported in mm against measured ground truth |
-| **T2** | Architecture A, end to end | One command line turns a typed instruction into executed motion on the real arm, with per-stage logs; succeeds on Tier 0 at ≥70% over 20 trials |
+| **T2** | Architecture A, end to end | One command line turns a spoken instruction into executed motion on the real arm, with per-stage logs; succeeds on Tier 0 at ≥70% over 20 trials |
 | **T3** | Demonstration dataset | ≥50 real UR5e episodes per trained task, exported to a LeRobot dataset that loads without error, with fps asserted against the configured record rate |
 | **T4** | Architecture B, trained and running | Fine-tuned SmolVLA checkpoint driving the arm through the same controller interface as T2, with a safety envelope on predicted actions; succeeds on Tier 0 at ≥50% over 20 trials |
 | **T5** | Evaluation harness | **DONE 11 Aug 2026.** `src/fyp/evaluation/`, suite frozen before either pipeline was tuned, per-trial CSV, four results tables, imports neither architecture |
 | **T6** | Comparison result | The T5 harness run to completion on both architectures across all attempted tiers, with the results tables and figures that go into D4 |
-| **T7** | Repo consolidation | README and vault docs match the tree; no dead references |
+| **T7** | Repo consolidation | README and docs match the tree; no dead references |
 
 ---
 
-## 5 · Task suite and hypotheses
+## 4 · Task suite and hypotheses
 
 Fix this **before** tuning either pipeline. Once you start tuning, any change to the task set is fitting the benchmark to whichever pipeline you happened to build first.
 
 ### Tier 0 — Static pick-and-place *(verification)*
-Spoken: `"Place that red cube into that metal tray."` Single unambiguous target, static scene, fixed tray. Deictic phrasing on purpose (§7.4).
+Spoken: `"Place that red cube into that metal tray."` Single unambiguous target, static scene, fixed tray. Deictic phrasing on purpose (§6.3).
 **Role:** proves both pipelines are wired correctly. Not a headline result. If a pipeline cannot do Tier 0, nothing above it is meaningful.
 
 ### Tier 1 — Constrained-motion manipulation *(pouring, unambiguous)*
@@ -129,7 +91,7 @@ Spoken: `"Place that red cube into that metal tray."` Single unambiguous target,
 ### Tier 3 — Dynamic, state-dependent task *(the drawer)*
 `"Put the snack in the drawer."` The drawer starts closed. The robot opens it. **The human closes it again mid-task.** The robot must notice and re-open before placing.
 
-**Why it matters:** this is the tier where the prediction flips. Architecture A must *detect* the state change and re-plan — which is exactly what the open-loop plan-then-execute pattern is bad at, and why V4 lists re-detection before each grasp (A7) as necessary work. Architecture B is a closed-loop visuomotor policy at 20 Hz; if the training demonstrations included re-closures, reactive recovery is the thing it is naturally good at.
+**Why it matters:** this is the tier where the prediction flips. Architecture A must *detect* the state change and re-plan — which is exactly what the open-loop plan-then-execute pattern is bad at, and why re-detection before each grasp (§7-W4) is necessary work. Architecture B is a closed-loop visuomotor policy at 20 Hz; if the training demonstrations included re-closures, reactive recovery is the thing it is naturally good at.
 
 ### Tier 4 — Generalisation *(unseen objects and phrasings)*
 Objects and instruction phrasings never seen in the demonstrations or the prompt examples. A's open-vocabulary detector should transfer; B should degrade.
@@ -148,15 +110,15 @@ OWLv2 matches one embedding per query, so it takes short noun phrases, never sen
 | H4 | B recovers from mid-task world-state changes without explicit state estimation; open-loop A does not, and closing A's loop costs latency | 3 |
 | H5 | A generalises to unseen objects far better than B for the same engineering effort | 4 |
 | H6 | A's failures are attributable to a specific stage; B's are not attributable at all | all |
-| H7 | A is robust to spoken phrasing that drifts from the training/prompt wording; B degrades as the transcript drifts from its training instruction strings | all, via §7.4 |
+| H7 | A is robust to spoken phrasing that drifts from the training/prompt wording; B degrades as the transcript drifts from its training instruction strings | all, via §6.3 |
 | H8 | A grounds deictic reference ("*that* red cube") against detected scene context; B cannot | 0, 2 |
 | H9 | A has a failure mode B cannot have: choosing the wrong noun phrase for the detector, before perception even runs | all |
 
-H6 is the one that most cleanly separates the architectures and it costs nothing extra to test — it falls straight out of the per-stage logging in §8-W4. H7 is nearly as cheap: run each tier's trials with a **held-out set of spoken paraphrases never used during recording**, and report success rate against phrasing distance.
+H6 is the one that most cleanly separates the architectures and it costs nothing extra to test — it falls straight out of A's per-stage logging (`architecture_a/trace.py`). H7 is nearly as cheap: run each tier's trials with a **held-out set of spoken paraphrases never used during recording**, and report success rate against phrasing distance.
 
 ---
 
-## 6 · Evaluation protocol
+## 5 · Evaluation protocol
 
 **Fixed before tuning. Any change after tuning begins must be recorded with a reason in the report.**
 
@@ -188,104 +150,65 @@ H6 is the one that most cleanly separates the architectures and it costs nothing
 
 ---
 
-## 7 · Hardware decisions
+## 6 · Hardware and comparison rules
 
-### 7.1 Cameras
+### 6.1 Cameras and teleoperation
 
-A fixed RGB-D (the lab D435i) plus a wrist RGB camera. **Nothing may depend on wrist depth.** Placement and reasoning in `docs/adr/0002-fixed-rgbd-plus-wrist-rgb-square-on.md`.
+Decided in `docs/adr/0002-fixed-rgbd-plus-wrist-rgb-square-on.md` (nothing may depend on wrist depth) and `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` (device still to confirm, A15).
 
-### 7.2 Teleoperation
-
-A 3D jog device through `servo_to_pose`, never freedrive, so no hand is in any frame (decided 23 Sep 2026, device still to confirm, A15). Reasoning in `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md`.
-
-The hardware recorder polls `get_state` on a clock-gated thread with camera frames in sync, because real `moveJ`/`moveL` block. Never resurrect the sim recorder: it counted ticks and recorded at about a quarter of its configured rate.
-
-### 7.3 Pouring rig — safety and mess
+### 6.2 Pouring rig — safety and mess
 
 - Use **water tinted with food colouring** in both bottles for development. Real orange juice attracts pests, stains, and goes off in a shared lab.
 - Everything happens **inside a shallow tray**. Spills are expected and a spill onto a UR5e controller or a RealSense is a project-ending event.
 - **The robot pours into a glass standing on a table. It does not pour into a person.** "Feed the user" is the motivating scenario in the write-up, not a physical demo action. Any assisted-feeding framing in D4 should be explicitly labelled as motivation, with the safety case for why it was not physically demonstrated — that is a maturity signal to the examiner, not a weakness.
 - Bottles should be **light, rigid and graspable by the OnRobot RG2 within its stroke (0 to 110 mm)**. Check the gripper stroke against the bottle diameter before buying anything.
 
-### 7.4 Speech front-end
+### 6.3 Speech front-end
 
-Local `faster-whisper`, push to talk, `compute_type="float16"`. Reasoning and the CUDA traps in `docs/adr/0003-local-faster-whisper-push-to-talk.md`. Rules for the comparison:
+Setup in `docs/adr/0003-local-faster-whisper-push-to-talk.md`. Rules for the comparison:
 
 - **ASR sits outside both architectures, and both get the same raw transcript.** Cleaning it for B inserts an LLM into B, and it is no longer end-to-end.
-- **Paraphrase the instructions at record time**, 5 to 10 per task across the episode set, from the first recording session. Retrofitting means re-recording, and without it B's test-time failure is partly the dataset's fault.
+- **Paraphrase the instructions at record time**, 5 to 10 per task across the episode set, from the first recording session. Split them into a record-time set and a held-out evaluation set. Retrofitting means re-recording, and without it H7 cannot be tested.
 - **Use deictic phrasings in the evaluation** ("*that* red cube"). A resolves them from detected scene context and B has only token statistics, so it tests H8 at no extra cost.
-- **Log ASR latency separately** from planning and execution latency in §6.
+- **Log ASR latency separately** from planning and execution latency in §5.
 - Spoken replies (TTS) for Tier 2 clarification are recommended, not required. If time is short, print the question.
 
-The GPU budget that needs thought is W6, not speech: a SmolVLA fine-tune on 12 GB needs small batches with gradient accumulation, gradient checkpointing, an 8-bit optimiser and a frozen vision backbone if it does not fit (§12-A4).
+### 6.4 Shopping list
 
-### 7.5 Shopping list
+Both cameras are in hand (13 Sep).
 
 | Item | Priority | Approx. | Notes |
 |------|----------|---------|-------|
-| Wrist camera (RGB, USB) | **must** | S$50–120 | Global shutter preferred; rolling shutter smears during fast motion |
 | Wrist camera mount/bracket | **must** | S$0–60 | Print or fabricate; must not foul the gripper or the wrist-3 joint |
 | USB cable routing / strain relief | **must** | S$20 | A cable snagging on a joint during a demo will end the demo |
-| 3D jog device (type to confirm, A15) | **strong** | S$200–500 | See §7.2 |
+| 3D jog device (type to confirm, A15) | **strong** | S$200–500 | See §6.1 |
 | Tray, glasses, sealable bottles, food colouring | **must** | S$40 | |
 | Small drawer unit for Tier 3 | **must** | S$40–100 | Handle must be graspable by the RG2 |
-| **Headset or lapel microphone** | **must** | S$30–80 | §7.4. Laptop mic will not survive a noisy lab |
+| **Headset or lapel microphone** | **must** | S$30–80 | §6.3. Laptop mic will not survive a noisy lab |
 | Footswitch for push-to-talk | nice | S$30 | Frees both hands during a demo; a keyboard key works fine |
-| Wrist RGB-D (D405-class) | optional | S$400+ | Only if the lab pays. Nothing may depend on it |
 
 ---
 
-## 8 · Workstreams (W-series) — the actual steps
+## 7 · Remaining work (W-series)
 
-Ordered by dependency, not by week. §9 places them in time.
+Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are done.
 
-### W1 · Repo reset for hardware — **DONE 11 Aug 2026**
+### W3 · Calibration
 
-1. ~~`shared/helpers/rotations.py`: add `euler_to_rotvec` and `euler_to_R`.~~ Done. The round-trip tests also exposed a pre-existing bug: `R_to_rotvec` divided by `sin(theta)` and lost about seven digits as theta approached pi. That is not an edge case here, since the default tool orientation is the gripper pointing down at theta ≈ pi, so every grasp went through that branch. Replaced with a quaternion pivot method, now exact to 1e-15, with a regression test.
-3. ~~Fix `shared/helpers/config.py::get_config(path)`.~~ Done. Now caches per resolved path, so two configs can coexist in one process, which the evaluation harness needs.
-4. ~~Fix `architecture_b/demos/hdf5_store.py::episode_paths`.~~ Done. Sorts by filename stem across both extensions.
-5. ~~`export_lerobot.py`: fail loudly on malformed episodes.~~ Done. `validate_episode()` runs over every file **before** the dataset is created, rejecting truncation, length mismatch, non-finite poses, non-monotonic timestamps, resolution mismatch and fps drift.
-6. Also done, unplanned: controller tests marked `integration` and auto-skipped when nothing answers on port 30004, so `pytest tests` is green without a robot.
+1. First ball fit of `T_base_cam` with `scripts/calibrate_ball.py`, per `docs/adr/0007-no-marker-ball-fit-each-session.md`.
+2. **Validate.** `scripts/check_calibration.py` moves the TCP above where the transform says an object is, and the miss is measured with a rule. This reach test is the only number that says whether the transform works. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
 
-### W2 · Architecture A software *(no hardware needed)*
+### W4 · Architecture A on hardware
 
-1. **`architecture_a/skills.py`** — `pick(xyz, ...)`, `place(xyz, ...)`, `pour(source_xyz, target_xyz, tilt_profile)`, `open_drawer(handle_xyz)`. Written against the **shared controller interface only**. If a primitive touches a ur_rtde-specific attribute directly instead of going through the controller, it is wrong. Parameterise approach height, descent speed, grasp width, tilt angle and tilt rate — the planner will vary them.
-   *Note (11 Aug):* `server.py` reached into five private controller attributes. It went with the simulation, and the primitives use the public controller API only, with a test enforcing it.
-2. **Anthropic SDK + tool schemas** — hello-world call, then schemas matching the W2.1 signatures *exactly*, plus `ask_user(question, options)`. Record rate limits and per-call cost; they are a §6 metric.
-3. **`architecture_a/planner.py`** — system prompt lists available skills plus detected objects with base-frame positions; model returns an ordered tool-call plan; **the parser validates against the schemas before dispatch** (reject unknown skills, out-of-workspace coordinates, malformed args). A plan that reaches the controller unvalidated is how you break an arm.
-4. **Clarification loop** — when the planner emits `ask_user`, surface the question, block for input, append the answer to context, re-plan. This is Tier 2's entire mechanism and it is maybe 40 lines.
+1. Close the loop: re-detect before each grasp instead of trusting the plan-time position. Required for Tier 3. Document the failure modes you hit; they are results.
+2. Run Tier 0 to the T2 threshold.
 
-### W2b · Speech front-end *(no hardware needed — build alongside W2)*
+### W5 · Demonstration capture *(critical path)*
 
-Deliberately a **separate module with no dependency on either architecture**, per §7.4.
-
-1. **`shared/speech.py`** — it takes a held key and gives you a transcript string. Push-to-talk capture (`sounddevice`) → `faster-whisper` → text. Nothing else. No cleanup, no normalisation, no LLM. Put the model choice behind config so a cloud provider can be swapped in as the §7.4 fallback without touching callers.
-2. **Wire it as the shared entry point.** Both A's orchestrator and B's inference loop accept an instruction string; speech just supplies it. Keep a `--text` flag so you can drive either architecture from the keyboard when debugging — you do not want to be talking to your laptop while chasing a transform bug. *(Superseded 13 Oct 2026: `--text` and `--instruction` were removed and all user input is spoken, including clarification answers and evaluation trials.)*
-3. **Log every transcript** alongside the audio, timestamped. Needed for §6 and for diagnosing whether a failure was speech or robotics.
-4. **Optional TTS** for spoken clarification (§7.4). Ship it if Tier 2 is working by W9; it is an afternoon.
-5. **Write the paraphrase sets now** — 5–10 phrasings per task, split into a record-time set and a held-out evaluation set. This has to exist *before* W5 recording starts, or the H7 experiment is impossible after the fact.
-
-### W3 · Camera and calibration *(hardware-gated)*
-
-1. **Camera driver** — RGB, depth, and real intrinsics straight from the SDK. If W2's interfaces were drawn correctly this is the *only* file Track A needs for real images.
-2. ~~Decide the calibration marker.~~ **Decided 12 Aug 2026: no marker.** `T_base_cam` is measured from the camera position with a rule and written by `scripts/write_calibration.py`. The lab is shared, so the camera is taped in place and re-measured each session. Fallback if the measured transform is too coarse: a ball held in the gripper and the existing Kabsch solver. **Revised 13 Oct 2026:** the ball fit is now the per-session procedure (`scripts/calibrate_ball.py`), see `docs/adr/0007-no-marker-ball-fit-each-session.md`.
-3. **Validate.** `scripts/check_calibration.py` moves the TCP above where the transform says an object is, and the miss is measured with a rule. A measured transform reports no residual of its own, so this reach test is the only number that says whether it works. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
-   *Everything stays in the robot base frame.* There is no world frame on the real cell. The old trap about `quat="0 0 0 -1"` belonged to the MuJoCo model and no longer applies. The real trap found on 23 Sep 2026: the pendant shows TCP z in a different frame from RTDE (it read -0.020 where RTDE read 0.380), so read poses from RTDE only.
-
-### W4 · Architecture A end to end *(hardware-gated)*
-
-1. Wire W2 + W3 into one entry point.
-2. **Per-stage logging, built properly the first time.** Every failure tagged detection / depth / transform / planning / execution. This is not housekeeping — per-stage diagnosability is the entire argument for Architecture A, it is H6, and this log *is* the evidence in D4.
-3. Close the loop: re-detect before each grasp instead of trusting the plan-time position. Required for Tier 3. Document the failure modes you hit; they are results.
-4. Run Tier 0 to the T2 threshold.
-
-### W5 · Demonstration capture *(hardware-gated, critical path)*
-
-1. Teleop rig per §7.2.
-2. **Lock the dataset conventions and write down the reasons** — action space (**decided 31 Aug 2026: TCP pose deltas**, because Architecture A's primitives command TCP poses; the state stores rotation as two columns of the rotation matrix since 23 Sep 2026), observation set (2 RGB views + state vector), resolution, control rate, **and the per-episode instruction string drawn from the W2b.5 paraphrase set, not a single fixed template**. **The action space must match what Architecture A's primitives command, or the two architectures are not solving the same problem and the comparison is unfair.** This is the single most important paragraph in the methodology chapter.
-3. Hardware recorder: threaded, clock-gated state polling + synchronised frames.
-4. Record. **Budget: ~50 episodes per task minimum.** Community evidence says workspace *density* matters more than raw count — 50 episodes spread over a 30 cm region failed where 75 over 10 cm succeeded. **Constrain the workspace for the first fine-tune**, then widen it. At ~1.5–2 min per episode including reset, 250 episodes is 8–10 hours of lab time before retakes. Budget 15.
-5. Export to LeRobot; confirm the dataset loads and fps asserts.
+1. Teleop rig per §6.1.
+2. **Lock the dataset conventions and write down the reasons** — action space (TCP pose deltas, `docs/adr/0006-tcp-pose-delta-action-space.md`), observation set (2 RGB views + state vector), resolution, control rate, **and the per-episode instruction string drawn from the paraphrase sets (§6.3), not a single fixed template**. **The action space must match what Architecture A's primitives command, or the two architectures are not solving the same problem and the comparison is unfair.** This is the single most important paragraph in the methodology chapter.
+3. Record. **Budget: ~50 episodes per task minimum.** Community evidence says workspace *density* matters more than raw count — 50 episodes spread over a 30 cm region failed where 75 over 10 cm succeeded. **Constrain the workspace for the first fine-tune**, then widen it. At ~1.5–2 min per episode including reset, 250 episodes is 8–10 hours of lab time before retakes. Budget 15. Record in two or three dedicated multi-hour blocks, not scattered one-hour sessions.
+4. Export to LeRobot; confirm the dataset loads and fps asserts.
 
 ### W6 · Architecture B training and inference
 
@@ -297,32 +220,26 @@ Deliberately a **separate module with no dependency on either architecture**, pe
 
 ### W7 · Evaluation and write-up
 
-1. Build the T5 harness against the §6 protocol.
-2. Run both architectures across all attempted tiers. **Freeze results before writing** — do not tune anything after the numbers start going into the report.
-3. Figures: success rate by tier and architecture; A's failure-stage breakdown; Tier 2 choice distribution for B; cost table.
-4. D3 → D4 → demo rehearsal.
+1. Run both architectures through the T5 harness across all attempted tiers. **Freeze results before writing** — do not tune anything after the numbers start going into the report.
+2. Figures: success rate by tier and architecture; A's failure-stage breakdown; Tier 2 choice distribution for B; cost table.
+3. D3 → D4 → demo rehearsal.
 
-### W8 · Reading *(interleave as breaks — all still outstanding)*
+### W8 · Reading *(interleave as breaks)*
 
 - **RTC** (Black et al. 2025) — async inference and action chunking. Needed **before** W6.4.
-- **OXE** (Padalkar et al. 2023) — action/observation formats, UR5 inclusion. Feeds the W5.2 action-space decision.
+- **OXE** (Padalkar et al. 2023) — action/observation formats, UR5 inclusion.
 - SmolVLA — read and summarised already.
 
 ---
 
-## 9 · Schedule to 10 Nov 2026
+## 8 · Schedule to 10 Nov 2026
 
-Week 1 = 10 Aug 2026. Recess week = 28 Sep.
-
-**Re-baselined 9 Sep 2026, and submitted in D1.** The lab moved in September, so there was no arm until about 22 Sep, and calibration could not happen in the week of 31 Aug as first planned. The three weeks lost come out of the critical path. The compression holds only because Architecture A, speech, the harness and B's robot side were already written and were waiting on hardware, not on effort. The Google Doc of D1 is the master copy of this schedule.
+Week 1 = 10 Aug 2026. Recess week = 28 Sep. **Re-baselined 9 Sep 2026 after the lab move, and submitted in D1.** The Google Doc of D1 is the master copy of this schedule.
 
 | Week | Dates | Focus | Milestone |
 |------|-------|-------|-----------|
-| **W1** | 10–16 Aug | W1 repo reset, W2 Architecture A software | Done |
-| **W2–W3** | 17–30 Aug | W2 in full, W2b speech front end + paraphrase sets | Done |
-| **W4** | 31 Aug–6 Sep | Architecture B robot side, non-blocking `servo_to_pose`. Speech and camera benched without the arm | Done |
-| **W5–W6** | 7–20 Sep | No arm (lab move). Detector on the captured frames, hardware recorder, dataset conventions. **D1 due 14 Sep** | D1 submitted |
-| **W7** | 21–27 Sep | Cell setup, action space check, hand-eye, `T_base_cam` validated with the reach error in mm | First arm session 23 Sep: arm moves from Python, hardware tests pass, gripper protocol confirmed, rotation format settled |
+| **W1–W6** | 10 Aug–20 Sep | Architecture A software, speech, harness, B's robot side, detector, recorder, dataset conventions | Done; D1 submitted |
+| **W7** | 21–27 Sep | Cell setup, action space check, hand-eye, `T_base_cam` validated with the reach error in mm | First arm session 23 Sep |
 | **Recess** | 28 Sep–4 Oct | Architecture A end to end on hardware, Tier 0 | **T2 — A passes Tier 0** |
 | **W8** | 5–11 Oct | First demonstration batch, first SmolVLA fine-tune | **T3 partial** |
 | **W9** | 12–18 Oct | B on hardware behind the safety envelope, Tier 0. Tier 1 both architectures | **T4 — B passes Tier 0** |
@@ -331,16 +248,16 @@ Week 1 = 10 Aug 2026. Recess week = 28 Sep.
 | **W12** | 2–8 Nov | Write D4, record the D2 video, rehearse the demo, draft to supervisor | Demo-ready; draft with supervisor |
 | **W13** | 9–15 Nov | **Submit D2 interim + video, 10 Nov** | **D2 submitted; D4 complete** |
 
-If arm access slips further, drop from the bottom of the descope ladder in §11 (Tier 4 first, then Tier 3). Do not thin every tier.
+If arm access slips further, drop from the bottom of the descope ladder in §9 (Tier 4 first, then Tier 3). Do not thin every tier.
 
-**Critical path:** lab access → W3 calibration → W5 demo capture → W6 training → W7 evaluation. Everything in Track A sits off this path, which is exactly why W1–W2 should be finished before the arm is available.
+**Critical path:** W3 calibration → W5 demo capture → W6 training → W7 evaluation.
 
 ### After W13 — holding pattern to submission
 
 | When | Action |
 |------|--------|
 | Dec 2026 – Mar 2027 | **Monthly:** re-run the full demo end-to-end, fix what has rotted, log it. Act on supervisor feedback on the draft |
-| Jan–Feb 2027 | Optional extra trials to tighten the §6 numbers, or recover the highest descoped tier (§11) |
+| Jan–Feb 2027 | Optional extra trials to tighten the §5 numbers, or recover the highest descoped tier (§9) |
 | **25 Mar 2027** | Submit D3 draft final report |
 | **09 Apr 2027** | Submit D4 final report |
 | **12–16 Apr 2027** | D5 demonstration — arrange the date with the examiner **well in advance**, not in April |
@@ -349,26 +266,18 @@ If arm access slips further, drop from the bottom of the descope ladder in §11 
 
 ---
 
-## 10 · Simulation
-
-Removed from the project on 11 Aug 2026. The MuJoCo substrate is gitignored, dropped from `pyproject.toml`, `mujoco` is no longer a dependency, and no live file references it. Every result in this FYP comes from hardware.
-
-
----
-
-## 11 · Risk register and descope ladder
+## 9 · Risk register and descope ladder
 
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
-| **Lab access slips past W4** | Eats the Nov completion target and the Dec–Mar buffer with it | §12-A1 this week. Every week of delay descends one rung of the ladder below. Official deadlines are not at risk until the buffer is gone |
-| Hands-in-frame contaminates demos | Retrain from scratch, ~2 weeks lost | SpaceMouse ordered W1; inspect the first 5 episodes' frames before recording 200 |
-| **Demos recorded with one templated instruction string** | H7 becomes untestable and B looks artificially bad against spoken input; unfixable without re-recording | Paraphrase sets written in **W2b.5, before W5 recording starts**. Not a later problem |
+| Hands-in-frame contaminates demos | Retrain from scratch, ~2 weeks lost | 3D jog device, no freedrive (A15); inspect the first 5 episodes' frames before recording 200 |
+| **Demos recorded with one templated instruction string** | H7 becomes untestable and B looks artificially bad against spoken input; unfixable without re-recording | Paraphrase sets (§6.3) in use from the first recording session |
 | Lab noise wrecks ASR | Trials fail for reasons unrelated to either architecture | Headset mic + push-to-talk; transcript logged per trial so speech failures are separable |
-| Measured `T_base_cam` too coarse to grasp reliably | A fails everywhere; B unaffected | Reach test with `check_calibration.py` each session. If the miss is too large, fall back to the ball-in-gripper Kabsch fit |
+| `T_base_cam` too coarse to grasp reliably | A fails everywhere; B unaffected | Ball fit and reach test with `check_calibration.py` each session |
 | B fails to converge on 50 episodes | No comparison | Constrain the workspace first (density beats count); widen only after the constrained set works |
 | Spill damages equipment | Project-ending | Tray, tinted water, never real juice, arm speed capped during pour |
-| **12 GB VRAM too tight for the SmolVLA fine-tune** | W6 stalls on the critical path | Test a short fine-tune run in **W2**, long before real data exists — batch size 1 on the first few real episodes is enough to find an OOM (no episode exists yet). Mitigations in §7.4. Do not discover this in W7 |
-| GPU time insufficient | Training bottleneck | Confirm GPU access W1; SmolVLA is 450M params and fine-tunes on a single consumer GPU, but budget the hours |
+| **12 GB VRAM too tight for the SmolVLA fine-tune** | W6 stalls on the critical path | Run a short fine-tune at batch size 1 on the first real episodes (A4). If it does not fit: small batches with gradient accumulation, gradient checkpointing, an 8-bit optimiser, a frozen vision backbone |
+| GPU time insufficient | Training bottleneck | Confirm GPU access (A4); SmolVLA is 450M params and fine-tunes on a single consumer GPU, but budget the hours |
 | Report underruns 40 pages | Resubmission | The per-stage failure logs and cost tables generate content; start writing W11, not W13 |
 
 ### Descope ladder — drop from the bottom
@@ -384,11 +293,11 @@ Removed from the project on 11 Aug 2026. The MuJoCo substrate is gitignored, dro
 
 Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distinctive result.** If time gets short, cut the drawer before cutting the ambiguity experiment.
 
-**Speech input is not on this ladder.** The official summary promises *"more intuitive human–robot interaction"* — spoken command is the most direct reading of both. A text-only submission invites the examiner to ask why the interface is a terminal. Rung 1 already includes it; W2b is two days of work and it is on no critical path, so build it early and stop worrying about it.
+**Speech input is not on this ladder.** The official summary promises *"more intuitive human–robot interaction"*, and spoken command is the most direct reading of it.
 
 ---
 
-## 12 · Status and open actions
+## 10 · Status and open actions
 
 ### Status, 13 Oct 2026
 
@@ -400,41 +309,35 @@ This is the only status record in the repo. Update it here, not in `CLAUDE.md` o
 
 ### Open actions
 
+Closed actions are in git history.
+
 | ID | Action | Owner | By |
 |----|--------|-------|-----|
-| **A1** | ~~Confirm lab access date.~~ Arm access from about 22 Sep 2026, after the lab move. First arm session 23 Sep | JJ | done |
-| **A2** | ~~Confirm who pays for the wrist camera and teleop device.~~ Both cameras are in hand (13 Sep). Teleoperation uses a 3D jog device, type to be confirmed | JJ | done |
-| **A3** | ~~Confirm the existing lab RGB-D model.~~ RealSense D435i, benched 1 Sep. The camera is taped in place per session, because the lab is shared | JJ | done |
 | **A4** | Confirm GPU availability and hours for fine-tuning. The throwaway fine-tune that checks whether 12 GB is enough waits for the first real episode, because no episode data exists | JJ | before W6 |
-| **A5** | ~~Decide the calibration marker.~~ Decided 12 Aug 2026: no marker. Revised 13 Oct 2026: ball fit each session, see `docs/adr/0007-no-marker-ball-fit-each-session.md` | JJ | done |
-| **A6** | **Ask whether the project title/summary needs updating on StaffLink to reflect the widened scope — the tiered task suite *and* the spoken interface.** Changes are locked around Week 8 of the first semester and **examiners are allocated based on the title and summary** — an examiner picked for "pick and place with typed commands" will be assessing a project about spoken interaction, clarification dialogue and dynamic tasks | JJ | done 31 Aug: Prof Cheah updated the StaffLink title |
 | **A7** | Agree the D5 demonstration date with the examiner. Arrange it months ahead, not in April 2027 | JJ | Jan 2027 |
-| **A8** | ~~Update `README.md`~~ and ~~fix `pyproject.toml` description~~, both done 11 Aug. `SESSION_HANDOVER.md`, `ursim_setup_reference.md`, the V3/V4 plans and the old vault architecture note were **deleted** 11 Aug rather than updated, so this plan is now the single source of truth. Nothing further outstanding | JJ | done |
 | **A9** | Send Prof Cheah a short written progress update **every two weeks**. This was skipped through July. It is directly worth 8 marks | JJ | fortnightly |
 | **A10** | Set `ANTHROPIC_API_KEY`. Architecture A cannot run a single instruction without it | JJ | open |
 | **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
-| **A12** | ~~Camera axis convention.~~ Fixed 31 Aug, see `docs/adr/0009-opencv-camera-axes.md` | JJ | done |
-| **A13** | ~~Set `robot.host`.~~ `10.149.230.1`, 23 Sep | JJ | done |
 | **A14** | Ask Koji about moving the arm closer to the table and about the new layout. The arm base is about 40 cm from the useful table area. Measure `workspace.x` and `workspace.y` again only after the layout is fixed | JJ | next week |
 | **A15** | Confirm the 3D jog device that will drive the demonstrations, see `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` | JJ | before W5 |
 
 ---
 
-## 13 · Mapping deliverables to marks
+## 11 · Mapping deliverables to marks
 
 | Assessment item | Marks | What earns it here |
 |-----------------|-------|--------------------|
-| Project Plan/Strategy | 7 | D1, drawn from §3, §5 and §9 |
+| Project Plan/Strategy | 7 | D1, submitted |
 | Interim Report | 13 | D2 — by Nov the work is largely complete, so this reads as results rather than progress |
-| Report writing, structure, references | 11 | Cite SmolVLA, RTC, OXE, OWLv2 properly; §8-W8 is not optional reading |
-| Intro, theory, review, discussion, conclusion | 12 | The A-vs-B framing is inherently a comparative review; §5's hypotheses give the discussion its spine, and §11 gives you "limitations of current work" for free |
+| Report writing, structure, references | 11 | Cite SmolVLA, RTC, OXE, OWLv2 properly; §7-W8 is not optional reading |
+| Intro, theory, review, discussion, conclusion | 12 | The A-vs-B framing is inherently a comparative review; §4's hypotheses give the discussion its spine, and §9 gives you "limitations of current work" for free |
 | Demonstration + oral | 17 | D5 shows both architectures live on the same cell — Tier 2 side by side (A asks, B guesses) is the moment that lands. Finishing in Nov means five months of rehearsal, which is the whole point |
-| Initiative + regular supervisor updates | 8 | §12-A9, fortnightly. **This was skipped through July.** It is 8 marks for an email |
-| **Design, implementation, data, results, complexity** | **24** | §6's protocol is a designed experiment with stated hypotheses and controlled layouts; T3 is real data collection; §6's cost table shows understanding of tool *limitations*. This is the block to over-serve |
+| Initiative + regular supervisor updates | 8 | §10-A9, fortnightly. **This was skipped through July.** It is 8 marks for an email |
+| **Design, implementation, data, results, complexity** | **24** | §5's protocol is a designed experiment with stated hypotheses and controlled layouts; T3 is real data collection; §5's cost table shows understanding of tool *limitations*. This is the block to over-serve |
 | Ability, independence, extending ideas | 8 | The widened task suite beyond pick-and-place *is* the extension. Say so explicitly in the report |
 
 **One framing note for D4.** The official summary promises *"a user interface based on large language models… enabling more intuitive human–robot interaction."* Speech is the visible half of that promise and the comparison is the intellectual half. Lead the report with the interface — the user talks, the robot acts — then use the A-vs-B comparison to answer *what has to sit behind that interface for it to work.* That reads as a project with a thesis, rather than two pipelines benchmarked against each other.
 
 ---
 
-*Sources for the deliverable dates and specifications: `docs/guidelines/fyp_guidelines.pdf`, `fyp_deliverables.png`, `assessment_criteria_for_final_report.pdf`, `SuggestedFormatInterimReport.pdf`, `project_background.png`. Repo state verified against commit `87f0f22` on 11 Aug 2026.*
+*Sources for the deliverable dates and specifications: `docs/guidelines/fyp_guidelines.pdf`, `fyp_deliverables.png`, `assessment_criteria_for_final_report.pdf`, `SuggestedFormatInterimReport.pdf`, `project_background.png`.*

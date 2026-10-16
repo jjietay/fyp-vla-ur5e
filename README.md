@@ -74,4 +74,4 @@ venv. That split is visible in the tree rather than something you remember.
 
 ## Status
 
-Current status and open actions: `docs/fyp_plan.md` section 12.
+Current status and open actions: `docs/fyp_plan.md`, section "Status and open actions".
