@@ -62,7 +62,13 @@ at `robot.host`, and skips itself when nothing answers. **Running those MOVES TH
 uv run pytest tests/unit          # no device needed, the everyday one
 uv run pytest tests               # adds tests/hardware, skipped without a controller
 uv run pytest tests --integration # force the hardware tests to run and fail loudly
+
+# the same unit suite in the venv A actually runs in (different anthropic and numpy)
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python -m pytest tests/unit -q
 ```
+
+That second run needs pytest in the lerobot venv, once:
+`uv pip install --python ~/lerobot/.venv pytest`. The pre-commit hook runs both.
 
 A file added to `tests/hardware/` needs `pytestmark = pytest.mark.integration` at module
 level, or it errors on a laptop instead of skipping.

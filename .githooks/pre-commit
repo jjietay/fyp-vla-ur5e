@@ -1,6 +1,21 @@
 #!/bin/sh
-# It takes a commit and stops it if the unit suite is red.
+# It takes a commit and stops it if the unit suite is red in either venv.
 #
 # tests/unit only, never tests/ and never --integration: a commit must never be able
 # to move the arm. Enabling and skipping it: docs/commands.md, "Setup, once per machine".
-exec uv run pytest tests/unit -q
+#
+# Twice, because Architecture A runs in the lerobot venv and that venv has different
+# versions (anthropic 1.x against 0.x here, older numpy). Green here alone does not
+# prove A works where it actually runs. A machine without that venv runs the first only.
+set -e
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+uv run pytest tests/unit -q
+
+lerobot="$HOME/lerobot/.venv/bin/python"
+if [ -x "$lerobot" ]; then
+    PYTHONPATH="$root/src" "$lerobot" -m pytest tests/unit -q
+else
+    echo "pre-commit: no $lerobot, so the lerobot-venv run is skipped"
+fi
