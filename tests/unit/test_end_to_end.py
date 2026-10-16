@@ -169,13 +169,9 @@ def cell(tmp_path, monkeypatch):
     change: `data/` has no backup, and a test must never write into it.
     """
     cfg = copy.deepcopy(get_config())
-    cfg["paths"]["calibration_dir"] = str(tmp_path / "calibration")
     cfg["architecture_a"]["trace"]["dir"] = str(tmp_path / "traces")
 
     T = _t_base_cam()
-    (tmp_path / "calibration").mkdir()
-    (tmp_path / "calibration" / "T_base_cam.json").write_text(
-        json.dumps({"T_base_cam": T.tolist()}))
 
     # Low in the reachable box, resting on the table.
     table_z = float(cfg["architecture_a"]["calibration"]["table_z"])
@@ -195,14 +191,14 @@ def cell(tmp_path, monkeypatch):
         monkeypatch.setattr("anthropic.Anthropic", lambda *a, **k: llm)
         return llm
 
-    return SimpleNamespace(cfg=cfg, tmp=tmp_path, camera=FakeCamera(mask, depth),
+    return SimpleNamespace(cfg=cfg, tmp=tmp_path, T=T, camera=FakeCamera(mask, depth),
                            centre=centre, install=install)
 
 
 def _run_one_trial(cell, script, answer="the orange"):
     llm = cell.install(script)
     controller, ask = FakeController(), FakeAsk(answer)
-    agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=ask)
+    agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=ask, calibration=cell.T)
     harness = Harness(agent, "A", FakeEars(INSTRUCTION), cfg=cell.cfg,
                       out_dir=cell.tmp / "evaluation", n_trials=1)
     records = harness.run_tier(Tier(0), interactive=False)
@@ -279,7 +275,8 @@ def test_a_plan_outside_the_envelope_never_reaches_the_arm(cell):
 
 def _architecture_a(cell):
     cell.install([pick_what_was_seen, finish])
-    return ArchitectureA(cell.camera, FakeController(), cfg=cell.cfg, ask=FakeAsk("yes"))
+    return ArchitectureA(cell.camera, FakeController(), cfg=cell.cfg, ask=FakeAsk("yes"),
+                         calibration=cell.T)
 
 
 AGENTS = {

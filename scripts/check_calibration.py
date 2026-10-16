@@ -45,10 +45,7 @@ hand on the estop.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 
@@ -66,23 +63,24 @@ def main() -> int:
                    help="compute and report base-frame targets without moving the arm")
     args = p.parse_args()
 
-    from fyp.architecture_a.calibration.hand_eye import camera_to_base, load
+    from fyp.architecture_a.calibration.hand_eye import camera_to_base
+    from fyp.architecture_a.calibration.store import CalibrationStore
     from fyp.architecture_a.perception.pixel_to_3d import depth_at, pixel_to_camera
     from fyp.shared.hardware.camera import RealSenseCamera
     from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
-    from fyp.shared.helpers.config import get_config, resolve
+    from fyp.shared.helpers.config import get_config
 
     cfg = get_config()
-    cal_path = Path(args.calibration) if args.calibration else \
-        resolve(cfg["paths"]["calibration_dir"]) / "T_base_cam.json"
+    store = CalibrationStore(cfg, args.calibration)
+    cal_path = store.path
 
-    if not cal_path.is_file():
+    if not store.exists():
         print(f"no calibration at {cal_path}. Write one first:\n"
               f"    uv run python scripts/write_calibration.py --xyz X Y Z --rpy R P Y",
               file=sys.stderr)
         return 1
 
-    T = load(cal_path)
+    T, _ = store.current()
     envelope = WorkspaceEnvelope(cfg)
     hover = args.hover if args.hover is not None else \
         float(cfg["architecture_a"]["skills"]["approach_height"])
@@ -114,7 +112,7 @@ def main() -> int:
         print("\nno points measured, nothing to report")
         return 1
 
-    return _report(np.asarray(misses), cal_path)
+    return _report(np.asarray(misses), store)
 
 
 def _one_point(camera, T, controller, envelope, hover, cfg,
@@ -206,7 +204,7 @@ def _read_miss():
             print("  expected three numbers, e.g.  12 -4 3")
 
 
-def _report(misses: np.ndarray, cal_path: Path) -> int:
+def _report(misses: np.ndarray, store) -> int:
     """It takes the miss vectors and gives you the numbers that go in the report."""
     distances = np.linalg.norm(misses, axis=1)
     mean = misses.mean(axis=0)
@@ -237,18 +235,14 @@ def _report(misses: np.ndarray, cal_path: Path) -> int:
         print("  Bias and scatter are comparable, so more points would help before")
         print("  concluding anything.")
 
-    data = json.loads(cal_path.read_text())
-    data.setdefault("meta", {}).update({
-        "validated": True,
-        "validated_at": datetime.now().isoformat(timespec="seconds"),
+    store.mark_validated({
         "n_points": int(len(misses)),
         "rms_mm": float(np.sqrt(np.mean(distances ** 2))),
         "max_mm": float(distances.max()),
         "mean_offset_mm": [float(v) for v in mean],
         "scatter_mm": spread,
     })
-    cal_path.write_text(json.dumps(data, indent=2))
-    print(f"\n  recorded in {cal_path}")
+    print(f"\n  recorded in {store.path}")
     return 0
 
 

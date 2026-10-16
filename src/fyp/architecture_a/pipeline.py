@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from fyp.architecture_a.calibration.hand_eye import load as load_calibration
+from fyp.architecture_a.calibration.store import CalibrationStore
 from fyp.architecture_a.perception.detector import detect
 from fyp.architecture_a.perception.filters import apply_filters, to_json_records
 from fyp.architecture_a.perception.localiser import localise
@@ -42,7 +42,7 @@ from fyp.architecture_a.skills import Skills
 from fyp.architecture_a.tools import validate_schemas_against_skills
 from fyp.architecture_a.trace import Stage, Trace
 from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
-from fyp.shared.helpers.config import get_config, resolve
+from fyp.shared.helpers.config import get_config
 
 
 @dataclass
@@ -74,7 +74,8 @@ class ArchitectureA:
     """
 
     def __init__(self, camera, controller, queries: list[str] | None = None,
-                 cfg: dict | None = None, *, ask, reperceive: bool = True):
+                 cfg: dict | None = None, *, ask, reperceive: bool = True,
+                 calibration=None):
         self.cfg = cfg or get_config()
         a = self.cfg["architecture_a"]
         self.camera = camera
@@ -110,14 +111,13 @@ class ArchitectureA:
         if problems:
             raise RuntimeError("tool schemas do not match Skills:\n  " + "\n  ".join(problems))
 
-        cal_path = resolve(self.cfg["paths"]["calibration_dir"]) / "T_base_cam.json"
-        if not cal_path.is_file():
-            raise FileNotFoundError(
-                f"no calibration at {cal_path}. Run the hand-eye procedure first; "
-                "without T_base_cam the pipeline cannot convert a detection into a "
-                "reachable target."
-            )
-        self.T_base_cam = load_calibration(cal_path)
+        # `calibration` is a 4x4 T_base_cam or a CalibrationStore. None reads the
+        # file the calibration scripts write, which is the real-run behaviour.
+        if calibration is None:
+            calibration = CalibrationStore(self.cfg)
+        if isinstance(calibration, CalibrationStore):
+            calibration = calibration.current()[0]
+        self.T_base_cam = calibration
 
     # ------------------------------------------------------------ perception
 

@@ -16,6 +16,10 @@ The session routine (13 Oct 2026):
   3. `scripts/place_and_look.py`, which measures the real pick-time miss at
      known table spots and removes the mean of it
 
+`store.py` owns the file: every script above writes through `CalibrationStore`,
+which archives the old file and resets `validated`. Only the reach test,
+`scripts/check_calibration.py`, sets it.
+
 `scripts/write_calibration.py`, a transform measured by hand from the mount, is
 the fallback when the arm cannot run the fit. `scripts/check_calibration.py`
 moves the arm to detected points as a quick visual check.

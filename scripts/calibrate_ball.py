@@ -47,8 +47,6 @@ import argparse
 import json
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 
@@ -64,15 +62,15 @@ def main() -> int:
     args = p.parse_args()
 
     from fyp.architecture_a.calibration.hand_eye import calibration_grid
+    from fyp.architecture_a.calibration.store import CalibrationStore
     from fyp.shared.hardware.safety import WorkspaceEnvelope
-    from fyp.shared.helpers.config import get_config, resolve
+    from fyp.shared.helpers.config import get_config
 
     cfg = get_config()
     cc = cfg["architecture_a"]["calibration"]
     envelope = WorkspaceEnvelope(cfg)
     rotvec = cfg["architecture_a"]["skills"]["down_rotvec"]
-    out = Path(args.out) if args.out else \
-        resolve(cfg["paths"]["calibration_dir"]) / "T_base_cam.json"
+    store = CalibrationStore(cfg, args.out)
 
     poses, rejected = calibration_grid(cc["grid_centre_xy"], float(cc["grid_half_extent_m"]),
                                        int(cc["grid_n"]), cc["z_levels"], rotvec, envelope)
@@ -108,7 +106,7 @@ def main() -> int:
               "query in calibration.ball_query finds it (check_detector.py).", file=sys.stderr)
         return 1
     return _fit_and_save(np.asarray([c for c, _ in pairs]),
-                         np.asarray([b for _, b in pairs]), out, cfg, args.note)
+                         np.asarray([b for _, b in pairs]), store, cfg, args.note)
 
 
 def _take_the_ball(controller, cfg) -> bool:
@@ -204,13 +202,12 @@ def _give_back_the_ball(controller) -> None:
     controller.gripper_toggle(1)
 
 
-def _fit_and_save(p_cam, p_base, out: Path, cfg, note: str) -> int:
+def _fit_and_save(p_cam, p_base, store, cfg, note: str) -> int:
     """
     It takes the matched points and gives you the fitted transform written to
-    `out`, after showing the fit error and how far it moved from the last one.
+    the store, after showing the fit error and how far it moved from the last one.
     """
-    from fyp.architecture_a.calibration.hand_eye import (fit_with_outlier_rejection, load,
-                                                         report, save)
+    from fyp.architecture_a.calibration.hand_eye import fit_with_outlier_rejection, report
 
     cc = cfg["architecture_a"]["calibration"]
     T, keep = fit_with_outlier_rejection(p_cam, p_base)
@@ -222,8 +219,8 @@ def _fit_and_save(p_cam, p_base, out: Path, cfg, note: str) -> int:
         print(f"    {i:2d}.  {e:6.1f} mm")
     print(f"\n  RMS {r['rms_mm']:.1f} mm, worst {r['max_mm']:.1f} mm")
 
-    if out.is_file():
-        old = load(out)
+    if store.exists():
+        old, _ = store.current()
         dt = float(np.linalg.norm(T[:3, 3] - old[:3, 3])) * 1000.0
         cos = (np.trace(old[:3, :3].T @ T[:3, :3]) - 1.0) / 2.0
         dang = float(np.degrees(np.arccos(np.clip(cos, -1.0, 1.0))))
@@ -236,17 +233,8 @@ def _fit_and_save(p_cam, p_base, out: Path, cfg, note: str) -> int:
             print("  nothing written")
             return 1
 
-    if out.is_file():
-        # Moved aside, never overwritten, so every earlier result can still name
-        # the calibration it was produced with.
-        stamp = datetime.fromtimestamp(out.stat().st_mtime).strftime("%Y%m%dT%H%M%S")
-        archived = out.with_name(f"{out.stem}.{stamp}{out.suffix}")
-        out.rename(archived)
-        print(f"  previous calibration kept as {archived.name}")
-
-    save(T, out, meta={
+    archived = store.replace(T, "ball_fit", {
         "method": "ball fit, scripts/calibrate_ball.py",
-        "written_at": datetime.now().isoformat(timespec="seconds"),
         "note": note,
         "n_points": r["n_points"],
         "dropped_outliers": int((~keep).sum()),
@@ -255,11 +243,10 @@ def _fit_and_save(p_cam, p_base, out: Path, cfg, note: str) -> int:
         "ball_query": cc["ball_query"],
         "ball_radius_m": float(cc["ball_radius_m"]),
         "ball_offset_tool_m": [float(v) for v in cc["ball_offset_tool_m"]],
-        # The fit residual is not the reach error: it cannot see a wrong
-        # ball_offset_tool_m. `validated` stays the reach test's to set.
-        "validated": False,
-    })
-    print(f"\n  wrote {out}")
+    }, restart=True)
+    if archived:
+        print(f"  previous calibration kept as {archived.name}")
+    print(f"\n  wrote {store.path}")
     print(json.dumps(np.round(T, 4).tolist()))
     return 0
 

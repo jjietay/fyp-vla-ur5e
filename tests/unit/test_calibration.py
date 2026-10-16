@@ -18,8 +18,8 @@ import pytest
 
 from fyp.architecture_a.calibration.hand_eye import (ball_centre_in_base,
                                                      calibration_grid, camera_to_base,
-                                                     fit_with_outlier_rejection, load,
-                                                     report, residuals, save,
+                                                     fit_with_outlier_rejection,
+                                                     report, residuals,
                                                      solve_rigid_transform)
 from fyp.shared.helpers.rotations import euler_to_R
 
@@ -143,28 +143,6 @@ def test_camera_to_base_moves_the_point_where_the_transform_says():
     T = a_transform()
     p = np.array([0.1, -0.2, 0.4])
     np.testing.assert_allclose(camera_to_base(p, T), T[:3, :3] @ p + T[:3, 3], atol=1e-12)
-
-
-def test_save_then_load_returns_the_same_transform(tmp_path):
-    T = a_transform()
-    path = tmp_path / "calib" / "T_base_cam.json"
-
-    save(T, path, meta={"method": "test"})
-    np.testing.assert_allclose(load(path), T, atol=1e-12)
-
-
-def test_save_creates_the_directory(tmp_path):
-    """It writes into config/calibration/, which may not exist on a fresh clone."""
-    path = tmp_path / "does" / "not" / "exist" / "T.json"
-    save(a_transform(), path)
-    assert path.is_file()
-
-
-def test_loading_something_that_is_not_a_transform_is_refused(tmp_path):
-    path = tmp_path / "bad.json"
-    path.write_text('{"T_base_cam": [[1, 0], [0, 1]]}')
-    with pytest.raises(ValueError, match=r"\(2, 2\)"):
-        load(path)
 
 
 # ------------------------------------------------- the per-session ball fit

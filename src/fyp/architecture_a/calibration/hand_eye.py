@@ -35,9 +35,6 @@ measured against the table or the room without converting them first.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import numpy as np
 
 from fyp.shared.helpers.rotations import rotvec_to_R
@@ -111,30 +108,6 @@ def report(T: np.ndarray, p_cam: np.ndarray, p_base: np.ndarray) -> dict:
         "worst_index": int(np.argmax(e)),
         "per_point_mm": (e * 1000.0).tolist(),
     }
-
-
-def save(T: np.ndarray, path: str | Path, meta: dict | None = None) -> None:
-    """
-    It takes a calibration and writes it to JSON so every later run reuses the
-    same numbers instead of re-deriving them.
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"T_base_cam": np.asarray(T, dtype=float).tolist()}
-    if meta:
-        payload["meta"] = meta
-    path.write_text(json.dumps(payload, indent=2))
-
-
-def load(path: str | Path) -> np.ndarray:
-    """
-    It takes a path and gives you back the 4x4 transform saved there.
-    """
-    data = json.loads(Path(path).read_text())
-    T = np.asarray(data["T_base_cam"], dtype=float)
-    if T.shape != (4, 4):
-        raise ValueError(f"{path} holds a {T.shape} array, expected (4, 4)")
-    return T
 
 
 def camera_to_base(p_cam: np.ndarray, T_base_cam: np.ndarray) -> np.ndarray:

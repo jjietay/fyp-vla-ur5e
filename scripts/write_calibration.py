@@ -42,8 +42,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 
@@ -66,19 +64,19 @@ def main() -> int:
                    help="overwrite an existing calibration")
     args = p.parse_args()
 
-    from fyp.architecture_a.calibration.hand_eye import save
-    from fyp.shared.helpers.config import get_config, resolve
+    from fyp.architecture_a.calibration.store import CalibrationStore
+    from fyp.shared.helpers.config import get_config
     from fyp.shared.helpers.rotations import euler_to_R
 
-    out = Path(args.out) if args.out else \
-        resolve(get_config()["paths"]["calibration_dir"]) / "T_base_cam.json"
+    store = CalibrationStore(get_config(), args.out)
+    out = store.path
 
     # Refusing rather than overwriting, because you must be able to say which
     # calibration produced which result, and a silently replaced file makes every
     # earlier number in the logbook unattributable.
-    if out.exists() and not args.force:
-        print(f"{out} already exists. Move it aside, or pass --force if you have "
-              f"just re-measured the mount.", file=sys.stderr)
+    if store.exists() and not args.force:
+        print(f"{out} already exists. Pass --force if you have just "
+              f"re-measured the mount. The old file is kept as T_base_cam.<time>.json.", file=sys.stderr)
         return 1
 
     rpy = np.asarray(args.rpy, dtype=float)
@@ -88,14 +86,12 @@ def main() -> int:
     T[:3, :3] = euler_to_R(rpy_rad)
     T[:3, 3] = np.asarray(args.xyz, dtype=float)
 
-    save(T, out, meta={
+    store.replace(T, "measured_mount", restart=True, meta={
         "method": "measured mount geometry, no marker",
         "xyz_m": [float(v) for v in args.xyz],
         "rpy_deg": [float(v) for v in (rpy if not args.radians else np.rad2deg(rpy))],
         "euler_convention": "intrinsic Z-Y-X, matching helpers.rotations.euler_to_R",
-        "written_at": datetime.now().isoformat(timespec="seconds"),
         "note": args.note,
-        "validated": False,
     })
 
     print(f"wrote {out}")

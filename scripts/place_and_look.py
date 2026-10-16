@@ -45,7 +45,6 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import datetime
 
 import numpy as np
 
@@ -59,7 +58,7 @@ def main() -> int:
 
     from PIL import Image
 
-    from fyp.architecture_a.calibration.hand_eye import load, save
+    from fyp.architecture_a.calibration.store import CalibrationStore
     from fyp.architecture_a.perception.detector import detect
     from fyp.architecture_a.perception.filters import apply_filters, to_json_records
     from fyp.architecture_a.perception.localiser import localise
@@ -68,14 +67,14 @@ def main() -> int:
     from fyp.shared.hardware.camera import RealSenseCamera
     from fyp.shared.hardware.safety import WorkspaceEnvelope
     from fyp.shared.hardware.ur5e_controller import URController
-    from fyp.shared.helpers.config import get_config, resolve
+    from fyp.shared.helpers.config import get_config
 
     cfg = get_config()
     a = cfg["architecture_a"]
     cc = a["calibration"]
     env = WorkspaceEnvelope(cfg)
-    path = resolve(cfg["paths"]["calibration_dir"]) / "T_base_cam.json"
-    T = load(path)
+    store = CalibrationStore(cfg)
+    T, _ = store.current()
     query = str(cc["ball_query"])
     # The object's centre above the fingertips, as the ball fit uses it. For
     # an object resting on the table that is also its centre above the table.
@@ -164,27 +163,18 @@ def main() -> int:
         print("\n  dry run, nothing written")
         return 0
 
-    import json
     T_new = T.copy()
     T_new[0, 3] += shift[0]
     T_new[1, 3] += shift[1]
-    stamp = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y%m%dT%H%M%S")
-    archived = path.with_name(f"{path.stem}.{stamp}{path.suffix}")
-    meta = dict(json.loads(path.read_text()).get("meta", {}))
-    path.rename(archived)
-    meta["place_and_look"] = {
-        "written_at": datetime.now().isoformat(timespec="seconds"),
+    archived = store.replace(T_new, "place_and_look", {
         "shift_mm": [round(float(v) * 1000, 1) for v in shift],
         "spread_after_rms_mm": round(float(np.sqrt((after ** 2).sum(1).mean()) * 1000), 1),
         "n_spots": len(misses),
         # A shift is only right for the localiser it was measured with.
         "localiser": a["perception"]["localiser"],
-        "from_file": archived.name,
         "note": args.note,
-    }
-    meta["validated"] = False
-    save(T_new, path, meta=meta)
-    print(f"\n  previous calibration kept as {archived.name}\n  wrote {path}")
+    })
+    print(f"\n  previous calibration kept as {archived.name}\n  wrote {store.path}")
     return 0
 
 

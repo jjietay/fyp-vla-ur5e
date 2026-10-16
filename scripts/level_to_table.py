@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
 
 import numpy as np
 
@@ -61,17 +60,17 @@ def main() -> int:
     p.add_argument("--note", default="", help="free text kept in the file")
     args = p.parse_args()
 
-    from fyp.architecture_a.calibration.hand_eye import fit_plane, level_to_plane, load, save
+    from fyp.architecture_a.calibration.hand_eye import fit_plane, level_to_plane
+    from fyp.architecture_a.calibration.store import CalibrationStore
     from fyp.shared.hardware.camera import RealSenseCamera
     from fyp.shared.hardware.safety import WorkspaceEnvelope
-    from fyp.shared.helpers.config import get_config, resolve
+    from fyp.shared.helpers.config import get_config
 
     cfg = get_config()
     cc = cfg["architecture_a"]["calibration"]
     table_z = float(cc["table_z"])
-    path = resolve(cfg["paths"]["calibration_dir"]) / "T_base_cam.json"
-    T = load(path)
-    meta_old = _meta(path)
+    store = CalibrationStore(cfg)
+    T, _ = store.current()
 
     n_frames = int(cc["level_frames"])
     print(f"reading {n_frames} depth frames ...")
@@ -115,36 +114,16 @@ def main() -> int:
         print("\n  dry run, nothing written")
         return 0
 
-    stamp = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y%m%dT%H%M%S")
-    archived = path.with_name(f"{path.stem}.{stamp}{path.suffix}")
-    path.rename(archived)
-    meta = dict(meta_old)
-    meta.update({
-        "levelled_to_table": {
-            "written_at": datetime.now().isoformat(timespec="seconds"),
-            "table_z": table_z,
-            "offset_before_mm": round(offset_mm, 1),
-            "tilt_before_deg": round(tilt, 3),
-            "flatness_after_mm": round(flat_mm, 1),
-            "n_points": int(keep.sum()),
-            "from_file": archived.name,
-            "note": args.note,
-        },
-        # Still the reach test's to set. Levelling fixes height and tilt only.
-        "validated": False,
+    archived = store.replace(T_new, "levelled_to_table", {
+        "table_z": table_z,
+        "offset_before_mm": round(offset_mm, 1),
+        "tilt_before_deg": round(tilt, 3),
+        "flatness_after_mm": round(flat_mm, 1),
+        "n_points": int(keep.sum()),
+        "note": args.note,
     })
-    save(T_new, path, meta=meta)
-    print(f"\n  previous calibration kept as {archived.name}\n  wrote {path}")
+    print(f"\n  previous calibration kept as {archived.name}\n  wrote {store.path}")
     return 0
-
-
-def _meta(path) -> dict:
-    """It takes a calibration file and gives you its meta block, or {}."""
-    import json
-    try:
-        return dict(json.loads(path.read_text()).get("meta", {}))
-    except (ValueError, OSError):
-        return {}
 
 
 def _median_depth(depths, max_depth: float) -> np.ndarray:
