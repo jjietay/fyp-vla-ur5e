@@ -24,13 +24,14 @@ import numpy as np
 import pytest
 
 from fyp.architecture_a.pipeline import ArchitectureA
-from fyp.architecture_a.skills import GRIPPER_OPEN
 from fyp.evaluation.harness import Harness
 from fyp.evaluation.suite import Tier
 from fyp.shared.hardware.camera import Frame
 from fyp.shared.hardware.intrinsics import CameraIntrinsics
 from fyp.shared.hardware.safety import WorkspaceEnvelope
 from fyp.shared.helpers.config import PROJECT_ROOT, get_config
+
+from fakes import FakeController
 
 INSTRUCTION = "pick up the orange"
 INTR = CameraIntrinsics(fx=640.0, fy=640.0, cx=640.0, cy=360.0, width=1280, height=720)
@@ -83,33 +84,6 @@ class FakeCamera:
 
 
 # ------------------------------------------------------------- the other edges
-
-class FakeController:
-    """It takes nothing and gives you a controller that records instead of moving.
-    A close stops at 40 mm, which is something held."""
-
-    def __init__(self):
-        self.calls: list[tuple] = []
-
-    def move_to_pose(self, pose, speed=None, acc=None):
-        self.calls.append(("move_to_pose", list(pose)))
-        return True
-
-    def move_joints(self, q, speed=None, acc=None):
-        self.calls.append(("move_joints", list(q)))
-        return True
-
-    def gripper_toggle(self, state):
-        self.calls.append(("gripper_toggle", state))
-        return 99.8 if state == GRIPPER_OPEN else 40.0
-
-    def get_state(self):
-        return {"joint_pos": [0.0] * 6, "tcp_pose": [0.0] * 6, "gripper_state": GRIPPER_OPEN}
-
-    @property
-    def poses(self) -> list[list[float]]:
-        return [c[1] for c in self.calls if c[0] == "move_to_pose"]
-
 
 class FakeEars:
     """It takes a transcript and gives you a recogniser that always heard it."""
