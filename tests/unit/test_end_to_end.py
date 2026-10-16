@@ -186,19 +186,15 @@ def cell(tmp_path, monkeypatch):
     monkeypatch.setattr("fyp.architecture_a.perception.segmenter.segment",
                         lambda img, boxes, model: [(mask, 0.95) for _ in boxes])
 
-    def install(script):
-        llm = FakeLLM(script)
-        monkeypatch.setattr("anthropic.Anthropic", lambda *a, **k: llm)
-        return llm
-
     return SimpleNamespace(cfg=cfg, tmp=tmp_path, T=T, camera=FakeCamera(mask, depth),
-                           centre=centre, install=install)
+                           centre=centre)
 
 
 def _run_one_trial(cell, script, answer="the orange"):
-    llm = cell.install(script)
+    llm = FakeLLM(script)
     controller, ask = FakeController(), FakeAsk(answer)
-    agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=ask, calibration=cell.T)
+    agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=ask,
+                          calibration=cell.T, planner_client=llm)
     harness = Harness(agent, "A", FakeEars(INSTRUCTION), cfg=cell.cfg,
                       out_dir=cell.tmp / "evaluation", n_trials=1)
     records = harness.run_tier(Tier(0), interactive=False)
@@ -260,23 +256,40 @@ def test_a_clarifying_question_is_asked_and_recorded(cell):
     assert records[0].success
 
 
-def test_a_plan_outside_the_envelope_never_reaches_the_arm(cell):
+def _too_far(cell):
     w = cell.cfg["workspace"]
-    too_far = [w["x"][1] + 0.1, (w["y"][0] + w["y"][1]) / 2, w["z"][0] + 0.05]
+    return [w["x"][1] + 0.1, (w["y"][0] + w["y"][1]) / 2, w["z"][0] + 0.05]
+
+
+def test_a_plan_outside_the_envelope_never_reaches_the_arm(cell):
+    # The model repeats the bad call until the turn limit, so the plan stays rejected.
+    bad = lambda kw: [_tool("pick", {"xyz": _too_far(cell)}, len(kw["messages"]))]
     records, controller, _, _ = _run_one_trial(
-        cell, [lambda kw: [_tool("pick", {"xyz": too_far})]])
+        cell, [bad] * int(cell.cfg["architecture_a"]["planner"]["max_turns"]))
 
     assert not records[0].success
     assert records[0].failed_stage == "planning"
     assert not [c for c in controller.calls if c[0] in ("move_to_pose", "move_joints")]
 
 
+def test_a_rejected_plan_is_corrected_by_the_model_and_then_runs(cell):
+    bad = lambda kw: [_tool("pick", {"xyz": _too_far(cell)}, len(kw["messages"]))]
+    records, controller, _, llm = _run_one_trial(cell, [bad, pick_what_was_seen, finish])
+
+    assert records[0].success and records[0].failed_stage is None
+    assert controller.poses, "the corrected pick never reached the controller"
+    # The model was shown why its first call failed.
+    # The request holds the live message list, so index it: [-1] is a later turn.
+    feedback = llm.calls[2]["messages"][2]["content"][0]
+    assert feedback["is_error"] and feedback["content"].startswith("REJECTED:")
+
+
 # --------------------------------------------------------------- the contract
 
 def _architecture_a(cell):
-    cell.install([pick_what_was_seen, finish])
     return ArchitectureA(cell.camera, FakeController(), cfg=cell.cfg, ask=FakeAsk("yes"),
-                         calibration=cell.T)
+                         calibration=cell.T,
+                         planner_client=FakeLLM([pick_what_was_seen, finish]))
 
 
 AGENTS = {

@@ -7,10 +7,12 @@ merely annoying.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
-from fyp.architecture_a.planner import PlanRejected, validate_call
+from fyp.architecture_a.planner import PlanRejected, Planner, validate_call
 from fyp.architecture_a.tools import TOOL_NAMES, validate_schemas_against_skills
 from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
 from fyp.shared.helpers.config import get_config
@@ -314,7 +316,6 @@ def test_out_of_reach_objects_reach_the_planner_by_name_only(env):
     planner, which then told the user it saw no box. It must be named, with a
     reason, and must carry no position the planner could act on.
     """
-    from fyp.architecture_a.planner import Planner
     planner = Planner(CFG, env)
     planner._turn = lambda: None
     planner.start("put the orange in the box",
@@ -326,3 +327,110 @@ def test_out_of_reach_objects_reach_the_planner_by_name_only(env):
     assert "white box" in text and "radius=0.849" in text
     after = text.split("Seen but out of reach")[1]
     assert "xyz" not in after
+
+
+# ------------------------------------------------- the planner's turn loop
+
+class ScriptedClient:
+    """It takes a list of replies (each a list of content blocks) and gives you
+    a client whose `messages.create` plays them in order, counting tokens."""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.messages = self
+
+    def create(self, **kwargs):
+        return SimpleNamespace(
+            content=self.replies.pop(0),
+            usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+
+
+def _use(name, args, tid):
+    return SimpleNamespace(type="tool_use", name=name, input=args, id=tid)
+
+
+def _say(text):
+    return SimpleNamespace(type="text", text=text)
+
+
+def _planner(env, replies):
+    return Planner(CFG, env, client=ScriptedClient(replies))
+
+
+def _results(planner):
+    """It takes a planner and gives you its tool_results, by tool_use_id."""
+    return {r["tool_use_id"]: r for m in planner.messages
+            if m["role"] == "user" and isinstance(m["content"], list)
+            for r in m["content"]}
+
+
+def test_a_rejected_call_goes_back_to_the_model_and_the_corrected_call_runs(env):
+    bad = _use("pick", {"xyz": OUTSIDE[2]}, "t1")
+    good = _use("pick", {"xyz": INSIDE}, "t2")
+    planner = _planner(env, [[bad], [good]])
+
+    reply = planner.start("pick it", [])
+
+    assert [s.tool_use_id for s in reply.steps] == ["t2"]
+    fed_back = _results(planner)["t1"]
+    assert fed_back["is_error"] is True
+    assert "below min" in fed_back["content"]
+    assert planner.usage == {"input_tokens": 20, "output_tokens": 10, "calls": 2}
+
+
+def test_one_bad_call_in_a_reply_rejects_the_whole_reply_with_one_result_each(env):
+    ok1 = _use("pick", {"xyz": INSIDE}, "a")
+    bad = _use("place", {"xyz": OUTSIDE[0]}, "b")
+    ok2 = _use("pick", {"xyz": INSIDE}, "c")
+    planner = _planner(env, [[ok1, bad, ok2], [_use("pick", {"xyz": INSIDE}, "d")]])
+
+    reply = planner.start("do it", [])
+
+    assert [s.tool_use_id for s in reply.steps] == ["d"]
+    results = _results(planner)
+    assert set(results) == {"a", "b", "c"}
+    assert results["b"]["content"].startswith("REJECTED:")
+    for tid in ("a", "c"):
+        assert results[tid]["content"].startswith("NOT EXECUTED")
+    assert all(r["is_error"] for r in results.values())
+
+
+def test_repeated_rejection_ends_as_plan_rejected_inside_the_turn_limit(env):
+    n = int(CFG["architecture_a"]["planner"]["max_turns"])
+    planner = _planner(env, [[_use("pick", {"xyz": OUTSIDE[2]}, f"t{i}")] for i in range(n + 3)])
+
+    with pytest.raises(PlanRejected, match="below min"):
+        planner.start("pick it", [])
+
+    assert planner.usage["calls"] == n
+
+
+def test_running_out_of_turns_without_a_rejection_is_gave_up(env):
+    n = int(CFG["architecture_a"]["planner"]["max_turns"])
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, f"t{i}")] for i in range(n)])
+
+    reply = planner.start("pick it", [])
+    for i in range(n - 1):
+        assert reply.steps and not reply.gave_up
+        reply = planner.report_results([(f"t{i}", "OK: done")])
+
+    assert reply.steps
+    reply = planner.report_results([(f"t{n - 1}", "OK: done")])
+    assert reply.gave_up and not reply.is_done
+    assert planner.usage["calls"] == n
+
+
+def test_report_results_answers_steps_that_did_not_run_and_adds_the_scene(env):
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a"),
+                              _use("place", {"xyz": INSIDE}, "b")],
+                             [_say("done")]])
+    planner.start("move it", [])
+
+    reply = planner.report_results([("a", "FAILED: no grasp")], scene=(["cup"], ["box"]))
+
+    assert reply.is_done
+    results = _results(planner)
+    assert results["b"]["content"].startswith("SKIPPED")
+    assert "Scene now: ['cup']" in results["b"]["content"]
+    assert "out of reach: ['box']" in results["b"]["content"]
+    assert "Scene now" not in results["a"]["content"]

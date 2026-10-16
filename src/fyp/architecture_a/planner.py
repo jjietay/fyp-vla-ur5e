@@ -170,18 +170,24 @@ class Step:
 @dataclass
 class PlannerReply:
     """
-    What the planner produced this turn: steps to run, a question to ask, or a
-    final message meaning it considers the task done.
+    What the planner produced this turn: steps to run, a question to ask, a
+    final message meaning it considers the task done, or `gave_up` meaning the
+    turn limit ran out first.
+
+    Every reply here is already validated. A rejected call never becomes a
+    reply: the planner sends it back to the model, or raises PlanRejected when
+    the turn limit leaves no room for another try.
     """
     steps: list[Step] = field(default_factory=list)
     question: str | None = None
     options: list[str] = field(default_factory=list)
     question_id: str = ""
     final_text: str = ""
+    gave_up: bool = False
 
     @property
     def is_done(self) -> bool:
-        return not self.steps and self.question is None
+        return not self.steps and self.question is None and not self.gave_up
 
 
 def describe_objects(located, T_base_cam) -> list[dict]:
@@ -272,6 +278,12 @@ class Planner:
         self.messages: list[dict] = []
         self.usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0}
         self._client = client
+        # Model calls made for the current instruction. Retries after a rejection
+        # count too, so the limit bounds the whole exchange, not only good replies.
+        self._turns = 0
+        # The steps of the last reply, so report_results can answer the ones the
+        # caller did not run.
+        self._open_steps: list[Step] = []
 
     @property
     def client(self):
@@ -305,16 +317,47 @@ class Planner:
                 f"Instruction: {instruction}"
             ),
         }]
+        self._turns = 0
+        self._open_steps = []
         return self._turn()
 
-    def report_results(self, results: list[tuple[str, str]]) -> PlannerReply:
+    def report_results(self, results: list[tuple[str, str]],
+                       scene: tuple[list[str], list[str]] | None = None,
+                       scene_error: str | None = None) -> PlannerReply:
         """
-        It takes (tool_use_id, outcome text) pairs and gives you the planner's next reply.
+        It takes (tool_use_id, outcome text) pairs, optionally the scene as it is
+        now, and gives you the planner's next reply.
 
         Feeding real outcomes back is what lets the model recover. A skill that
         reports "controller refused pose z=-0.02 below min 0.005" gives it enough
         to retry sensibly; a bare "failed" does not.
+
+        The API wants exactly one tool_result for every tool_use, or the next
+        request is a 400. Steps the caller did not run (it stops at the first
+        failure) get a result that says so rather than none at all.
+
+        `scene` is (object names on the table, names out of reach). It goes INTO
+        the last result, not after it as a new one: a second result with the same
+        id is refused outright (found on the first real run, 1 Oct 2026).
+        `scene_error` says why the scene could not be read, since losing it
+        mid-task is informative but not fatal.
         """
+        results = list(results)
+        answered = {tid for tid, _ in results}
+        results += [(s.tool_use_id, "SKIPPED: not run, an earlier step failed")
+                    for s in self._open_steps if s.tool_use_id not in answered]
+
+        if results and (scene is not None or scene_error):
+            tid, text = results[-1]
+            if scene_error:
+                text += f"\nRe-perception failed: {scene_error}"
+            else:
+                names, unreachable = scene
+                text += f"\nScene now: {names}"
+                if unreachable:
+                    text += f"\nSeen but out of reach: {unreachable}"
+            results[-1] = (tid, text)
+
         self.messages.append({
             "role": "user",
             "content": [{"type": "tool_result", "tool_use_id": tid, "content": text}
@@ -323,55 +366,111 @@ class Planner:
         return self._turn()
 
     def answer_question(self, question_id: str, answer: str) -> PlannerReply:
-        """It takes the user's answer and gives you the re-planned next step."""
-        self.messages.append({
-            "role": "user",
-            "content": [{"type": "tool_result", "tool_use_id": question_id, "content": answer}],
-        })
+        """
+        It takes the user's answer and gives you the re-planned next step.
+
+        Calls that came in the same reply as the question never ran, and each
+        still needs its own result or the next request is a 400.
+        """
+        content = [{"type": "tool_result", "tool_use_id": question_id, "content": answer}]
+        content += [{"type": "tool_result", "tool_use_id": s.tool_use_id,
+                     "content": "SKIPPED: not run, the question had to be answered first"}
+                    for s in self._open_steps]
+        self._open_steps = []
+        self.messages.append({"role": "user", "content": content})
         return self._turn()
 
     def _turn(self) -> PlannerReply:
-        """It takes the running conversation and gives you one validated reply."""
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=SYSTEM_PROMPT.format(workspace=self.env.describe()),
-            tools=TOOLS,
-            messages=self.messages,
-            extra_body=MODEL_OPTIONS,
-        )
-        self.usage["calls"] += 1
-        self.usage["input_tokens"] += getattr(response.usage, "input_tokens", 0)
-        self.usage["output_tokens"] += getattr(response.usage, "output_tokens", 0)
-        self.messages.append({"role": "assistant", "content": response.content})
+        """
+        It takes the running conversation and gives you one validated reply.
 
+        A reply with a rejected call goes back to the model as an error and the
+        model is asked again, inside the same turn limit. When no turn is left it
+        raises PlanRejected with the last reason, so a plan that was never
+        accepted stays distinguishable from a run that simply ran out of turns
+        (`gave_up`).
+
+        Rejections go back to the model rather than aborting the run, because a
+        model that is told "z=-0.02 is below the table" usually fixes it, and a
+        recovered run is a more interesting result than a crashed one (ADR 0010).
+        """
+        last_rejection = ""
+        while True:
+            if self._turns >= self.max_turns:
+                if last_rejection:
+                    raise PlanRejected(last_rejection)
+                return PlannerReply(gave_up=True)
+            self._turns += 1
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=SYSTEM_PROMPT.format(workspace=self.env.describe()),
+                tools=TOOLS,
+                messages=self.messages,
+                extra_body=MODEL_OPTIONS,
+            )
+            self.usage["calls"] += 1
+            self.usage["input_tokens"] += getattr(response.usage, "input_tokens", 0)
+            self.usage["output_tokens"] += getattr(response.usage, "output_tokens", 0)
+            self.messages.append({"role": "assistant", "content": response.content})
+
+            reply, rejected = self._read(response.content)
+            if not rejected:
+                self._open_steps = reply.steps
+                return reply
+            last_rejection = next(iter(rejected.values()))
+            self._send_rejection(response.content, rejected)
+
+    def _read(self, content) -> tuple[PlannerReply, dict[str, str]]:
+        """
+        It takes the model's content blocks and gives you the reply and a
+        {tool_use_id: reason} map of the calls that failed validation.
+
+        Every call is checked, not just the first bad one, so the model hears
+        about all its mistakes in one round trip.
+        """
         reply = PlannerReply()
-        for block in response.content:
+        rejected: dict[str, str] = {}
+        for block in content:
             if block.type == "text":
                 reply.final_text += block.text
             elif block.type == "tool_use":
-                args = validate_call(block.name, dict(block.input), self.env)
+                try:
+                    args = validate_call(block.name, dict(block.input), self.env)
+                except PlanRejected as e:
+                    rejected[block.id] = str(e)
+                    continue
                 if block.name == "ask_user":
                     reply.question = args["question"]
                     reply.options = list(args.get("options", []))
                     reply.question_id = block.id
                 elif block.name in MOTION_TOOLS:
                     reply.steps.append(Step(tool=block.name, args=args, tool_use_id=block.id))
-        return reply
+        return reply, rejected
 
-    def reject(self, tool_use_id: str, reason: str) -> PlannerReply:
+    def _send_rejection(self, content, rejected: dict[str, str]) -> None:
         """
-        It takes a rejection reason and gives you the planner's corrected reply.
+        It takes the rejected reply and gives you the error results appended to
+        the conversation.
 
-        Rejections go back to the model rather than aborting the run, because a
-        model that is told "z=-0.02 is below the table" usually fixes it, and a
-        recovered run is a more interesting result than a crashed one. The turn
-        limit stops this looping forever.
+        The whole reply is refused, not just the bad call. The calls are a plan in
+        order, and running the good ones around a bad one could pick before the
+        drawer is open. Each rejected call gets its own reason; the others get
+        a result saying they did not run, because every tool_use needs exactly one.
         """
-        self.messages.append({
-            "role": "user",
-            "content": [{"type": "tool_result", "tool_use_id": tool_use_id,
-                         "content": f"REJECTED: {reason}. Correct this and try again.",
-                         "is_error": True}],
-        })
-        return self._turn()
+        results = []
+        for block in content:
+            if block.type != "tool_use":
+                continue
+            if block.id in rejected:
+                results.append({"type": "tool_result", "tool_use_id": block.id,
+                                "content": f"REJECTED: {rejected[block.id]}. "
+                                           "Correct this and try again.",
+                                "is_error": True})
+            else:
+                results.append({"type": "tool_result", "tool_use_id": block.id,
+                                "content": "NOT EXECUTED: another call in this reply "
+                                           "was rejected. Send it again if still needed.",
+                                "is_error": True})
+        self.messages.append({"role": "user", "content": results})

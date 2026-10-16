@@ -75,13 +75,15 @@ class ArchitectureA:
 
     def __init__(self, camera, controller, queries: list[str] | None = None,
                  cfg: dict | None = None, *, ask, reperceive: bool = True,
-                 calibration=None):
+                 calibration=None, planner_client=None):
         self.cfg = cfg or get_config()
         a = self.cfg["architecture_a"]
         self.camera = camera
         self.controller = controller
         self.ask = ask
         self.reperceive = reperceive
+        # None builds the Anthropic client on first use. Tests pass a scripted one.
+        self.planner_client = planner_client
         # Filled by perceive(): objects seen but outside the reachable workspace,
         # as {name, confidence, reason}, never with a position. See perceive().
         self.out_of_reach: list[dict] = []
@@ -277,7 +279,7 @@ class ArchitectureA:
         the API bill or the arm gives out.
         """
         trace = Trace(instruction, cfg=self.cfg)
-        planner = Planner(self.cfg, self.envelope)
+        planner = Planner(self.cfg, self.envelope, client=self.planner_client)
         outcome = Outcome(ok=False, summary="", run_id=trace.run_id)
 
         try:
@@ -289,13 +291,16 @@ class ArchitectureA:
                 reply = planner.start(instruction, objects, self.out_of_reach)
                 ev.data["objects_offered"] = [o["name"] for o in objects]
 
-            for _ in range(planner.max_turns):
+            # No bound here: every pass makes a planner call, and the planner
+            # owns the turn limit. It ends the loop with `gave_up` or PlanRejected.
+            while True:
                 if reply.question is not None:
                     with trace.stage(Stage.CLARIFY, reply.question) as ev:
                         answer = self.ask(reply.question, reply.options)
                         ev.data["answer"] = answer
                     outcome.asked.append(reply.question)
-                    reply = planner.answer_question(reply.question_id, answer)
+                    with trace.stage(Stage.PLANNING):
+                        reply = planner.answer_question(reply.question_id, answer)
                     continue
 
                 if reply.is_done:
@@ -303,37 +308,24 @@ class ArchitectureA:
                     outcome.summary = reply.final_text.strip() or "planner reported done"
                     break
 
+                if reply.gave_up:
+                    outcome.summary = f"gave up after {planner.max_turns} planning turns"
+                    break
+
                 results = self.execute(reply.steps, trace)
                 outcome.executed += [s.tool for s in reply.steps[:len(results)]]
 
-                # The API wants exactly one tool_result for every tool_use, or the
-                # next request is a 400. Steps after a failure never ran, so each
-                # gets a result that says so rather than none at all.
-                ran = {tid for tid, _ in results}
-                results += [(s.tool_use_id, "SKIPPED: not run, an earlier step failed")
-                            for s in reply.steps if s.tool_use_id not in ran]
-
+                scene, scene_error = None, None
                 if self.reperceive and results:
-                    # The scene goes INTO the last result, not after it as a new one.
-                    # A second result with the same id is refused outright (found on
-                    # the first real run, 1 Oct 2026).
-                    tid, text = results[-1]
                     try:
                         objects = self.perceive(queries, trace)
-                        scene = f"\nScene now: {[o['name'] for o in objects]}"
-                        if self.out_of_reach:
-                            scene += (f"\nSeen but out of reach: "
-                                      f"{[o['name'] for o in self.out_of_reach]}")
-                        results[-1] = (tid, text + scene)
+                        scene = ([o["name"] for o in objects],
+                                 [o["name"] for o in self.out_of_reach])
                     except Exception as e:
-                        # Losing the scene mid-task is informative but not fatal;
-                        # the planner can still finish from what it is holding.
-                        results[-1] = (tid, text + f"\nRe-perception failed: {e}")
+                        scene_error = str(e)
 
                 with trace.stage(Stage.PLANNING):
-                    reply = planner.report_results(results)
-            else:
-                outcome.summary = f"gave up after {planner.max_turns} planning turns"
+                    reply = planner.report_results(results, scene, scene_error)
 
         except GroundingFailed as e:
             outcome.summary = f"grounding failed: {e}"
