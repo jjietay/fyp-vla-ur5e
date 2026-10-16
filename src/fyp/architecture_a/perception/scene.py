@@ -128,10 +128,12 @@ class Perception:
                              "reason": self._why_out(o["xyz"])}
                             for o in objects if o not in in_reach]
             ev.data["objects"] = objects
-            ev.data["out_of_workspace"] = [o["name"] for o in out_of_reach]
+            # Traces written before 17 Oct 2026 name these two keys
+            # out_of_workspace and out_of_workspace_reason. Read both.
+            ev.data["out_of_reach"] = [o["name"] for o in out_of_reach]
             if out_of_reach:
-                ev.data["out_of_workspace_reason"] = {o["name"]: o["reason"]
-                                                      for o in out_of_reach}
+                ev.data["out_of_reach_reason"] = {o["name"]: o["reason"]
+                                                  for o in out_of_reach}
             if not in_reach and strict:
                 raise RuntimeError(
                     "every detected object is out of reach: " + "; ".join(
