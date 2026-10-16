@@ -1,4 +1,4 @@
-# Every tunable value in the project. Reasoning lives in docs/plan_vault/Decisions.md,
+# Every tunable value in the project. Reasoning lives in docs/adr/,
 # not here. Bench measurement procedure is in docs/commands.md, "At the bench".
 #
 # MEASURE BEFORE DRIVING THE ARM: robot.host, robot.gripper.*, workspace.x/y/z,

@@ -7,12 +7,9 @@ NTU EEE FYP A1005-261. User speaks a command, a UR5e does it. The deliverable is
 is only what you need to not break things. If the two disagree, the plan wins.
 
 - Target: all work **complete** by 10 Nov 2026. Submissions stay on official NTU dates in 2027.
-- Current tasks: `docs/plan_vault/To Do (Non-Technical).md`
-- Vault: `docs/plan_vault/` (Obsidian, 12 flat notes) mirrors the plan for tracking.
-  Start Here, Weekly Focus, Flowchart of Architecture and Dependencies, FYP Submissions,
-  To Do (Non-Technical), Workstreams, Tasks, Decisions to Make, Hypotheses for Comparison,
-  Evaluation of Architecture, Different Risk in Project, Research Papers for Reading.
-  No subfolders, and a new decision is a `##` section rather than a new file.
+- Current tasks: `docs/fyp_plan.md` §12, Open actions
+- Decisions and their reasoning: `docs/adr/`, one file per decision. The Obsidian vault
+  (`docs/plan_vault/`) was removed on 16 Oct 2026; its last state is in git at `7bb85a6`.
 
 ## Repo map
 
@@ -41,7 +38,7 @@ src/fyp/
 scripts/              thin CLIs: check_detector, export_lerobot, replay_episode,
                       run_architecture_a, run_evaluation
 config/               config.yaml + calibration/ (tracked on purpose)
-docs/                 fyp_plan.md, plan_vault/, guidelines/ (NTU specs)
+docs/                 fyp_plan.md, adr/, guidelines/ (NTU specs)
 ```
 
 **`shared/` admission rule:** a module goes there only if **both** architectures use it at
@@ -128,7 +125,7 @@ Each of these has already cost time. Verified as of 11 Aug 2026.
   embedding matched against image patches, so a sentence has no corresponding region and the
   match is meaningless. This is why `planner.py::extract_queries` exists at all. The 77-token
   CLIP limit is real but is not the binding constraint: a command fits and still fails.
-  Reasoning in `architecture_a/perception/detector.py` and `docs/plan_vault/Decisions to Make.md`.
+  Reasoning in `architecture_a/perception/detector.py` and `docs/adr/0004-owlv2-takes-noun-phrases.md`.
 - **Never pass `queries=` to `ArchitectureA` for a recorded trial.** It pins the detector
   vocabulary and skips grounding, which hands A a list of what is on the table that B never
   receives. Debugging aid only. `run_evaluation.py` deliberately passes nothing.
@@ -178,7 +175,7 @@ pose has the same tool orientation, so that error is the same shift at every poi
 test (`check_calibration.py`) checks it once, and again whenever the ball or the way it is
 placed changes. Measuring the mount by hand (`write_calibration.py`) is now the fallback, with
 the 1-3 cm bias that implies: 1 degree of mount orientation error is ~17 mm at a 1 m standoff.
-Reasoning in `docs/plan_vault/Decisions to Make.md`.
+Reasoning in `docs/adr/0007-no-marker-ball-fit-each-session.md`.
 
 ## Evaluation harness
 
@@ -213,12 +210,9 @@ def solve_rigid_transform(p_cam, p_base):
 **Comments explain why, not what.** The existing code documents traps and reasoning, not
 line-by-line behaviour. Match that.
 
-**Vault notes** (`docs/plan_vault/`) follow a strict house style: no em dashes or en dashes,
-bullets never end in a full stop, one concept per note, sparse wikilinks. Verify with:
-
-```bash
-find docs/plan_vault -name '*.md' -print0 | xargs -0 python3 <skill>/scripts/check_notes.py --vault docs/plan_vault
-```
+**ADRs** (`docs/adr/`) are numbered `NNNN-slug.md`, one decision each, and open with the
+decision as the title. A revised decision is updated in place with a dated note, not
+duplicated.
 
 ## Agent skills
 
@@ -232,7 +226,7 @@ The five default roles, written as `Status:` lines in each issue file. See `docs
 
 ### Domain docs
 
-Single-context. `docs/plan_vault/Decisions to Make.md` is the main decision record, then `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 ## Working with JJ
 

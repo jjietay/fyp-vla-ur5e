@@ -11,8 +11,8 @@ dynamic tasks whose world state changes mid-execution.
 
 **Supervisor:** A/P Cheah Chien Chern
 **Period:** Aug 2026 – May 2027
-**Plan:** `docs/fyp_plan.md` is authoritative. `docs/plan_vault/` is
-the same plan as an Obsidian vault for tracking.
+**Plan:** `docs/fyp_plan.md` is authoritative. Design decisions and their
+reasoning are in `docs/adr/`.
 
 ## Setup
 
@@ -65,7 +65,7 @@ entirely and `architecture_a/` would still run.
   must know which calibration produced which result
 - `data/` : demonstration recordings (`raw/`), rebuildable datasets (`processed/`),
   disposable intermediates (`cache/`)
-- `docs/` : the plan, the NTU deliverable specs, the Obsidian vaults
+- `docs/` : the plan, the NTU deliverable specs, the decision records (`adr/`)
 
 Only `architecture_a/perception/detector.py` needs torch; everything else runs in the FYP
 venv. That split is visible in the tree rather than something you remember.
@@ -93,4 +93,4 @@ Still to do on the cell: the first per-session ball fit of `T_base_cam`
 (`scripts/calibrate_ball.py`, 13 Oct), the drawer pull axis, and the e-stop
 recovery test. There are zero recorded episodes, so Architecture B has no
 checkpoint yet. Current tasks live in
-`docs/plan_vault/To Do (Non-Technical).md`.
+`docs/fyp_plan.md` §12, Open actions.

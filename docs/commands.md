@@ -439,7 +439,7 @@ cd ~/lerobot && uv run --extra dataset --extra training lerobot-train \
 ## Architecture B: inference on the arm
 
 Two processes, both LeRobot's own. `policy_server` runs the checkpoint, `robot_client` runs
-the arm through our adapter. Reasoning in `docs/plan_vault/Decisions to Make.md`. Both run out of the
+the arm through our adapter. Reasoning in `docs/adr/0008-lerobot-policy-server-and-robot-client.md`. Both run out of the
 lerobot venv, because the client is the half that touches hardware.
 
 Terminal 1, the policy. `--host` is the interface this server **binds** to, not a robot

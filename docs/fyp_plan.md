@@ -339,7 +339,7 @@ Deliberately a **separate module with no dependency on either architecture**, pe
 ### W3 · Camera and calibration *(hardware-gated)*
 
 1. **Camera driver** — RGB, depth, and real intrinsics straight from the SDK. If W2's interfaces were drawn correctly this is the *only* file Track A needs for real images.
-2. ~~Decide the calibration marker.~~ **Decided 12 Aug 2026: no marker.** `T_base_cam` is measured from the camera position with a rule and written by `scripts/write_calibration.py`. The lab is shared, so the camera is taped in place and re-measured each session. Fallback if the measured transform is too coarse: a ball held in the gripper and the existing Kabsch solver.
+2. ~~Decide the calibration marker.~~ **Decided 12 Aug 2026: no marker.** `T_base_cam` is measured from the camera position with a rule and written by `scripts/write_calibration.py`. The lab is shared, so the camera is taped in place and re-measured each session. Fallback if the measured transform is too coarse: a ball held in the gripper and the existing Kabsch solver. **Revised 13 Oct 2026:** the ball fit is now the per-session procedure (`scripts/calibrate_ball.py`), see `docs/adr/0007-no-marker-ball-fit-each-session.md`.
 3. **Validate.** `scripts/check_calibration.py` moves the TCP above where the transform says an object is, and the miss is measured with a rule. A measured transform reports no residual of its own, so this reach test is the only number that says whether it works. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
    *Everything stays in the robot base frame.* There is no world frame on the real cell. The old trap about `quat="0 0 0 -1"` belonged to the MuJoCo model and no longer applies. The real trap found on 23 Sep 2026: the pendant shows TCP z in a different frame from RTDE (it read -0.020 where RTDE read 0.380), so read poses from RTDE only.
 
@@ -466,12 +466,18 @@ Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distincti
 | **A1** | ~~Confirm lab access date.~~ Arm access from about 22 Sep 2026, after the lab move. First arm session 23 Sep | JJ | done |
 | **A2** | ~~Confirm who pays for the wrist camera and teleop device.~~ Both cameras are in hand (13 Sep). Teleoperation uses a 3D jog device, type to be confirmed | JJ | done |
 | **A3** | ~~Confirm the existing lab RGB-D model.~~ RealSense D435i, benched 1 Sep. The camera is taped in place per session, because the lab is shared | JJ | done |
-| **A4** | Confirm GPU availability and hours for fine-tuning | JJ | W2 |
-| **A5** | ~~Decide the calibration marker.~~ Decided 12 Aug 2026: no marker, measured transform | JJ | done |
-| **A6** | **Ask whether the project title/summary needs updating on StaffLink to reflect the widened scope — the tiered task suite *and* the spoken interface.** Changes are locked around Week 8 of the first semester and **examiners are allocated based on the title and summary** — an examiner picked for "pick and place with typed commands" will be assessing a project about spoken interaction, clarification dialogue and dynamic tasks | JJ | **W4 — hard deadline, not movable** |
+| **A4** | Confirm GPU availability and hours for fine-tuning. The throwaway fine-tune that checks whether 12 GB is enough waits for the first real episode, because no episode data exists | JJ | before W6 |
+| **A5** | ~~Decide the calibration marker.~~ Decided 12 Aug 2026: no marker. Revised 13 Oct 2026: ball fit each session, see `docs/adr/0007-no-marker-ball-fit-each-session.md` | JJ | done |
+| **A6** | **Ask whether the project title/summary needs updating on StaffLink to reflect the widened scope — the tiered task suite *and* the spoken interface.** Changes are locked around Week 8 of the first semester and **examiners are allocated based on the title and summary** — an examiner picked for "pick and place with typed commands" will be assessing a project about spoken interaction, clarification dialogue and dynamic tasks | JJ | done 31 Aug: Prof Cheah updated the StaffLink title |
 | **A7** | Agree the D5 demonstration date with the examiner. Arrange it months ahead, not in April 2027 | JJ | Jan 2027 |
 | **A8** | ~~Update `README.md`~~ and ~~fix `pyproject.toml` description~~, both done 11 Aug. `SESSION_HANDOVER.md`, `ursim_setup_reference.md`, the V3/V4 plans and the old vault architecture note were **deleted** 11 Aug rather than updated, so this plan is now the single source of truth. Nothing further outstanding | JJ | done |
 | **A9** | Send Prof Cheah a short written progress update **every two weeks**. This was skipped through July. It is directly worth 8 marks | JJ | fortnightly |
+| **A10** | Set `ANTHROPIC_API_KEY`. Architecture A cannot run a single instruction without it | JJ | open |
+| **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
+| **A12** | ~~Camera axis convention.~~ Fixed 31 Aug, see `docs/adr/0009-opencv-camera-axes.md` | JJ | done |
+| **A13** | ~~Set `robot.host`.~~ `10.149.230.1`, 23 Sep | JJ | done |
+| **A14** | Ask Koji about moving the arm closer to the table and about the new layout. The arm base is about 40 cm from the useful table area. Measure `workspace.x` and `workspace.y` again only after the layout is fixed | JJ | next week |
+| **A15** | Confirm the 3D jog device that will drive the demonstrations, see `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` | JJ | before W5 |
 
 ---
 

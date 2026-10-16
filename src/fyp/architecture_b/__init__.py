@@ -12,7 +12,7 @@ Inference is LeRobot's own `policy_server` and `robot_client`, driving a UR5e
 adapter that lives at `integrations/lerobot_robot_ur5e/`. It is outside this
 package because it must be installed into the lerobot environment, which is the
 only one holding torch, the arm driver and the camera driver at once. Reasoning
-in `docs/plan_vault/Decisions to Make.md`.
+in `docs/adr/0008-lerobot-policy-server-and-robot-client.md`.
 
 What that leaves here is the demonstration path, and the format contract with it.
 `demos/lerobot_export.py` owns `STATE_NAMES` and `ACTION_NAMES`, plus
@@ -29,8 +29,8 @@ deltas. The state gives orientation as two columns of the rotation matrix,
 because Euler roll flips between +pi and -pi with the gripper pointing down. The
 action is seven numbers, being a base-frame translation delta, an Euler rotation
 delta, and an absolute gripper target. Not joint positions. That choice is
-inherited from `demos/lerobot_export.py` and is still open in
-`docs/plan_vault/Decisions to Make.md`, so if it changes, the converter, the
+inherited from `demos/lerobot_export.py` and is recorded in
+`docs/adr/0006-tcp-pose-delta-action-space.md`, so if it changes, the converter, the
 adapter and both NAMES tuples change together and the dataset is re-exported.
 It has no output channel other than actions, so it cannot ask the user a
 question. That limitation is a headline result, not a gap to be patched.
