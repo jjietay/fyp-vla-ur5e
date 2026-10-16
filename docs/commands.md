@@ -18,6 +18,9 @@ open a new terminal without exporting it.
 # FYP environment
 uv sync
 
+# run tests/unit before every commit (never tests/hardware); skip once with --no-verify
+git config core.hooksPath .githooks
+
 # lerobot environment, which is where torch lives. --inexact, so a re-sync does not
 # delete the adapter and the two drivers installed below, which are not in its lockfile
 deactivate 2>/dev/null

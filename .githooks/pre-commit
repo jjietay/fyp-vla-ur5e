@@ -1,0 +1,7 @@
+#!/bin/sh
+# It takes a commit and stops it if the unit suite is red.
+#
+# tests/unit only, never tests/ and never --integration: a commit must never be able
+# to move the arm. Skip in an emergency with `git commit --no-verify`.
+# Enabled once per clone with `git config core.hooksPath .githooks`.
+exec uv run pytest tests/unit -q
