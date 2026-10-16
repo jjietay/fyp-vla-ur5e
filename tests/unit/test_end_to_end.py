@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -38,7 +39,7 @@ R_ORANGE = 0.027
 
 # ------------------------------------------------------------------ the scene
 
-def _camera() -> np.ndarray:
+def _t_base_cam() -> np.ndarray:
     """It takes nothing and gives you a T_base_cam placed like the cell's camera."""
     o = np.array([0.725, 0.651, 0.863])
     z = np.array([0.04, -0.824, -0.565]); z /= np.linalg.norm(z)
@@ -55,6 +56,8 @@ def _render(T, centre, table_z):
     (mask, depth): the sphere's pixels, and z-depth on the sphere or the table."""
     R, o = T[:3, :3], T[:3, 3]
     uu, vv = np.meshgrid(np.arange(INTR.width), np.arange(INTR.height))
+    # One ray per pixel, in base frame, scaled so the camera z of each is 1:
+    # then the ray parameter at a hit IS the z-depth the camera reports.
     db = np.stack([(uu - INTR.cx) / INTR.fx, (vv - INTR.cy) / INTR.fy,
                    np.ones_like(uu, dtype=float)], axis=-1) @ R.T
     oc = o - centre
@@ -157,6 +160,8 @@ class FakeLLM:
     def __init__(self, script):
         self.script = list(script)
         self.calls: list[dict] = []
+        # The code under test calls `client.messages.create(...)`. Pointing
+        # `messages` back at this object lets one class stand in for both.
         self.messages = self
 
     def create(self, **kwargs):
@@ -193,7 +198,7 @@ def cell(tmp_path, monkeypatch):
     cfg["paths"]["calibration_dir"] = str(tmp_path / "calibration")
     cfg["architecture_a"]["trace"]["dir"] = str(tmp_path / "traces")
 
-    T = _camera()
+    T = _t_base_cam()
     (tmp_path / "calibration").mkdir()
     (tmp_path / "calibration" / "T_base_cam.json").write_text(
         json.dumps({"T_base_cam": T.tolist()}))
@@ -230,14 +235,26 @@ def _run_one_trial(cell, script, answer="the orange"):
     return records, controller, ask, llm
 
 
-def _files_under(*dirs):
-    return {p for d in dirs for p in (PROJECT_ROOT / d).rglob("*") if p.is_file()}
+# Not walked: tool state that changes on its own, and simulation/, which is an
+# unrelated archive this project never touches.
+_NOT_THE_PROJECT = {".git", ".venv", "simulation", "__pycache__", ".pytest_cache", ".mypy_cache"}
+
+
+def _repo_snapshot() -> dict[str, int]:
+    """It takes nothing and gives you every project file with its modification time."""
+    snap = {}
+    for root, dirs, files in os.walk(PROJECT_ROOT):
+        dirs[:] = [d for d in dirs if d not in _NOT_THE_PROJECT]
+        for f in files:
+            p = os.path.join(root, f)
+            snap[p] = os.stat(p).st_mtime_ns
+    return snap
 
 
 # ---------------------------------------------------------------------- tests
 
 def test_a_spoken_instruction_reaches_the_arm_through_the_whole_chain(cell):
-    before = _files_under("data", "logs")
+    before = _repo_snapshot()
     records, controller, _, llm = _run_one_trial(cell, [pick_what_was_seen, finish])
 
     assert len(records) == 1
@@ -254,10 +271,13 @@ def test_a_spoken_instruction_reaches_the_arm_through_the_whole_chain(cell):
     env = WorkspaceEnvelope(cell.cfg)
     assert controller.poses, "the pick reached the controller as no motion at all"
     assert all(env.contains(p[:3]) for p in controller.poses), controller.poses
+    # A joint target has no base-frame position to hold against the envelope
+    # without forward kinematics, so a pick must send none.
+    assert not [c for c in controller.calls if c[0] == "move_joints"]
 
-    # The harness wrote its record, and nothing was written into data/ or logs/.
+    # The harness wrote its record, and nothing in the repo changed.
     assert (cell.tmp / "evaluation" / "A_tier0.csv").is_file()
-    assert _files_under("data", "logs") == before
+    assert _repo_snapshot() == before
 
 
 def test_a_clarifying_question_is_asked_and_recorded(cell):

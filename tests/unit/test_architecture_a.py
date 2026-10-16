@@ -222,10 +222,6 @@ def test_every_tier_has_a_written_success_criterion():
         assert TASKS[tier].heldout_utterances
 
 
-# The harness-must-not-import-A-or-B rule lives in test_imports.py, with the
-# other boundary rules.
-
-
 # ----------------------------------------------------------------- grounding
 
 class _FakeBlock:
