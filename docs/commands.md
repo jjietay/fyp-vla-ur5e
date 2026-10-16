@@ -84,245 +84,72 @@ the demo.
 
 ---
 
-## At the bench, in this order
+## Each session at the bench, in this order
 
-Each step fails in a way that looks like the next one's problem. Read-only steps come first,
-motion comes after, and calibration comes last. Replace `<ARM_IP>` with the address Koji gives
-you.
+Read-only steps first, motion after, calibration last, because each step fails in a way that
+looks like the next one's problem. Pendant in Remote Control mode, speed slider low, someone at
+the e-stop. Read every pose from RTDE, never from the pendant.
 
-State of these values after the first session, 23 Sep 2026. Steps (10) to (15) are how each
-was filled in:
-
-```
-config/config.yaml
-  robot.host: "10.149.230.1"          # DONE. Laptop is 10.149.230.50/24, profile `ur5e`, no gateway
-  robot.gripper: widths and force     # DONE. RG2 over URScript, no pins. See ur5e_controller.py
-  robot.home_q: [5.6173, ...]         # DONE. From the pendant, TCP pointing down
-
-  workspace.x, workspace.y            # STILL TO MEASURE, after the table layout is agreed with Koji
-  workspace.z: [0.177, 0.700]         # DONE. Table at 0.172 in base frame, plus 5 mm
-  workspace.max_radius: 0.75          # DONE. 0.81 m was out of reach
-
-  architecture_a.skills.down_rotvec   # DONE. [0.580, 3.087, 0.0], checked by a move straight down
-```
-
-Read every pose from RTDE, never from the pendant. The pendant shows TCP z in a different frame
-(it read -0.020 where RTDE read 0.380).
-
-**The gripper is an OnRobot RG2, not a Robotiq 2F-85.** Its cable goes to the green M8 plug
-on the wrist tool connector, and there is no Compute Box. Since 23 Sep 2026 `URController`
-drives it the way the URCap does. It sends URScript that shifts a 17 bit word out over the two
-tool outputs, checks that the fingers started to move, sends once more if they did not, and
-reads the final width back through RTDE output registers. The pendant must be in Remote Control
-mode. `scripts/check_gripper.py` is the bench test, and it runs the same controller code.
-
-
-### Find Out
-
-(3) The arm IP address, and a free static IP address for the laptop on the same subnet
-
-(4) Is RTDE on in the pendant security settings, and can you use Remote Control mode? The
-control interface needs Remote Control mode on e-Series. The receive interface does not
-
-(5) Which OnRobot gripper is it? Read the label for RG2 or RG6
-
-(6) Is the OnRobot URCap installed? Ask him to open and close the gripper from the pendant
-
-(7) Are the TCP offset and the payload in the installation file set for the gripper plus the
-quick changer? `getActualTCPPose` reports the point the pendant defines, so a wrong TCP makes
-every pose wrong, and the long RG fingers make the error large
-
-(8) Where can the camera be taped? Ask him to show you the e-stop, freedrive and the speed
-slider
-
-### Connection and read-only work, about 45 min
-
-(9) Static IP on the laptop, then check the arm answers
+(1) Laptop on the arm's subnet, then check the arm answers
 
 ```bash
-ip link                                  # find the Ethernet name, for example enp3s0
-sudo ip addr add <LAPTOP_IP>/24 dev <ETH_NAME>
-ping -c 3 <ARM_IP>
-nc -zv <ARM_IP> 30004                    # RTDE port
+sudo ip addr add 10.149.230.50/24 dev <ETH_NAME>
+nc -zv 10.149.230.1 30004                # RTDE port
 ```
 
-(10) Set `robot.host: "<ARM_IP>"` in `config/config.yaml`
-
-(11) Read the joint angles and the TCP pose. Receive interface only, so it cannot move the arm
-and does not stop a pendant program. Steps (13) to (15) reuse this command
-
-```bash
-uv run python -c "import rtde_receive as r; x=r.RTDEReceiveInterface('<ARM_IP>'); print('q', x.getActualQ()); print('tcp', x.getActualTCPPose())"
-```
-
-Do not use `URController` for this. Its constructor opens the control interface too, which
-uploads a script and takes the arm.
-
-(12) Down pose. Freedrive on, hand-guide the gripper to point straight down in the pose you
-would pick from, release freedrive so the arm holds, and keep your hands off it. The **length**
-of RX, RY, RZ on the Move tab should be near 3.14, not any one of them
-
-```bash
-uv run python scripts/check_orientation.py --seconds 10
-```
-
-On 23 Sep 2026 this showed Euler roll flipping, so `observation.state` is now 6D (the first two
-columns of the rotation matrix) and not Euler. Run it again to confirm the `state.*` rows are
-stable. The raw `tcp_pose` rows can still flip at this pose, and that is harmless.
-
-(13) `down_rotvec`. Take the middle of each range from (12), or the last three numbers from
-(11) in the same pose, and paste them into `architecture_a.skills.down_rotvec`
-
-(14) `home_q`. Freedrive to a safe home pose, run (11), and paste the six joint angles into
-`robot.home_q`
-
-(15) Workspace box. Freedrive to each corner of the usable table area, run (11) at each, and
-write tighter x, y and z limits into `workspace`. z min sits just above the table
-
-### Gripper facts, about 15 min
-
-(16) **Required.** Make a pendant program with one gripper open node and one
-close node. Save it, then copy the `.urp` and the `.script` files to the USB stick. The
-`.script` file holds the exact URScript the URCap sends, which the new gripper code will copy.
-Done 23 Sep 2026: fetched over SFTP as root into `docs/rg2.script` and `docs/rg2.urp`
-
-### First motion, about 45 min
-
-(17) Pendant in Remote Control mode, speed slider low, Koji at the e-stop
-
-First move of every session. It shows the move and asks before it goes, and refuses any joint
-that must turn more than 30 degrees, so jog closer on the pendant first. Ctrl+C stops it
+(2) Home. It shows the move and asks first, and refuses any joint that must turn more than 30
+degrees, so jog closer on the pendant first
 
 ```bash
 uv run python scripts/go_home.py
 ```
 
-Not yet tested: recovery from the e-stop. Press it during `go_home.py`, release, power on,
-and run it again. Do this before demonstration capture or any trial
-
-(18) Controller tests, without the gripper test
+(3) Hardware tests, only after a code change to the controller. Gripper tests with NOTHING
+between the fingers. `test_orientation.py` skips unless the TCP points down, so run (2) first
 
 ```bash
-uv run pytest tests/hardware/test_controller.py -k "not gripper" -v
-```
-
-The `controller` fixture does not start the gripper, so with `-k "not gripper"` this run never
-moves the fingers. Then the gripper tests, with NOTHING between the fingers, and the endurance
-run, which counts lost commands instead of stopping on the first one
-
-```bash
-uv run pytest tests/hardware/test_controller.py -k gripper -v
+uv run pytest tests/hardware -v
 uv run python scripts/check_gripper.py --cycles 20
 ```
 
-Rotation at the down pose, the case Koji reported. Run `go_home.py` first, because these skip
-unless the TCP points down. Each test turns the tool a few degrees in place and checks that no
-joint takes the long way round, and that the same orientation written with the opposite-sign
-rotation vector does not move the arm, with `moveL` and with `servoL`
-
-```bash
-uv run pytest tests/hardware/test_orientation.py -v
-```
-
-(19) Servo test. First time `servoL` goes to a real arm, and Architecture B depends on it
-
-```bash
-uv run pytest tests/hardware/test_servo.py -v
-```
-
-### Camera and calibration, stretch, about 60 min
-
-(20) Camera opposite the arm, centred, 0.7 to 0.8 m above the **table surface**, at about 45
-degrees. USB 3 cable in a USB 3 port. Tape the tripod feet, because this comes down between
-sessions
+(4) Camera opposite the arm, centred, 0.7 to 0.8 m above the table, USB 3 cable, tripod feet on
+the tape marks. Good is USB **3.2**, coverage above 50 percent, centre pixel at **positive** z.
+Negative z means the OpenGL convention is back in `pixel_to_3d.py` (ADR 0009): stop and fix it
 
 ```bash
 uv run python scripts/check_camera.py
 ```
 
-Good: USB says **3.2**, format matches what you asked for, coverage above 50 percent, centre
-pixel back-projects to **positive** z.
-
-Negative z means the OpenGL convention is back in `pixel_to_3d.py`. Stop and fix it. Low
-coverage is the scene, not the camera: use matte objects, and nothing under 0.3 m returns
-anything.
-
-Writes `data/cache/frame_top.png`, which the detector check needs later.
-
-(21) Fit `T_base_cam` with the ball. **Every session, and it moves the arm** through the
-middle of the table, so clear the table and keep a hand on the e-stop
+(5) Fit `T_base_cam` with the ball. **Moves the arm** through the middle of the table. Ball
+bottom flush with the fingertips, the same way every time. Hold the ball before the last Enter,
+or it drops. RMS should be a few mm; the old file is kept as `T_base_cam.<time>.json`
 
 ```bash
-uv run python scripts/go_home.py
-# lerobot venv's python, because finding the ball needs OWLv2 and so torch
-PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py --plan-only   # the poses it will visit, no arm
+PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py --plan-only
 PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/calibrate_ball.py
-```
-
-Then level it to the table. Nothing moves; it reads the camera only. The table's base-frame
-height is known, so this removes the height and tilt error the ball fit cannot see (13 Oct
-2026: two fits both put objects about 35 mm low). Read `table offset` in the output
-
-```bash
 uv run python scripts/level_to_table.py --dry-run
-uv run python scripts/level_to_table.py
+uv run python scripts/level_to_table.py          # removes the height and tilt the ball fit cannot see
 ```
 
-When asked, put the ball between the fingers with its **bottom flush with the fingertips**, the
-same way every time, because a ball placed 3 mm differently shifts the fit about 3 mm in z.
-At the end, hold the ball before pressing Enter, or it drops when the fingers open.
-
-Read two lines of the output:
-
-- the RMS, which should be a few mm. Above `calibration.max_rms_mm` it asks before writing.
-  Usual causes are the ball slipping in the fingers or depth holes on the ball
-- how far the camera moved since the last file, which says how well the tape marks held
-
-The previous calibration is kept as `T_base_cam.<time>.json`, never overwritten. About 1 to 2
-minutes in all. The first pose waits about 10 s while OWLv2 loads, and the rest reuse it.
-
-(22) **First session only, or after changing the ball or how it is placed.** Prove the ball
-offset with the reach test, because the fit's own RMS cannot see a wrong
-`calibration.ball_offset_tool_m`: every sample has the same tool orientation, so that error is
-the same shift at every point. Koji stays at the e-stop
+(6) Reach test, **only the first time, or after changing the ball or how it is placed**. The fit's
+RMS cannot see a wrong `calibration.ball_offset_tool_m`. Click an object, measure the miss with a
+rule and type it in. A consistent offset means the ball offset is wrong by that amount
 
 ```bash
-# FYP venv (plain uv run). No torch needed, and it needs matplotlib for the click window
-uv run python scripts/check_calibration.py --dry-run   # compute targets, do not move
+uv run python scripts/check_calibration.py --dry-run
 uv run python scripts/check_calibration.py --points 5
 ```
 
-Click an object, it hovers the TCP above where it thinks the object is, and **you measure the
-miss with a rule and type it in**. Manual on purpose, because anything the software measured
-would come from the transform being tested. A consistent offset, mostly in z, means
-`ball_offset_tool_m` is wrong by that amount: correct it in config and re-run (21).
-
-Before the first session, once: measure the ball and set `calibration.ball_radius_m`, set
-`calibration.ball_query` to a noun phrase for it ("orange ball"), and check that OWLv2 finds it
-with `check_detector.py`.
-
-**Fallback, if the ball fit will not run:** measure the mount with a rule and write it by hand.
-Jog the TCP in +x first to see the base axes, measure from the arm base to the middle (RGB)
-lens, square the tripod to the table edge (1 degree is about 17 mm at 1 m), then run (22) to
-check it, expecting 1 to 3 cm
+Fallback if the ball fit will not run: measure the mount by hand, then run (6), expecting 1 to 3 cm
 
 ```bash
 uv run python scripts/write_calibration.py --xyz X Y Z --rpy ROLL PITCH YAW --force
 ```
 
-### Last 15 min
+(7) Commit `config/` before the camera comes down
 
-(23) Photos of the taped positions, the gripper label, and the pendant TCP and payload screens
-
-(24) Commit the config and calibration, then take the camera down
-
-```bash
-git add config/
-git commit -m "Lab session: robot host, home_q, workspace, down_rotvec, calibration"
-```
-
-If (20) to (22) do not fit, do them first in recess week, before Architecture A. Architecture
-A cannot run without `T_base_cam`.
+Still not done once: the e-stop recovery test. Press it during `go_home.py`, release, power on,
+run it again. Do this before demonstration capture or any trial.
 
 ## Architecture A
 

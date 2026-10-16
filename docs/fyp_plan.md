@@ -136,13 +136,7 @@ Objects and instruction phrasings never seen in the demonstrations or the prompt
 
 ### Why Architecture A needs a language model in front of its detector
 
-Not a design preference. It falls out of how OWLv2 works, and it is worth a paragraph in the report because it is the clearest single statement of what "modular" actually costs.
-
-OWLv2 encodes each text query with CLIP's text encoder into **one embedding**, which is matched against the per-patch embeddings of the image. A full sentence therefore becomes a single embedding for the whole sentence, and no region of the image corresponds to it. The model has no mechanism for splitting a sentence into the objects it mentions, no mechanism for discarding the verbs and articles, and no way to represent a relation between two queries. CLIP's 77-token context is a real limit but not the binding one: a spoken command fits inside it comfortably and still fails.
-
-So *something* must convert `"place that red cube into that metal tray"` into `["red cube", "metal tray"]` before the detector can be asked anything. In this project that is `planner.py::extract_queries`, run as its own trace stage.
-
-**The comparison point.** Architecture A pays for this twice: an extra model call per instruction, and a new failure mode (H9) where the wrong noun phrase kills the run before perception begins. Architecture B pays nothing, because SmolVLA consumes the instruction string directly and never converts it into object names at all. The modular pipeline is not merely "more interpretable at a small cost" — it requires a translation step the end-to-end model does not, and that step is one of the places it breaks.
+OWLv2 matches one embedding per query, so it takes short noun phrases, never sentences. `planner.py::extract_queries` converts the command first, and that step is failure mode H9, which B does not have. Reasoning in `docs/adr/0004-owlv2-takes-noun-phrases.md`.
 
 ### Hypotheses to state up front
 
@@ -196,42 +190,15 @@ H6 is the one that most cleanly separates the architectures and it costs nothing
 
 ## 7 · Hardware decisions
 
-### 7.1 Cameras — the answer to "do I need RGB-D on the wrist?"
+### 7.1 Cameras
 
-**No. RGB is sufficient for the wrist. Here is why, and here is when to claim RGB-D anyway.**
+A fixed RGB-D (the lab D435i) plus a wrist RGB camera. **Nothing may depend on wrist depth.** Placement and reasoning in `docs/adr/0002-fixed-rgbd-plus-wrist-rgb-square-on.md`.
 
-SmolVLA consumes **multi-view RGB images, a robot state vector, and a language string**. It has no depth input. The LeRobot convention is `OBS_IMAGE_1` = top-down/overhead and `OBS_IMAGE_2` = wrist. Adding a depth stream to the wrist camera contributes literally nothing to Architecture B.
+### 7.2 Teleoperation
 
-Architecture A does need depth, but only from the **fixed** camera — that is where detection happens and where pixels get back-projected into 3D and transformed into the base frame. The existing lab RGB-D, fixed as the supervisor recommends, covers it.
+A 3D jog device through `servo_to_pose`, never freedrive, so no hand is in any frame (decided 23 Sep 2026, device still to confirm, A15). Reasoning in `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md`.
 
-So the minimum correct configuration is:
-
-| Camera | Type | Used by A | Used by B |
-|--------|------|-----------|-----------|
-| Fixed overhead/side | **RGB-D** (existing lab unit) | detection + depth → 3D → base frame | `OBS_IMAGE_1` (RGB only) |
-| Wrist-mounted | **RGB is enough** | optional close-range re-detect | `OBS_IMAGE_2` (RGB only) |
-
-**When to claim RGB-D on the wrist anyway.** If the cost falls on the lab rather than you, an RGB-D wrist camera buys optionality: close-range grasp verification, which would strengthen the Tier 3 re-planning story. If you do claim one, **specify a short-minimum-range model** — a standard D435-class sensor has a minimum depth range around 0.3 m, which is useless at grasp distance; the D405-class short-range units are the ones designed for wrist mounting.
-
-**Hard rule either way: nothing in the pipeline may depend on wrist depth.** Design as if the wrist camera is RGB. If depth arrives, it is a bonus branch you can delete without touching anything else. This keeps you shippable if procurement stalls.
-
-**Justify two cameras to the supervisor on evidence, not preference.** The LeRobot community finding is that policies trained with overhead + wrist produce noticeably smoother trajectories than wrist-only, and the reference SmolVLA fine-tuning setups use two views. Single-view fine-tuning is the likelier-to-underperform option, and if B underperforms because of a camera configuration you chose against the reference setup, the comparison is compromised and the result is unpublishable. That argument is worth making explicitly.
-
-### 7.2 Teleoperation for demonstration capture — decide this in Week 1
-
-This is the **most underestimated risk in the whole project**, because it silently determines whether T3 data is usable.
-
-| Option | Cost | Setup | Problem |
-|--------|------|-------|---------|
-| **UR5e freedrive** (hand-guide the arm, record joint states) | £0 | hours | **Your hands and arms appear in both camera views on every frame.** A visuomotor policy can key on them, and at test time they are absent. This is a known contamination mode for kinesthetic teaching |
-| **SpaceMouse / 3D mouse** → TCP velocity → `servoL` | ~S$200–500 | 1–2 days | Nothing in frame. Learning curve on 6-DOF input; needs a gripper button binding |
-| **Leader-follower arm** | ~S$150+ | days | The LeRobot-native pattern, but a 5-DOF leader mapping to a 6-DOF UR5e is awkward and is not a solved thing you can copy |
-
-**Decided 23 Sep 2026:** no freedrive. The demonstrations are driven with a 3D jog device (type to be confirmed) through `servo_to_pose`, so no hand is in frame. The original recommendation follows for the record.
-
-**Recommendation (11 Aug):** prove the recording loop with **freedrive in the first lab session** — it needs no purchase and no wiring — but **order a SpaceMouse now**, and record the real training set with it. Hands-in-frame is not a cosmetic issue; discovering it after 200 episodes costs the project. If you do end up shipping freedrive data, say so in the report and treat it as a named confound.
-
-**Separately, the recording path itself needs rewriting for hardware.** Real `moveJ`/`moveL` **block**; the sim recorder counts ticks inside a stepping loop. On hardware, poll `get_state` from a **separate thread on a clock-gated timer** at the configured rate, with camera frames captured in sync. Write the hardware recorder **fresh** against `DemoRecorder`, which already takes an explicit `timestamp`. Do not resurrect the old sim recorder: it counted ticks rather than gating on a clock, which silently recorded at roughly a quarter of its configured rate.
+The hardware recorder polls `get_state` on a clock-gated thread with camera frames in sync, because real `moveJ`/`moveL` block. Never resurrect the sim recorder: it counted ticks and recorded at about a quarter of its configured rate.
 
 ### 7.3 Pouring rig — safety and mess
 
@@ -242,53 +209,15 @@ This is the **most underestimated risk in the whole project**, because it silent
 
 ### 7.4 Speech front-end
 
-The user speaks; the system acts. `"Place that red cube into that metal tray."`
+Local `faster-whisper`, push to talk, `compute_type="float16"`. Reasoning and the CUDA traps in `docs/adr/0003-local-faster-whisper-push-to-talk.md`. Rules for the comparison:
 
-**Architectural rule: ASR sits outside both architectures and is identical for both.** One microphone, one ASR model, one transcript, handed to A and to B unchanged. The moment you clean up the transcript for one and not the other, speech becomes a confound and the comparison is dead.
+- **ASR sits outside both architectures, and both get the same raw transcript.** Cleaning it for B inserts an LLM into B, and it is no longer end-to-end.
+- **Paraphrase the instructions at record time**, 5 to 10 per task across the episode set, from the first recording session. Retrofitting means re-recording, and without it B's test-time failure is partly the dataset's fault.
+- **Use deictic phrasings in the evaluation** ("*that* red cube"). A resolves them from detected scene context and B has only token statistics, so it tests H8 at no extra cost.
+- **Log ASR latency separately** from planning and execution latency in §6.
+- Spoken replies (TTS) for Tier 2 clarification are recommended, not required. If time is short, print the question.
 
-**Feed both the raw transcript.** This matters more than it sounds:
-
-- **Architecture A** absorbs disfluent, verbose, conversational speech natively — that is what an LLM is. *"uh, can you put that red cube in the, the metal tray"* is not a problem for it.
-- **Architecture B** takes the instruction as a **string conditioned on its training distribution.** SmolVLA was fine-tuned on whatever phrasings you stored in the episodes. A transcript that drifts from those phrasings degrades it, and there is no mechanism inside the policy to normalise the wording. If you normalise the transcript before handing it to B, you have inserted an LLM into B's pipeline and it is no longer end-to-end.
-
-**Deixis is a second asymmetry, and it is free to test.** *"That* red cube" and *"that* metal tray" are deictic — there is no pointing input, so "that" can only be resolved from scene context. Architecture A resolves it naturally because the detected objects and their positions are already in the planner's prompt: if exactly one red cube is detected, "that red cube" is unambiguous, and if two are, the planner should emit `ask_user`. Architecture B has no grounding mechanism for "that" beyond token statistics from training. Use deictic phrasings deliberately in the evaluation — they cost nothing extra and they probe something real.
-
-**Paraphrase the instructions at record time.** The instruction string is per-episode metadata in a LeRobot dataset, so varying it is free — just say the task differently while recording. Use **5–10 paraphrases per task** across the episode set rather than one templated string repeated 50 times. This is the single cheapest thing you can do to make B's comparison against spoken input fair, and if you skip it, B's failure at test time is partly your dataset's fault rather than the architecture's. Do this from the very first recording session; retrofitting means re-recording.
-
-**You are not building speech recognition. You are calling one.** Nothing here is novel work and none of it belongs in the contribution claims — treat ASR as a solved off-the-shelf component, like the RGB-D driver.
-
-**Cost is not a decision factor, so do not choose on price.** Total spoken audio across the entire project is roughly 500 utterances × ~5 s ≈ **45 minutes**. At 2026 cloud rates of roughly $0.004–0.017/min, that is **under one dollar for the whole FYP**. Choose on reliability and setup friction instead.
-
-| Option | Type | Verdict |
-|--------|------|---------|
-| **`faster-whisper`** (Whisper via CTranslate2) | local, free | **Recommended.** No network dependency, no API key in the repo, runs on the GPU you already have. Whisper leads on accented English, which matters here |
-| `whisper.cpp` | local, free | Equivalent; better if you want CPU-only or minimal dependencies |
-| Vosk | local, free | Lower accuracy; only worth it if you need sub-500 ms latency, which push-to-talk means you do not |
-| OpenAI / Deepgram / AssemblyAI / Google APIs | cloud, ~$0.004–0.017/min | Perfectly fine and cheaper to set up. **One real drawback: your live examiner demo would depend on lab wifi.** Keep one wired as a fallback, do not make it the primary |
-| Browser Web Speech API | cloud, free | Zero install, but awkward to wire into a Python robotics stack. Not worth the integration |
-
-**The deciding argument is the demo, not the technology.** All of these are accurate enough for short scripted commands in a quiet-ish room. The difference that matters is that a local model cannot fail because the campus network did, and you will be running this in front of an examiner. **Ship local, keep a cloud path behind a config flag as a fallback.**
-
-**You do not need streaming.** Push-to-talk means you capture a complete 3–5 s clip and transcribe it in one shot. That sidesteps endpointing, partial hypotheses, and the entire streaming-latency discussion. Whisper-small on a local GPU returns a short clip in a few hundred milliseconds.
-
-**Implementation:**
-
-| Decision | Choice | Reason |
-|----------|--------|--------|
-| ASR model | `faster-whisper`, small or medium, run locally | See table above |
-| Trigger | **Push-to-talk** (hold a key or footswitch) | Kills the whole endpointing/VAD problem. A robotics lab is noisy — fans, HVAC, other students. Always-on listening is a research project of its own and is out of scope |
-| Microphone | **Headset or lapel mic**, not the laptop's | Laptop mics pick up the arm and the room. ~S$30–80 and it removes an entire class of failure |
-| Spoken replies (TTS) | **Recommended, not required** | Tier 2's clarification is far more convincing as a spoken exchange than as text on a screen — the examiner watches the robot ask and you answer. Piper or an API TTS is an afternoon's work. If time is short, print the question instead |
-| Compute type | **`compute_type="float16"` — set it explicitly** | See the Blackwell note below. Do not leave it on the default |
-| GPU contention | Not an issue — ASR runs at demo/eval time, fine-tuning runs separately | If they ever do overlap, drop ASR to CPU; a 5 s clip is fine on CPU |
-
-**Blackwell (RTX 50-series) gotcha — set this before you lose an afternoon to it.** CTranslate2, the runtime under `faster-whisper`, has a known incompatibility with the sm_120 architecture: the default **int8 quantisation crashes with `CUBLAS_STATUS_NOT_SUPPORTED`** because Blackwell's int8 tensor cores need padding that older CTranslate2 builds do not emit. **The fix is to force `compute_type="float16"`.** You lose int8's memory saving, which is irrelevant here — see below. Also ensure CUDA 12 and cuDNN 9; recent CTranslate2 requires both.
-
-**VRAM is a non-issue for ASR.** `large-v3` at float16 needs roughly **3.4 GB**, and small/medium are well under that. On a 12 GB card you can run `large-v3` and still have ~8 GB free. Use `large-v3` — it is the most accurate on accented English and you are not memory-constrained at inference time.
-
-**The GPU budget that actually needs thought is W6, not speech.** A 450M-parameter SmolVLA fine-tune on 12 GB is workable but not roomy: bf16 weights + gradients + AdamW optimiser states alone come to roughly 7 GB before activations, and you are feeding two camera streams. Plan for **small batch size with gradient accumulation, gradient checkpointing, an 8-bit optimiser, and freezing the vision backbone** if it does not fit. Confirm this early (§12-A4) — discovering it in W7 is expensive.
-
-**Log ASR latency separately** from planning and execution latency in §6. It is shared by both architectures so it does not bias the comparison, but the examiner will ask about end-to-end responsiveness and "the robot took 4 seconds" is a different answer from "2 s of that was speech recognition."
+The GPU budget that needs thought is W6, not speech: a SmolVLA fine-tune on 12 GB needs small batches with gradient accumulation, gradient checkpointing, an 8-bit optimiser and a frozen vision backbone if it does not fit (§12-A4).
 
 ### 7.5 Shopping list
 
@@ -297,7 +226,7 @@ The user speaks; the system acts. `"Place that red cube into that metal tray."`
 | Wrist camera (RGB, USB) | **must** | S$50–120 | Global shutter preferred; rolling shutter smears during fast motion |
 | Wrist camera mount/bracket | **must** | S$0–60 | Print or fabricate; must not foul the gripper or the wrist-3 joint |
 | USB cable routing / strain relief | **must** | S$20 | A cable snagging on a joint during a demo will end the demo |
-| SpaceMouse Compact | **strong** | S$200–500 | See §7.2 |
+| 3D jog device (type to confirm, A15) | **strong** | S$200–500 | See §7.2 |
 | Tray, glasses, sealable bottles, food colouring | **must** | S$40 | |
 | Small drawer unit for Tier 3 | **must** | S$40–100 | Handle must be graspable by the RG2 |
 | **Headset or lapel microphone** | **must** | S$30–80 | §7.4. Laptop mic will not survive a noisy lab |
@@ -459,7 +388,17 @@ Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distincti
 
 ---
 
-## 12 · Open actions
+## 12 · Status and open actions
+
+### Status, 13 Oct 2026
+
+This is the only status record in the repo. Update it here, not in `CLAUDE.md` or `README.md`.
+
+- **Runs on the real cell:** speech; `URController` motion (`go_home.py` within 0.012 degrees of `home_q`, `tests/hardware -k "not gripper"` 7 of 7 twice, 23 Sep); the RG2 gripper; the fixed camera and OWLv2 on real frames; Architecture A end to end ("pick up the orange", 1 Oct).
+- **Written, not yet run on hardware:** the finger-width grasp check in `skills.py`, `calibrate_ball.py` and the detector model cache (all 13 Oct); `test_orientation.py`; the evaluation harness; Architecture B's robot side. There is no Architecture B agent for the harness yet: `run_evaluation.py --architecture B` prints a message and exits.
+- **Not done:** the first ball fit of `T_base_cam` (the current file is the 1 Oct hand correction, `validated: false`); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
+
+### Open actions
 
 | ID | Action | Owner | By |
 |----|--------|-------|-----|

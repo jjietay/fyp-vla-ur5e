@@ -1,5 +1,5 @@
 # Every tunable value in the project. Reasoning lives in docs/adr/,
-# not here. Bench measurement procedure is in docs/commands.md, "At the bench".
+# not here. Per-session bench steps are in docs/commands.md, "Each session at the bench".
 #
 # MEASURE BEFORE DRIVING THE ARM: robot.host, robot.gripper.*, workspace.x/y/z,
 # architecture_a.skills.down_rotvec, and robot.home_q which is absent.
