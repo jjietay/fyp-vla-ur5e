@@ -4,11 +4,11 @@
 
 *Title updated by Prof Cheah, 31 Aug 2026, from "Development of a Large Language Model-Based Interface for Robotic Systems".*
 **Student:** Tay Juen Jie · **Supervisor:** A/P Cheah Chien Chern · **Lab:** Robotics I (S2-B6a-01)
-**Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026 · **Trimmed:** 16 Oct 2026, completed work and history removed (see git history)
+**Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026 · **Trimmed:** 16 Oct 2026, completed work and history removed (see git history) · **Re-baselined:** 17 Oct 2026, completion moved to Semester 2
 
 **Research question:** a modular LLM pipeline (A) versus an end-to-end VLA (B), on the same UR5e, through the same controller interface — what does each buy and what does each cost?
 
-**Nov 2026 is a completion deadline, not a submission deadline.** All work, the evaluation, the final report and a demo-ready system are finished by Nov 2026. Everything is submitted on the official NTU dates in 2027.
+**The NTU dates are the deadlines.** The plan to finish everything by Nov 2026 was dropped on 17 Oct 2026. Semester 1 has one goal: Architecture A runs smoothly on the simple tasks (Tier 0), and D2 reports it. Semester 1 exams take December. The demonstrations, Architecture B and the comparison run from early Jan in Semester 2. Results freeze at the end of Feb 2027, then the reports are written to the official dates.
 
 ---
 
@@ -19,11 +19,11 @@ From `docs/guidelines/fyp_guidelines.pdf` and the schedule table. The "ready by"
 | ID | Deliverable | Submit on | Spec | Ready by |
 |----|-------------|-----------|------|----------|
 | **D1** | Project Plan/Strategy | **14 Sep 2026** (W6) | Objectives, background, proposed approach, weekly schedule in chart form | Submitted |
-| **D2** | Interim Report + Video | **10 Nov 2026** (W13) | 5–10 A4 pages; video 2–3 min; Turnitin first | 10 Nov 2026 — content is near-final results, not "progress so far" |
-| **D3** | Draft Final Report | **25 Mar 2027** | To supervisor; Turnitin | **2 Nov 2026** (W12) |
-| **D4** | Final Report | **09 Apr 2027** | 40–60 pages main body, TNR 12, 1.5 spacing, 35 mm left / 30 mm other margins | **9 Nov 2026** (W13) |
-| **D5** | Project Demonstration | **12–16 Apr 2027** | Arranged with examiner; live demo | System demo-ready and rehearsed by W12 Nov 2026 |
-| **D6** | Oral Presentation | **10–12 May 2027** | 15 min talk + 10 min Q&A | Slides drafted W13 Nov 2026; rehearse Apr–May 2027 |
+| **D2** | Interim Report + Video | **10 Nov 2026** (W13) | 5–10 A4 pages; video 2–3 min; Turnitin first | 10 Nov 2026 — A on Tier 0: calibration error in mm, the 20-trial result, the failure-stage breakdown; video of A doing the task. B is a plan only |
+| **D3** | Draft Final Report | **25 Mar 2027** | To supervisor; Turnitin | 25 Mar 2027 (S2 W10) |
+| **D4** | Final Report | **09 Apr 2027** | 40–60 pages main body, TNR 12, 1.5 spacing, 35 mm left / 30 mm other margins | 9 Apr 2027 (S2 W12) |
+| **D5** | Project Demonstration | **12–16 Apr 2027** | Arranged with examiner; live demo | Demo-ready and rehearsed by early Apr 2027 (S2 W12) |
+| **D6** | Oral Presentation | **10–12 May 2027** | 15 min talk + 10 min Q&A | Slides drafted after D4; rehearse late Apr–May 2027 |
 | **D7** | Full-text to Library + revised final report | **19 May 2027** | DR-NTU submission | Post-oral revision only |
 
 **Mark allocation** (from `assessment_criteria_for_final_report.pdf`):
@@ -195,13 +195,14 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 
 ### W3 · Calibration
 
-1. First ball fit of `T_base_cam` with `scripts/calibrate_ball.py`, per `docs/adr/0007-no-marker-ball-fit-each-session.md`.
+1. ~~First ball fit of `T_base_cam`~~ Done 13 Oct 2026 with `scripts/calibrate_ball.py`, per `docs/adr/0007-no-marker-ball-fit-each-session.md`. Five fits that day, fit RMS 11.4 to 16.3 mm, each followed by `level_to_table.py`. The fit in `T_base_cam.json` (14:49, 12 points, RMS 11.7 mm) was written after the last run, so no pick has used it. The fit residual is not the validation.
 2. **Validate.** `scripts/check_calibration.py` moves the TCP above where the transform says an object is, and the miss is measured with a rule. This reach test is the only number that says whether the transform works. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
 
 ### W4 · Architecture A on hardware
 
-1. Close the loop: re-detect before each grasp instead of trusting the plan-time position. Required for Tier 3. Document the failure modes you hit; they are results.
-2. Run Tier 0 to the T2 threshold.
+1. **Get the first real grasp.** As of 17 Oct no run has picked up the orange (see §10). Find the cause stage by stage: the reach test (W3.2) first, then the grasp pose against the object, then the gripper.
+2. Run Tier 0 to the T2 threshold. This is what D2 reports.
+3. Close the loop: re-detect before each grasp instead of trusting the plan-time position. Required for Tier 3, not for Tier 0, so it waits for Semester 2. Document the failure modes you hit; they are results.
 
 ### W5 · Demonstration capture *(critical path)*
 
@@ -232,37 +233,44 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 
 ---
 
-## 8 · Schedule to 10 Nov 2026
+## 8 · Schedule
 
-Week 1 = 10 Aug 2026. Recess week = 28 Sep. **Re-baselined 9 Sep 2026 after the lab move, and submitted in D1.** The Google Doc of D1 is the master copy of this schedule.
+### Semester 1, from W10 — make A work for D2
+
+Week 1 = 10 Aug 2026. The D1 schedule (9 Sep 2026) planned every result by Nov 2026. By W9 the recess and W8 milestones were missed, so it was re-baselined on 17 Oct 2026. The D1 copy in Google Docs keeps the old schedule; git history has the old table.
+
+Nothing for B happens this semester. Every lab hour goes to A on Tier 0.
 
 | Week | Dates | Focus | Milestone |
 |------|-------|-------|-----------|
-| **W1–W6** | 10 Aug–20 Sep | Architecture A software, speech, harness, B's robot side, detector, recorder, dataset conventions | Done; D1 submitted |
-| **W7** | 21–27 Sep | Cell setup, action space check, hand-eye, `T_base_cam` validated with the reach error in mm | First arm session 23 Sep |
-| **Recess** | 28 Sep–4 Oct | Architecture A end to end on hardware, Tier 0 | **T2 — A passes Tier 0** |
-| **W8** | 5–11 Oct | First demonstration batch, first SmolVLA fine-tune | **T3 partial** |
-| **W9** | 12–18 Oct | B on hardware behind the safety envelope, Tier 0. Tier 1 both architectures | **T4 — B passes Tier 0** |
-| **W10** | 19–25 Oct | Tiers 2 and 3 | Tiers 2–3 both architectures |
-| **W11** | 26 Oct–1 Nov | Full sweep, Tier 4, **freeze results** | **T5, T6 done** |
-| **W12** | 2–8 Nov | Write D4, record the D2 video, rehearse the demo, draft to supervisor | Demo-ready; draft with supervisor |
-| **W13** | 9–15 Nov | **Submit D2 interim + video, 10 Nov** | **D2 submitted; D4 complete** |
+| **W10** | 19–25 Oct | Reach test with `check_calibration.py` (W3.2). Find why no grasp succeeds (W4.1). SAM localisation and the ADR 0010 retry on the arm | **T1 — `T_base_cam` validated; first real pick** |
+| **W11** | 26 Oct–1 Nov | A picks and places reliably on Tier 0. 20-trial Tier 0 run through the harness, success judged at the bench | **T2 — A passes Tier 0** |
+| **W12** | 2–8 Nov | Write D2; record the D2 video of A | D2 draft to supervisor |
+| **W13** | 9–15 Nov | **Submit D2 interim + video, 10 Nov** | **D2 submitted** |
+| **Exams** | mid-Nov – Dec | Semester 1 exams. No FYP work | — |
 
-If arm access slips further, drop from the bottom of the descope ladder in §9 (Tier 4 first, then Tier 3). Do not thin every tier.
+### Semester 2
+
+Everything for B is packed into Jan and Feb. Week 1 is about 11 Jan 2027 and recess about 1–7 Mar. **Check both against the NTU academic calendar.**
+
+| Week | Dates (approx.) | Focus | Milestone |
+|------|-----------------|-------|-----------|
+| **Vacation, after exams** | late Dec – 10 Jan | Back up `data/raw/` (A11). Confirm the jog device (A15). Lock the dataset conventions (W5.2); record and inspect 5 test episodes, then Tier 0 demonstrations in multi-hour blocks | ≥50 Tier 0 episodes |
+| **S2 W1–W2** | 11–24 Jan | First SmolVLA fine-tune (A4); inference loop, safety envelope, B agent for the harness (W6.1–W6.3). Record Tier 1 demonstrations; write A's `pour` primitive. Start the methods chapter | **T3 Tier 0–1** |
+| **S2 W3** | 25–31 Jan | B on the arm behind the envelope, 20-trial Tier 0 run | **T4 — B passes Tier 0** |
+| **S2 W4–W5** | 1–14 Feb | Tier 1 both architectures; Tier 2 runs (A asks, B guesses) | Tiers 1–2 done |
+| **S2 W6** | 15–21 Feb | Tier 3 demonstrations and runs, with re-detection in A (W4.3). Tier 4 only if ahead | Tier 3 done |
+| **S2 W7** | 22–28 Feb | Full sweep, gaps filled, **freeze results** | **T6 done** |
+| **Recess** | 1–7 Mar | Results and discussion chapters | — |
+| **S2 W8–W10** | 8–28 Mar | Finish the draft. **Submit D3, 25 Mar** | **D3 submitted** |
+| **S2 W11–W12** | 29 Mar–11 Apr | Act on feedback. **Submit D4, 9 Apr.** Rehearse the demo | **D4 submitted** |
+| **S2 W13** | 12–16 Apr | **D5 demonstration** | **D5** |
+| — | 10–12 May | **D6 oral presentation**, 15 + 10 min | **D6** |
+| — | 19 May | **D7** full text to DR-NTU, revised report to supervisor | **D7** |
+
+If a block slips, drop from the bottom of the descope ladder in §9 (Tier 4 first, then Tier 3). Do not thin every tier. The results freeze at the end of Feb does not move: D3 needs the four weeks after it.
 
 **Critical path:** W3 calibration → W5 demo capture → W6 training → W7 evaluation.
-
-### After W13 — holding pattern to submission
-
-| When | Action |
-|------|--------|
-| Dec 2026 – Mar 2027 | **Monthly:** re-run the full demo end-to-end, fix what has rotted, log it. Act on supervisor feedback on the draft |
-| Jan–Feb 2027 | Optional extra trials to tighten the §5 numbers, or recover the highest descoped tier (§9) |
-| **25 Mar 2027** | Submit D3 draft final report |
-| **09 Apr 2027** | Submit D4 final report |
-| **12–16 Apr 2027** | D5 demonstration — arrange the date with the examiner **well in advance**, not in April |
-| **10–12 May 2027** | D6 oral presentation, 15 + 10 min |
-| **19 May 2027** | D7 full text to DR-NTU + revised final report to supervisor |
 
 ---
 
@@ -278,7 +286,7 @@ If arm access slips further, drop from the bottom of the descope ladder in §9 (
 | Spill damages equipment | Project-ending | Tray, tinted water, never real juice, arm speed capped during pour |
 | **12 GB VRAM too tight for the SmolVLA fine-tune** | W6 stalls on the critical path | Run a short fine-tune at batch size 1 on the first real episodes (A4). If it does not fit: small batches with gradient accumulation, gradient checkpointing, an 8-bit optimiser, a frozen vision backbone |
 | GPU time insufficient | Training bottleneck | Confirm GPU access (A4); SmolVLA is 450M params and fine-tunes on a single consumer GPU, but budget the hours |
-| Report underruns 40 pages | Resubmission | The per-stage failure logs and cost tables generate content; start writing W11, not W13 |
+| Report underruns 40 pages | Resubmission | The per-stage failure logs and cost tables generate content; start the methods chapter in Jan 2027, not after the results freeze |
 
 ### Descope ladder — drop from the bottom
 
@@ -299,13 +307,21 @@ Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distincti
 
 ## 10 · Status and open actions
 
-### Status, 13 Oct 2026
+### Status, 17 Oct 2026
 
 This is the only status record in the repo. Update it here, not in `CLAUDE.md` or `README.md`.
 
-- **Runs on the real cell:** speech; `URController` motion (`go_home.py` within 0.012 degrees of `home_q`, `tests/hardware -k "not gripper"` 7 of 7 twice, 23 Sep); the RG2 gripper; the fixed camera and OWLv2 on real frames; Architecture A end to end ("pick up the orange", 1 Oct).
-- **Written, not yet run on hardware:** the finger-width grasp check in `skills.py`, `calibrate_ball.py` and the detector model cache (all 13 Oct); `test_orientation.py`; the evaluation harness; Architecture B's robot side. There is no Architecture B agent for the harness yet: `run_evaluation.py --architecture B` prints a message and exits.
-- **Not done:** the first ball fit of `T_base_cam` (the current file is the 1 Oct hand correction, `validated: false`); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
+- **Runs on the real cell:** speech; `URController` motion (`go_home.py` within 0.012 degrees of `home_q`, `tests/hardware -k "not gripper"` 7 of 7 twice, 23 Sep); the RG2 gripper; the fixed camera and OWLv2 on real frames; Architecture A from speech to arm motion (1 Oct; 41 spoken runs on 13 Oct), but with no successful grasp; the ball fit of `T_base_cam` (13 Oct, fit RMS 11.7 mm, `validated: false`).
+- **Written, not yet run on hardware:** the lift check in `pick` (a second close after the retreat) and the camera check after each pick and place, with positions in the scene sent back to the planner; the operator's typed y/n after each step, recorded beside A's check and never given to A (`<arch>_tier<n>_steps.csv`); success scored only by the operator (all 17 Oct); SAM masks on the OWLv2 boxes (`mask_ray` localisation); the home-pose TCP height as the `z` cap; speech as the only input to A and to the evaluation trials (14 Oct); A's refactors of 16 Oct (planner owns the turn loop and sends rejected calls back to the model, ADR 0010; one `Perception` module; `CalibrationStore`); `test_orientation.py`; the evaluation harness; Architecture B's robot side. There is no Architecture B agent for the harness yet: `run_evaluation.py --architecture B` prints a message and exits.
+- **No run has picked up the orange** (JJ at the bench, 17 Oct). This is the current problem. It covers 1 Oct and 13 Oct. The traces disagree: planner summaries say "I picked up the orange", and the finger-width check recorded 5 of 20 grasps on 13 Oct as held. **Trace outcomes are not evidence of a pick.** Success in a recorded trial is judged at the bench.
+- **Session of 13 Oct (11:30–14:50), from the traces, speech logs and calibration files:**
+  - 41 runs, 3 with no end record. The cause of the missed grasps is not known. Calibration is the first suspect: it cannot be trusted until the reach test runs.
+  - The first fit put objects about 0.83 m out, beyond the 0.75 m limit, so the first 9 runs failed at the transform. A refit with the grid where the objects sit fixed it. A hand shift of (2.3, 10.3) mm at 13:18 was not checked.
+  - 12 poses refused by the height limits (5 below `z_min` 0.177 m, 7 above `z_max` 0.380 m, mostly places on the white box). Twice the planner repeated a rejected pose and gave up after 6 turns; ADR 0010 targets this.
+  - OWLv2 scored the white box 0.32–0.34 against a 0.3 threshold and often missed it; about 11 runs ended in a correct refusal. Whisper heard "red tray" as "red tree" 4 times.
+  - Once, the gripper stopped opening at 64.9 mm instead of 99.8 mm.
+- **Checks without the arm (16 Oct):** import and boundary tests, an end-to-end smoke test through the harness and A to a fake controller, an agent contract test, and a pre-commit hook that runs `tests/unit`. `pytest tests`: 309 passed, 21 skipped (17 Oct). Pyright from the integration-checks spec is not done.
+- **Not done:** a single real grasp; the reach-test validation of `T_base_cam` (W3.2); SAM localisation on hardware; re-detection before each grasp (W4.1); a 20-trial Tier 0 run of A (T2); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
 
 ### Open actions
 
@@ -315,6 +331,7 @@ Closed actions are in git history.
 |----|--------|-------|-----|
 | **A4** | Confirm GPU availability and hours for fine-tuning. The throwaway fine-tune that checks whether 12 GB is enough waits for the first real episode, because no episode data exists | JJ | before W6 |
 | **A7** | Agree the D5 demonstration date with the examiner. Arrange it months ahead, not in April 2027 | JJ | Jan 2027 |
+| **A16** | Tell Prof Cheah about the re-baseline: the comparison now finishes in Feb 2027, not Nov 2026; D2 reports A on Tier 0 only; no FYP work during Semester 1 exams | JJ | next update |
 | **A9** | Send Prof Cheah a short written progress update **every two weeks**. This was skipped through July. It is directly worth 8 marks | JJ | fortnightly |
 | **A10** | Set `ANTHROPIC_API_KEY`. Architecture A cannot run a single instruction without it | JJ | open |
 | **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
@@ -328,10 +345,10 @@ Closed actions are in git history.
 | Assessment item | Marks | What earns it here |
 |-----------------|-------|--------------------|
 | Project Plan/Strategy | 7 | D1, submitted |
-| Interim Report | 13 | D2 — by Nov the work is largely complete, so this reads as results rather than progress |
+| Interim Report | 13 | D2 — calibration error in mm and A's Tier 0 numbers, so it reads as results for A and a concrete plan for B |
 | Report writing, structure, references | 11 | Cite SmolVLA, RTC, OXE, OWLv2 properly; §7-W8 is not optional reading |
 | Intro, theory, review, discussion, conclusion | 12 | The A-vs-B framing is inherently a comparative review; §4's hypotheses give the discussion its spine, and §9 gives you "limitations of current work" for free |
-| Demonstration + oral | 17 | D5 shows both architectures live on the same cell — Tier 2 side by side (A asks, B guesses) is the moment that lands. Finishing in Nov means five months of rehearsal, which is the whole point |
+| Demonstration + oral | 17 | D5 shows both architectures live on the same cell — Tier 2 side by side (A asks, B guesses) is the moment that lands. Book the date early (A7) and rehearse in S2 W11–W12 |
 | Initiative + regular supervisor updates | 8 | §10-A9, fortnightly. **This was skipped through July.** It is 8 marks for an email |
 | **Design, implementation, data, results, complexity** | **24** | §5's protocol is a designed experiment with stated hypotheses and controlled layouts; T3 is real data collection; §5's cost table shows understanding of tool *limitations*. This is the block to over-serve |
 | Ability, independence, extending ideas | 8 | The widened task suite beyond pick-and-place *is* the extension. Say so explicitly in the report |

@@ -110,6 +110,10 @@ architecture_a:
     acc: 0.30
     down_rotvec: [0.580, 3.087, 0.0]  # RG URCap TCP, vertical, home yaw. RTDE 23 Sep 2026. Roll flips here, see check_orientation.py
     min_grasp_width_mm: 5.0  # a close ending below this held nothing. RG2 closes to about 0 on air. Keep it below the thinnest object or handle
+  verify:                 # after each pick or place, look again and compare the object with the TCP (17 Oct 2026)
+    enabled: true
+    tolerance_mm: 50.0    # a held object's centre is this close to the TCP. Covers the 12-34 mm ball-fit error and the centre sitting ~2 cm above the fingertips. Tighten after the reach test
+    settle_s: 0.3         # pause after the move before the capture, so the arm and a held object have stopped
   trace:
     dir: "logs/traces/"
   calibration:            # scripts/calibrate_ball.py, the per-session fit of T_base_cam. A ball in the gripper, no markers

@@ -70,11 +70,14 @@ class Harness:
     """
 
     def __init__(self, agent, architecture: str, ears, cfg: dict | None = None,
-                 out_dir: str | Path | None = None, n_trials: int = 20):
+                 out_dir: str | Path | None = None, n_trials: int = 20, operator=input):
         self.cfg = cfg or get_config()
         self.agent = agent
         # Anything with hear(prompt) -> Transcript; in practice SpeechToText.
         self.ears = ears
+        # How the operator's typed answers are read: input() at the bench, a
+        # script in tests.
+        self.operator = operator
         self.architecture = architecture
         self.n_trials = n_trials
         base = Path(out_dir) if out_dir else resolve("data/evaluation")
@@ -82,11 +85,14 @@ class Harness:
         self.out_dir = base
         self.records: list[TrialRecord] = []
 
-    def run_tier(self, tier: Tier, layouts: list[Layout] | None = None,
-                 interactive: bool = True) -> list[TrialRecord]:
+    def run_tier(self, tier: Tier, layouts: list[Layout] | None = None) -> list[TrialRecord]:
         """
         It takes a tier and gives you its trial records, prompting you between
         trials to reset the cell and score the outcome.
+
+        Success is ALWAYS the operator's verdict. There is no automatic scoring:
+        an agent's `ok` means only that it stopped, and 13 Oct 2026 showed A
+        saying "picked up" with the orange still on the table.
 
         Writes each record to disk immediately. A crash at trial 18 must not cost
         the 17 trials already run, because re-running them is lab time.
@@ -94,6 +100,7 @@ class Harness:
         task = TASKS[tier]
         layouts = layouts or build_layouts(tier, self.n_trials)
         path = self.out_dir / f"{self.architecture}_tier{int(tier)}.csv"
+        steps_path = self.out_dir / f"{self.architecture}_tier{int(tier)}_steps.csv"
         records: list[TrialRecord] = []
 
         print(f"\n{'=' * 72}")
@@ -106,7 +113,7 @@ class Harness:
         for layout in layouts[:self.n_trials]:
             print(f"\n--- trial {layout.index + 1}/{self.n_trials} ---")
             print(layout.describe())
-            if interactive and input("  set up, then Enter (or 's' to skip) > ").strip().lower() == "s":
+            if self.operator("  set up, then Enter (or 's' to skip) > ").strip().lower() == "s":
                 continue
 
             # layout.describe() above already printed the line to say.
@@ -120,7 +127,9 @@ class Harness:
             # architecture's time alone. ASR latency is in the speech log.
             t0 = time.perf_counter()
             outcome = self.agent.run(heard.text)
-            duration = time.perf_counter() - t0
+            # An agent that stops for the operator's per-step verdicts reports
+            # the wait, which is the operator's time, not the architecture's.
+            duration = time.perf_counter() - t0 - float(getattr(outcome, "operator_s", 0.0))
 
             rec = TrialRecord(
                 architecture=self.architecture,
@@ -136,41 +145,67 @@ class Harness:
                 run_id=getattr(outcome, "run_id", ""),
             )
 
-            if interactive:
-                print(f"  system reported: {'ok' if getattr(outcome, 'ok', False) else 'failed'}"
-                      f" ({getattr(outcome, 'summary', '')})")
-                rec.success = input("  SUCCESS by the criterion above? [y/N] > ").strip().lower() == "y"
-                if tier is Tier.AMBIGUITY:
-                    rec.chosen_object = input("  which object did it act on? > ").strip()
-                iv = input("  interventions (Enter for 0) > ").strip()
-                rec.interventions = int(iv) if iv.isdigit() else 0
-                rec.notes = input("  notes (optional) > ").strip()
-            else:
-                rec.success = bool(getattr(outcome, "ok", False))
+            # Nothing the agent concluded is printed before this question, so the
+            # verdict is independent of the system it judges.
+            rec.success = self.operator("  SUCCESS by the criterion above? [y/N] > ").strip().lower() == "y"
+            print(f"  the agent said: {getattr(outcome, 'summary', '')}")
+            if tier is Tier.AMBIGUITY:
+                rec.chosen_object = self.operator("  which object did it act on? > ").strip()
+            iv = self.operator("  interventions (Enter for 0) > ").strip()
+            rec.interventions = int(iv) if iv.isdigit() else 0
+            rec.notes = self.operator("  notes (optional) > ").strip()
 
             records.append(rec)
             self.records.append(rec)
             _append_csv(path, rec)
+            # Per-step verdicts, when the agent has steps and the operator judged
+            # them. Read through getattr like every other outcome field, so an
+            # agent without steps (B) writes nothing and needs no special case.
+            for step in getattr(outcome, "judged", []):
+                _append_row(steps_path, {"trial": rec.trial, "run_id": rec.run_id,
+                                         "step": step["step"], "tool": step["tool"],
+                                         "a_ok": step["a_ok"],
+                                         "operator_ok": step["operator_ok"]})
 
         print(f"\n  wrote {len(records)} records -> {path}")
         return records
 
 
+def judge_step(step: str, operator=input) -> bool:
+    """
+    It takes the description of one executed step and gives you the operator's
+    y/n on whether it worked, asking again until the answer is one of the two.
+
+    Passed to an agent as its `judge` by the scripts. The prompt shows the step
+    only, never what the agent concluded about it.
+    """
+    while True:
+        a = operator(f"  {step}\n    did it work? [y/n] > ").strip().lower()
+        if a in ("y", "n"):
+            return a == "y"
+
+
 def _append_csv(path: Path, rec: TrialRecord) -> None:
     """It takes a record and gives you it appended, writing a header if the file is new."""
+    _append_row(path, asdict(rec))
+
+
+def _append_row(path: Path, row: dict) -> None:
+    """It takes a row and gives you it appended, writing a header if the file is new."""
     new = not path.exists()
     with path.open("a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(asdict(rec)))
+        w = csv.DictWriter(f, fieldnames=list(row))
         if new:
             w.writeheader()
-        w.writerow(asdict(rec))
+        w.writerow(row)
 
 
 def load_records(out_dir: str | Path | None = None) -> list[dict]:
     """It takes the results directory and gives you every trial ever recorded."""
     base = Path(out_dir) if out_dir else resolve("data/evaluation")
     rows: list[dict] = []
-    for p in sorted(base.glob("*.csv")):
+    # The *_steps.csv files beside them are per-step verdicts, not trials.
+    for p in sorted(q for q in base.glob("*.csv") if not q.stem.endswith("_steps")):
         with p.open(newline="") as f:
             rows.extend(csv.DictReader(f))
     return rows

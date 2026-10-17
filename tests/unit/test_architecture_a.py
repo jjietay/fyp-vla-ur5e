@@ -426,11 +426,30 @@ def test_report_results_answers_steps_that_did_not_run_and_adds_the_scene(env):
                              [_say("done")]])
     planner.start("move it", [])
 
-    reply = planner.report_results([("a", "FAILED: no grasp")], scene=(["cup"], ["box"]))
+    cup = {"name": "cup", "confidence": 0.5, "xyz": [0.4, -0.3, 0.2]}
+    reply = planner.report_results([("a", "FAILED: no grasp")], scene=([cup], ["box"]))
 
     assert reply.is_done
     results = _results(planner)
     assert results["b"]["content"].startswith("SKIPPED")
-    assert "Scene now: ['cup']" in results["b"]["content"]
+    assert "Scene now" in results["b"]["content"]
+    assert '"cup"' in results["b"]["content"]
     assert "out of reach: ['box']" in results["b"]["content"]
     assert "Scene now" not in results["a"]["content"]
+
+
+def test_the_scene_after_a_step_carries_positions_so_a_failed_pick_shows(env):
+    """
+    13 Oct 2026: after a pick that lifted nothing, the scene said only "orange",
+    so the model could not tell "held" from "still on the table" and reported
+    success. With the position, an orange still at the table height, where it
+    was, is visible to the model.
+    """
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a")], [_say("done")]])
+    planner.start("pick it", [])
+    orange = {"name": "orange", "confidence": 0.7, "xyz": [0.6478, -0.1597, 0.1954]}
+
+    planner.report_results([("a", "OK: picked")], scene=([orange], []))
+
+    content = _results(planner)["a"]["content"]
+    assert "0.6478" in content and "-0.1597" in content and "0.1954" in content

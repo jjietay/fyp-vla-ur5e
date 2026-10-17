@@ -15,7 +15,9 @@ Every trial is spoken: the harness shows the utterance, you press Enter and say
 it, and the architecture gets the transcript. Clarifying questions are answered
 by voice as well. Only the operator's scoring (success, interventions, notes) is
 typed, because that is the experimenter recording a result, not input to the
-robot.
+robot. Architecture A also stops after each step (pick, place, ...) for a typed
+y/n on whether that step worked. A never sees the answer; it goes to the trace and
+to <architecture>_tier<n>_steps.csv beside the trial CSV.
 
 Moves a physical arm. Read the tier's success criterion before starting, because
 you are the one scoring it and consistency between trials is the whole point.
@@ -25,7 +27,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from fyp.evaluation.harness import Harness, export_summary, load_records, summarise
+from fyp.evaluation.harness import Harness, export_summary, judge_step, load_records, summarise
 from fyp.evaluation.suite import TASKS, Tier, build_layouts
 
 
@@ -86,7 +88,9 @@ def main() -> int:
                 # No queries passed: Architecture A derives its own detector
                 # vocabulary from the instruction, the same string Architecture B
                 # receives. Passing task.queries here would hand A the answer.
-                agent = ArchitectureA(camera, controller, ask=ears.answer)
+                # judge_step: the operator types y/n after each step. Recorded
+                # only, never given to A (see ArchitectureA).
+                agent = ArchitectureA(camera, controller, ask=ears.answer, judge=judge_step)
                 Harness(agent, "A", ears, n_trials=args.trials).run_tier(tier)
         finally:
             controller.close()

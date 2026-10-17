@@ -256,11 +256,26 @@ class Skills:
                 r.ok, r.message = False, str(e) + self._back_off(xyz, r, speed)
                 return r
             self._move(path[2], r, speed=speed)
+            # The width above was read BEFORE the lift. 13 Oct 2026: five picks
+            # closed on the orange, reported a hold and lifted nothing. Python
+            # cannot read the fingers between calls, so close again: on an object
+            # they stay put, on air they travel all the way in.
+            after = self._gripper(GRIPPER_CLOSED)
+            try:
+                after = float(after)
+            except (TypeError, ValueError):
+                raise SkillError(f"gripper returned no width after the lift ({after!r}), "
+                                 "so the hold cannot be confirmed") from None
+            if after < self.min_grasp_width_mm:
+                r.ok = False
+                r.message = (f"dropped during the lift: fingers held {width:.0f} mm at the "
+                             f"grasp, then closed to {after:.1f} mm after it")
+                return r
         except (SkillError, SafetyViolation) as e:
             r.ok, r.message = False, str(e)
             return r
 
-        r.message = f"picked at {np.round(grasp, 3).tolist()}, holding {width:.0f} mm"
+        r.message = f"picked at {np.round(grasp, 3).tolist()}, holding {after:.0f} mm"
         return r
 
     def place(self, xyz, approach_height: float | None = None,

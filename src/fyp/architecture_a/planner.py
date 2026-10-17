@@ -299,7 +299,7 @@ class Planner:
         return self._turn()
 
     def report_results(self, results: list[tuple[str, str]],
-                       scene: tuple[list[str], list[str]] | None = None,
+                       scene: tuple[list[dict], list[str]] | None = None,
                        scene_error: str | None = None) -> PlannerReply:
         """
         It takes (tool_use_id, outcome text) pairs, optionally the scene as it is
@@ -313,7 +313,10 @@ class Planner:
         request is a 400. Steps the caller did not run (it stops at the first
         failure) get a result that says so rather than none at all.
 
-        `scene` is (object names on the table, names out of reach). It goes INTO
+        `scene` is (objects on the table as {name, confidence, xyz}, names out of
+        reach). Positions, not names: 13 Oct 2026, a pick lifted nothing, the
+        scene said only "orange", and the model could not tell "held" from
+        "still on the table where it was". It goes INTO
         the last result, not after it as a new one: a second result with the same
         id is refused outright (found on the first real run, 1 Oct 2026).
         `scene_error` says why the scene could not be read, since losing it
@@ -329,8 +332,8 @@ class Planner:
             if scene_error:
                 text += f"\nRe-perception failed: {scene_error}"
             else:
-                names, unreachable = scene
-                text += f"\nScene now: {names}"
+                objects, unreachable = scene
+                text += f"\nScene now:\n{json.dumps(objects, indent=2)}"
                 if unreachable:
                     text += f"\nSeen but out of reach: {unreachable}"
             results[-1] = (tid, text)

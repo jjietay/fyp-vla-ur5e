@@ -27,11 +27,22 @@ class FakeController:
 
     `held_mm` is the width a close stops at, which is what the real controller
     returns. 0 is a close on nothing; the default is something held.
+
+    `then_mm` is the width every LATER close stops at, for an object that
+    slipped out after the first close. None keeps `held_mm`.
+
+    `get_state()["tcp_pose"]` is the last pose it was sent to, and `holding` says
+    whether the last close stopped on something, so a fake camera can draw a held
+    object at the gripper.
     """
 
     def __init__(self, refuse_after: int | None = None, gripper_fails_on: int | None = None,
-                 joint_pos=None, held_mm=40.0):
+                 joint_pos=None, held_mm=40.0, then_mm=None):
         self.held_mm = held_mm
+        self.then_mm = held_mm if then_mm is None else then_mm
+        self._closes = 0
+        self.tcp_pose = [0.0] * 6
+        self.holding = False
         self.calls: list[tuple] = []
         self.joint_pos = [0.0] * 6 if joint_pos is None else [float(v) for v in joint_pos]
         self.refuse_after = refuse_after
@@ -43,6 +54,7 @@ class FakeController:
         self._moves += 1
         if self.refuse_after is not None and self._moves > self.refuse_after:
             return False
+        self.tcp_pose = [float(v) for v in pose]
         return True
 
     def move_joints(self, q, speed=None, acc=None):
@@ -53,11 +65,17 @@ class FakeController:
         self.calls.append(("gripper_toggle", state))
         if state == self.gripper_fails_on:
             raise GripperError("NO_RESPONSE, width 99.8 mm")
-        return 99.8 if state == GRIPPER_OPEN else self.held_mm
+        if state == GRIPPER_OPEN:
+            self.holding = False
+            return 99.8
+        self._closes += 1
+        width = self.held_mm if self._closes == 1 else self.then_mm
+        self.holding = isinstance(width, (int, float)) and width >= 5.0
+        return width
 
     def get_state(self):
         self.calls.append(("get_state",))
-        return {"joint_pos": list(self.joint_pos), "tcp_pose": [0.0] * 6,
+        return {"joint_pos": list(self.joint_pos), "tcp_pose": list(self.tcp_pose),
                 "gripper_state": GRIPPER_OPEN}
 
     @property

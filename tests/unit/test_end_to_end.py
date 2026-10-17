@@ -70,6 +70,51 @@ def _render(T, centre, table_z):
     return hit, depth.astype(np.float32)
 
 
+# Centre of a held orange above the TCP: the TCP is at the fingertips, and the
+# fingers close a little under the middle of the orange.
+HELD_ABOVE_TCP = 0.02
+
+
+class Scene:
+    """
+    It takes the camera, the table and where the orange starts, and gives you
+    where the orange is now.
+
+    `mode` is what the orange does when the fake gripper closes on it:
+    "follows" (it is held, and stays where it is released), "stays" (it never
+    leaves the table, as on 13 Oct 2026), "vanishes" (the camera stops seeing
+    it once it is held, as when the gripper hides it) or "sticks" (once held,
+    it stays at the gripper even after the fingers open).
+    """
+
+    def __init__(self, T, table_z, start):
+        self.T, self.table_z = T, table_z
+        self.resting = np.asarray(start, dtype=float)
+        self.controller = None
+        self.mode = "follows"
+        self._was_held = False
+        self.mask = None
+
+    def centre(self):
+        held = self.controller is not None and self.controller.holding
+        if self.mode == "stays":
+            return self.resting
+        if self.mode == "sticks" and (held or self._was_held):
+            self._was_held = True
+            return np.asarray(self.controller.tcp_pose[:3]) + [0.0, 0.0, HELD_ABOVE_TCP]
+        if held:
+            self._was_held = True
+            if self.mode == "vanishes":
+                return None
+            return np.asarray(self.controller.tcp_pose[:3]) + [0.0, 0.0, HELD_ABOVE_TCP]
+        if self._was_held:
+            # Released: it sits on the table under where the gripper let go.
+            x, y = self.controller.tcp_pose[:2]
+            self.resting = np.array([x, y, self.table_z + R_ORANGE])
+            self._was_held = False
+        return self.resting
+
+
 class FakeCamera:
     """It takes a rendered scene and gives you the same frame on every capture."""
 
@@ -81,6 +126,25 @@ class FakeCamera:
 
     def capture(self, depth_frames: int = 1) -> Frame:
         return self.frame
+
+
+class SceneCamera:
+    """It takes a scene and gives you a frame of it as it is at each capture."""
+
+    def __init__(self, scene):
+        self.scene = scene
+
+    def capture(self, depth_frames: int = 1) -> Frame:
+        c = self.scene.centre()
+        if c is None:
+            mask = np.zeros((INTR.height, INTR.width), bool)
+            _, depth = _render(self.scene.T, np.array([9.0, 9.0, 9.0]), self.scene.table_z)
+        else:
+            mask, depth = _render(self.scene.T, c, self.scene.table_z)
+        self.scene.mask = mask
+        rgb = np.full((INTR.height, INTR.width, 3), 200, np.uint8)
+        rgb[mask] = (255, 140, 0)
+        return Frame(rgb=rgb, depth=depth, intrinsics=INTR)
 
 
 # ------------------------------------------------------------- the other edges
@@ -176,28 +240,39 @@ def cell(tmp_path, monkeypatch):
     # Low in the reachable box, resting on the table.
     table_z = float(cfg["architecture_a"]["calibration"]["table_z"])
     centre = np.array([0.45, -0.35, table_z + R_ORANGE])
-    mask, depth = _render(T, centre, table_z)
-    vs, us = np.nonzero(mask)
-    box = [float(us.min()), float(vs.min()), float(us.max()), float(vs.max())]
+    scene = Scene(T, table_z, centre)
+
+    def detect(img, queries, model):
+        # OWLv2 boxes whatever orange the last frame showed, or nothing.
+        vs, us = np.nonzero(scene.mask)
+        if not len(us):
+            return []
+        return [(queries[0], 0.9, [float(us.min()), float(vs.min()),
+                                   float(us.max()), float(vs.max())])]
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr("fyp.architecture_a.perception.scene.detect",
-                        lambda img, queries, model: [(queries[0], 0.9, box)])
+    monkeypatch.setattr("fyp.architecture_a.perception.scene.detect", detect)
     monkeypatch.setattr("fyp.architecture_a.perception.segmenter.segment",
-                        lambda img, boxes, model: [(mask, 0.95) for _ in boxes])
+                        lambda img, boxes, model: [(scene.mask, 0.95) for _ in boxes])
+    # The settle pause before each check has nothing to wait for here.
+    monkeypatch.setattr("fyp.architecture_a.pipeline.time.sleep", lambda _s: None)
 
-    return SimpleNamespace(cfg=cfg, tmp=tmp_path, T=T, camera=FakeCamera(mask, depth),
-                           centre=centre)
+    return SimpleNamespace(cfg=cfg, tmp=tmp_path, T=T, camera=SceneCamera(scene),
+                           centre=centre, scene=scene)
 
 
-def _run_one_trial(cell, script, answer="the orange"):
+def _run_one_trial(cell, script, answer="the orange", controller_kw=None):
     llm = FakeLLM(script)
-    controller, ask = FakeController(), FakeAsk(answer)
+    controller, ask = FakeController(**(controller_kw or {})), FakeAsk(answer)
+    cell.scene.controller = controller
     agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=ask,
                           calibration=cell.T, planner_client=llm)
+    # The operator presses Enter at every prompt: success is the operator's to
+    # type, so these tests check what A did, never a typed verdict.
     harness = Harness(agent, "A", FakeEars(INSTRUCTION), cfg=cell.cfg,
-                      out_dir=cell.tmp / "evaluation", n_trials=1)
-    records = harness.run_tier(Tier(0), interactive=False)
+                      out_dir=cell.tmp / "evaluation", n_trials=1, operator=lambda _p: "")
+    records = harness.run_tier(Tier(0))
+    cell.last_llm = llm
     return records, controller, ask, llm
 
 
@@ -225,7 +300,7 @@ def test_a_spoken_instruction_reaches_the_arm_through_the_whole_chain(cell):
 
     assert len(records) == 1
     rec = records[0]
-    assert rec.success and rec.failed_stage is None, rec
+    assert rec.failed_stage is None, rec
     assert rec.transcript == INSTRUCTION
     assert rec.run_id and not rec.asked_question
 
@@ -253,7 +328,6 @@ def test_a_clarifying_question_is_asked_and_recorded(cell):
     assert ask.questions == ["Which orange do you mean?"]
     assert records[0].asked_question
     assert records[0].question_text == "Which orange do you mean?"
-    assert records[0].success
 
 
 def _too_far(cell):
@@ -267,7 +341,6 @@ def test_a_plan_outside_the_envelope_never_reaches_the_arm(cell):
     records, controller, _, _ = _run_one_trial(
         cell, [bad] * int(cell.cfg["architecture_a"]["planner"]["max_turns"]))
 
-    assert not records[0].success
     assert records[0].failed_stage == "planning"
     assert not [c for c in controller.calls if c[0] in ("move_to_pose", "move_joints")]
 
@@ -276,7 +349,7 @@ def test_a_rejected_plan_is_corrected_by_the_model_and_then_runs(cell):
     bad = lambda kw: [_tool("pick", {"xyz": _too_far(cell)}, len(kw["messages"]))]
     records, controller, _, llm = _run_one_trial(cell, [bad, pick_what_was_seen, finish])
 
-    assert records[0].success and records[0].failed_stage is None
+    assert records[0].failed_stage is None
     assert controller.poses, "the corrected pick never reached the controller"
     # The model was shown why its first call failed.
     # The request holds the live message list, so index it: [-1] is a later turn.
@@ -284,10 +357,132 @@ def test_a_rejected_plan_is_corrected_by_the_model_and_then_runs(cell):
     assert feedback["is_error"] and feedback["content"].startswith("REJECTED:")
 
 
+def _fed_back(llm) -> list[str]:
+    """It takes the client and gives you every tool_result text the planner got,
+    in order. The requests share one live message list, so read the last."""
+    return [r["content"] for m in llm.calls[-1]["messages"]
+            if m["role"] == "user" and isinstance(m["content"], list)
+            for r in m["content"] if r.get("type") == "tool_result"]
+
+
+def _scene_after(text):
+    """It takes a tool_result text and gives you the scene table in it."""
+    return json.loads(text.split("Scene now:\n", 1)[1].split("\nSeen but", 1)[0])
+
+
+def test_the_planner_sees_where_each_object_is_after_a_step(cell):
+    """Names alone hid a pick that lifted nothing (13 Oct 2026)."""
+    _, controller, _, llm = _run_one_trial(cell, [pick_what_was_seen, finish])
+
+    scene = _scene_after(_fed_back(llm)[0])
+    assert [o["name"] for o in scene] == ["orange"]
+    held = np.asarray(controller.tcp_pose[:3]) + [0.0, 0.0, HELD_ABOVE_TCP]
+    assert np.linalg.norm(np.asarray(scene[0]["xyz"]) - held) < 0.02
+
+
+# ------------------------------------------- the check after every motion
+
+def test_a_pick_that_left_the_object_on_the_table_is_a_failed_step(cell):
+    """
+    13 Oct 2026: the gripper closed on the orange, the width said "held", and
+    the orange never left the table. After the pick the camera finds it where it
+    was, not at the gripper, so the step fails and the planner is told why.
+    """
+    cell.scene.mode = "stays"
+    _run_one_trial(cell, [pick_what_was_seen, finish])
+
+    result = _fed_back(cell.last_llm)[0]
+    assert result.startswith("FAILED"), result
+    assert "not at the gripper" in result
+
+
+def test_a_pick_with_the_object_at_the_gripper_is_verified(cell):
+    _run_one_trial(cell, [pick_what_was_seen, finish])
+
+    result = _fed_back(cell.last_llm)[0]
+    assert result.startswith("OK") and "verified: orange is at the gripper" in result
+
+
+def test_an_object_the_camera_cannot_see_after_the_pick_is_unverified_not_failed(cell):
+    """The gripper can hide the orange; failing every hidden pick hides the good ones."""
+    cell.scene.mode = "vanishes"
+    _run_one_trial(cell, [pick_what_was_seen, finish])
+
+    result = _fed_back(cell.last_llm)[0]
+    assert result.startswith("OK") and "unverified: orange not seen" in result
+
+
+def place_in_front(kwargs):
+    xyz = [0.40, -0.30, float(get_config()["workspace"]["z"][0]) + 0.03]
+    return [_tool("place", {"xyz": xyz}, len(kwargs["messages"]))]
+
+
+def test_a_place_that_left_the_object_in_the_gripper_is_a_failed_step(cell):
+    cell.scene.mode = "sticks"
+    _run_one_trial(cell, [pick_what_was_seen, place_in_front, finish])
+
+    pick, place = _fed_back(cell.last_llm)[:2]
+    assert pick.startswith("OK")
+    assert place.startswith("FAILED"), place
+    assert "still at the gripper" in place
+
+
+def test_a_place_that_released_the_object_is_verified(cell):
+    _run_one_trial(cell, [pick_what_was_seen, place_in_front, finish])
+
+    place = _fed_back(cell.last_llm)[1]
+    assert place.startswith("OK") and "verified: orange released" in place
+
+
+# ------------------------------------------- the operator's verdict per step
+
+class FakeJudge:
+    """It takes the answers to give and gives you a `judge` callback that records
+    what it was asked."""
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.asked: list[str] = []
+
+    def __call__(self, step):
+        self.asked.append(step)
+        return self.answers.pop(0)
+
+
+def _agent(cell, script, judge):
+    controller = FakeController()
+    cell.scene.controller = controller
+    llm = FakeLLM(script)
+    agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=FakeAsk("yes"),
+                          calibration=cell.T, planner_client=llm, judge=judge)
+    return agent, llm
+
+
+def test_the_operator_judges_each_step_and_a_never_hears_the_answer(cell):
+    """
+    The operator's y/n is the ground truth for each step, beside A's own check.
+    It must not reach the planner: an operator who tells A "that pick failed" is
+    a perfect sensor Architecture B does not have.
+    """
+    judge = FakeJudge(False)
+    agent, llm = _agent(cell, [pick_what_was_seen, finish], judge)
+
+    outcome = agent.run(INSTRUCTION)
+
+    assert len(judge.asked) == 1 and judge.asked[0].startswith("pick")
+    assert [(j["tool"], j["a_ok"], j["operator_ok"]) for j in outcome.judged] == \
+        [("pick", True, False)]
+    fed = _fed_back(llm)
+    assert fed[0].startswith("OK"), "A's own result reached the planner unchanged"
+    assert not any("operator" in t.lower() for t in fed)
+
+
 # --------------------------------------------------------------- the contract
 
 def _architecture_a(cell):
-    return ArchitectureA(cell.camera, FakeController(), cfg=cell.cfg, ask=FakeAsk("yes"),
+    controller = FakeController()
+    cell.scene.controller = controller
+    return ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=FakeAsk("yes"),
                          calibration=cell.T,
                          planner_client=FakeLLM([pick_what_was_seen, finish]))
 

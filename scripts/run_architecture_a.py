@@ -75,6 +75,7 @@ def main() -> int:
     ears = _open_ears(args)
 
     from fyp.architecture_a.pipeline import ArchitectureA
+    from fyp.evaluation.harness import judge_step
     from fyp.shared.hardware.camera import RealSenseCamera
     from fyp.shared.hardware.ur5e_controller import URController
 
@@ -87,14 +88,18 @@ def main() -> int:
             # recogniser, so no step of a run reads the keyboard for user input.
             agent = ArchitectureA(camera, controller, args.queries,
                                   ask=ears.answer,
-                                  reperceive=not args.no_reperceive)
+                                  reperceive=not args.no_reperceive,
+                                  # Typed y/n after each step, recorded in the
+                                  # trace only. A never sees it.
+                                  judge=judge_step)
 
             for instruction in _spoken(ears):
                 scene = _save_scene(camera)
                 outcome = agent.run(instruction)
                 scene = _name_after_run(scene, outcome.run_id)
                 print(f"\n{'=' * 70}")
-                print(f"  {'SUCCESS' if outcome.ok else 'FAILED'}: {outcome.summary}")
+                # A's own word, not a verdict: ok means only that the planner stopped.
+                print(f"  A {'REPORTED DONE' if outcome.ok else 'REPORTED FAILURE'}: {outcome.summary}")
                 if outcome.failed_stage:
                     print(f"  failed at stage: {outcome.failed_stage}")
                 if outcome.queries:

@@ -113,9 +113,10 @@ def test_pick_opens_then_descends_then_closes(skills, ctrl):
     """
     assert skills.pick(TARGET).ok
     assert ctrl.sequence == ["gripper_toggle", "move_to_pose", "move_to_pose",
-                             "gripper_toggle", "move_to_pose"]
+                             "gripper_toggle", "move_to_pose", "gripper_toggle"]
     grips = [c[1] for c in ctrl.calls if c[0] == "gripper_toggle"]
-    assert grips == [GRIPPER_OPEN, GRIPPER_CLOSED]
+    # The last close is the check after the lift, not a second grasp.
+    assert grips == [GRIPPER_OPEN, GRIPPER_CLOSED, GRIPPER_CLOSED]
 
 
 def test_pick_approaches_from_directly_above(skills, ctrl):
@@ -440,6 +441,22 @@ def test_a_missed_grasp_opens_and_backs_off_above_the_target():
     assert grippers[-1] == GRIPPER_OPEN
     assert ctrl.sequence[-1] == "move_to_pose"
     assert ctrl.poses[-1][2] > TARGET[2]
+
+
+def test_an_object_that_slips_out_during_the_lift_is_a_failed_pick():
+    """
+    13 Oct 2026: five picks closed on the orange (61 to 77 mm), reported a hold,
+    and lifted nothing, because the width was read once, before the lift. A
+    second close after the retreat travels all the way in when the fingers are
+    empty, which is the only sign of the drop Python can get.
+    """
+    ctrl = FakeController(held_mm=65.0, then_mm=0.0)
+    result = Skills(ctrl, cfg=CFG).pick(TARGET)
+    assert not result.ok
+    assert "dropped" in result.message
+    grips = [c[1] for c in ctrl.calls if c[0] == "gripper_toggle"]
+    assert grips == [GRIPPER_OPEN, GRIPPER_CLOSED, GRIPPER_CLOSED]
+    assert ctrl.sequence[-1] == "gripper_toggle", "the check comes after the lift"
 
 
 def test_the_threshold_is_the_configured_one():

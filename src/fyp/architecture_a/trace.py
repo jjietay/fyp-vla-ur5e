@@ -95,6 +95,18 @@ class Trace:
                      "message": event.message, "duration_s": event.duration_s,
                      **({"data": event.data} if event.data else {})})
 
+    def verdict(self, step: str, a_ok: bool, operator_ok: bool, wait_s: float) -> None:
+        """
+        It takes one step's two verdicts, A's and the operator's, and gives you
+        them written to disk.
+
+        Its own record type, not an event: the operator is not a stage of A, so a
+        "no" must never become A's failed stage, and the wait for a typed answer
+        must never count as A's time.
+        """
+        self._write({"type": "verdict", "step": step, "a_ok": a_ok,
+                     "operator_ok": operator_ok, "wait_s": round(wait_s, 3)})
+
     @contextmanager
     def stage(self, stage: Stage, message: str = ""):
         """
