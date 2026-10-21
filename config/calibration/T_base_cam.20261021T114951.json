@@ -1,0 +1,56 @@
+{
+  "T_base_cam": [
+    [
+      -0.9932231142454183,
+      0.015994628329098298,
+      -0.11511740612629623,
+      0.635572571428771
+    ],
+    [
+      0.0918345420642123,
+      0.7150779083800254,
+      -0.6929862926715833,
+      0.10926390454609188
+    ],
+    [
+      0.07123385580248409,
+      -0.6988617580118851,
+      -0.7117007664573983,
+      0.7083622249198012
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "meta": {
+    "written_at": "2026-10-21T11:46:25",
+    "method": "ball fit, scripts/calibrate_ball.py",
+    "note": "",
+    "n_points": 39,
+    "dropped_outliers": 1,
+    "fit_rms_mm": 7.2735641076888164,
+    "fit_max_mm": 16.177296444029544,
+    "ball_query": "orange",
+    "ball_radius_m": 0.03425,
+    "ball_offset_tool_m": [
+      0.0,
+      0.0,
+      -0.027
+    ],
+    "from_file": "T_base_cam.20261021T104229.json",
+    "validated": false,
+    "levelled_to_table": {
+      "written_at": "2026-10-21T11:49:51",
+      "table_z": 0.176,
+      "offset_before_mm": -16.8,
+      "tilt_before_deg": 2.089,
+      "flatness_after_mm": 3.2,
+      "n_points": 9224,
+      "note": "",
+      "from_file": "T_base_cam.20261021T114802.json"
+    }
+  }
+}
