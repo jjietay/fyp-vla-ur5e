@@ -119,7 +119,7 @@ class Perception:
             lifted = self._lift_to_floor(objects)
             if lifted:
                 ev.data["lifted_to_floor"] = lifted
-            in_reach = [o for o in objects if self.envelope.contains(o["xyz"])]
+            in_reach = [o for o in objects if self._reachable(o["xyz"])]
             # Out-of-reach objects are kept by NAME, with the reason and without a
             # position, so the planner can say "the box is too far" instead of "I
             # do not see a box". 13 Oct 2026: twice a box found by OWLv2 was
@@ -184,6 +184,20 @@ class Perception:
                 lifted.append({"name": o["name"], "from_z": o["xyz"][2]})
                 o["xyz"] = [o["xyz"][0], o["xyz"][1], round(floor, 4)]
         return lifted
+
+    def _reachable(self, xyz) -> bool:
+        """
+        It takes a seen object's base-frame point and gives you whether the arm
+        can work with it: inside the horizontal sector and not under the floor.
+
+        The z ceiling is left out on purpose. It bounds poses the arm is SENT to,
+        and a seen object is not one: an orange held in the gripper after a pick
+        reads above it (21 Oct 2026, z 0.383 against 0.380), and refusing it made
+        the next instruction fail before the planner was asked. Every pose a skill
+        commands still goes through the full envelope, ceiling included.
+        """
+        x, y, z = (float(v) for v in xyz)
+        return self.envelope.contains([x, y, min(z, self.envelope.z[1])])
 
     def _why_out(self, xyz) -> str:
         """It takes a base-frame point and gives you the envelope's reason for refusing it."""
