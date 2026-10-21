@@ -149,7 +149,9 @@ def test_the_same_orientation_written_the_other_way_does_not_move_with_movel(at_
     c = at_down
     pose0 = np.asarray(c.get_state()["tcp_pose"], dtype=float)
     flipped = other_sign(pose0[3:])
-    assert angle_deg(rotvec_to_R(flipped), rotvec_to_R(pose0[3:])) < 1e-6
+    # arccos cannot resolve angles near zero below about 1e-6 deg, so a tighter
+    # bound fails on float noise alone (21 Oct 2026, 1.2e-6 deg).
+    assert angle_deg(rotvec_to_R(flipped), rotvec_to_R(pose0[3:])) < 1e-4
     q0 = joints_deg(c)
 
     assert c.move_to_pose([*pose0[:3], *flipped]) is not False

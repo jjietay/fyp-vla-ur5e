@@ -466,3 +466,8 @@ class URController:
         # The fingers are left where they are. Opening here would drop whatever
         # the arm is holding.
         self.rtde_c.stopScript()
+        # Disconnect explicitly. A failed pytest test keeps its traceback, and so
+        # this object, alive; without this the RTDE input registers stay taken and
+        # every later connection fails with "input registers already in use".
+        self.rtde_c.disconnect()
+        self.rtde_r.disconnect()
