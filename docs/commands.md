@@ -99,15 +99,22 @@ Read-only steps first, motion after, calibration last, because each step fails i
 looks like the next one's problem. Pendant in Remote Control mode, speed slider low, someone at
 the e-stop. Read every pose from RTDE, never from the pendant.
 
+**Never press Ctrl-Z on a script that talks to the arm.** It suspends the process, which keeps
+its RTDE connection, and every later script fails with "RTDE input registers are already in
+use" (three times on 21 Oct 2026). End a script with `q`, Enter or one Ctrl-C. To find a
+leftover: `pgrep -af "scripts/"`. At the bench, verify code with `uv run pytest tests/unit`
+only: `pytest tests` runs the hardware tests the moment the arm answers.
+
 (1) Laptop on the arm's subnet, then check the arm answers
 
 ```bash
-sudo ip addr add 10.149.230.50/24 dev <ETH_NAME>
+sudo ip addr add 10.149.230.50/24 dev enp129s0   # the Legion's Ethernet port
 nc -zv 10.149.230.1 30004                # RTDE port
 ```
 
 (2) Home. It shows the move and asks first, and refuses any joint that must turn more than 30
-degrees, so jog closer on the pendant first
+degrees, so jog closer on the pendant first. `--max-deg 35` passes a joint that is just over;
+never raise it far, it is what stops a full wrist spin
 
 ```bash
 uv run python scripts/go_home.py
@@ -121,8 +128,11 @@ uv run pytest tests/hardware -v
 uv run python scripts/check_gripper.py --cycles 20
 ```
 
-(4) Camera opposite the arm, centred, 0.7 to 0.8 m above the table, USB 3 cable, tripod feet on
-the tape marks. Good is USB **3.2**, coverage above 50 percent, centre pixel at **positive** z.
+(4) Camera on the robot's left, beside the work area (not beside the base, where the arm blocks
+the view), about 0.75 m from it and 45 to 60 degrees down; the centre pixel should read under
+0.9 m. Aim it with `realsense-viewer` (close it before any script). Tripod feet on the tape
+marks, USB 3 cable. It stands inside the reach radius: `workspace.angle_deg` is what keeps the
+arm off it, so check that edge again after moving it (ADR 0011). Good is USB **3.2**, coverage above 50 percent, centre pixel at **positive** z.
 Negative z means the OpenGL convention is back in `pixel_to_3d.py` (ADR 0009): stop and fix it
 
 ```bash
@@ -140,13 +150,16 @@ uv run python scripts/level_to_table.py --dry-run
 uv run python scripts/level_to_table.py          # removes the height and tilt the ball fit cannot see
 ```
 
-(6) Reach test, **only the first time, or after changing the ball or how it is placed**. The fit's
-RMS cannot see a wrong `calibration.ball_offset_tool_m`. Click an object, measure the miss with a
-rule and type it in. A consistent offset means the ball offset is wrong by that amount
+(6) Reach test, **after every fit**. The fit's RMS cannot see a bias common to all its poses
+(ADR 0007). Draw thin pen crosses on the table inside the sector; thick ink leaves a hole in the
+depth. Start from home: the arm returns there between points so it does not hide the next
+cross. Click a cross, then jog with `f`/`b` (out from the base, back) and `l`/`r` (round to the
+robot's left, right) until the point midway between the fingertips is over it, and press Enter
+on an empty line. The miss is read from RTDE. At least 3 points before it counts as validated
 
 ```bash
 uv run python scripts/check_calibration.py --dry-run
-uv run python scripts/check_calibration.py --points 5
+uv run python scripts/check_calibration.py --points 5 --hover 0.02 --jog
 ```
 
 Fallback if the ball fit will not run: measure the mount by hand, then run (6), expecting 1 to 3 cm
@@ -174,6 +187,13 @@ How a detection becomes a 3D point is `architecture_a.perception.localiser` in c
 (no object depth at all; best for compact things resting on the table). Compare them with
 `place_and_look.py --dry-run`, one config change per run. SAM (`facebook/sam-vit-base`, ~375 MB)
 downloads on first use.
+
+`ANTHROPIC_API_KEY` lives in `.env` (gitignored), and nothing loads it for you. Once per
+terminal, before running A:
+
+```bash
+set -a; source .env; set +a
+```
 
 Speech is the only input (13 Oct 2026). Press Enter, say the instruction, press Enter. If the
 planner asks a clarifying question, answer it the same way. `--text` and `--instruction` were

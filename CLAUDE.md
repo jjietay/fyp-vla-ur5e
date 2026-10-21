@@ -45,6 +45,9 @@ PYTHONPATH=$PWD/src ~/lerobot/.venv/bin/python scripts/run_evaluation.py --archi
 
 Each of these has already cost time.
 
+- **"RTDE input registers are already in use" means another process holds the arm.** Usually a
+  script suspended with Ctrl-Z. Find it with `pgrep -af "scripts/"` and end it; it is not a
+  fieldbus setting on the robot.
 - **A stale `.git/index.lock` blocks every git operation.** Zero bytes and more than a few
   minutes old means stale: delete it. Through a sandboxed file bridge, use
   `GIT_OPTIONAL_LOCKS=0 git status`, or the lock is left behind.
@@ -120,5 +123,6 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 ## Verify before claiming done
 
 There is no cloud CI. Run `uv run pytest tests` and expect green, with the hardware tests
-skipped. `tests/unit/test_imports.py` catches a stale `fyp.*` import after a move or rename,
+skipped. While the laptop is on the arm's network (`nc -zv 10.149.230.1 30004` succeeds), run
+`uv run pytest tests/unit` instead: `pytest tests` then runs the hardware tests and moves the arm. `tests/unit/test_imports.py` catches a stale `fyp.*` import after a move or rename,
 and any import across an architecture boundary.

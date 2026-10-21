@@ -196,11 +196,12 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 ### W3 · Calibration
 
 1. ~~First ball fit of `T_base_cam`~~ Done 13 Oct 2026 with `scripts/calibrate_ball.py`, per `docs/adr/0007-no-marker-ball-fit-each-session.md`. Five fits that day, fit RMS 11.4 to 16.3 mm, each followed by `level_to_table.py`. The fit in `T_base_cam.json` (14:49, 12 points, RMS 11.7 mm) was written after the last run, so no pick has used it. The fit residual is not the validation.
-2. **Validate.** `scripts/check_calibration.py` moves the TCP above where the transform says an object is, and the miss is measured with a rule. This reach test is the only number that says whether the transform works. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
+2. ~~**Validate.**~~ First done 21 Oct 2026 (see §10): the reach test found a 2 to 3 cm bias the fit RMS could not show, which explains the missed grasps of 1 and 13 Oct. Use `--hover 0.02 --jog`; a rule held under the fingers cannot resolve a few millimetres. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
+3. Refit with a matte ball the fingers do not hide, and drop the empirical `reach_correction`. Before T2.
 
 ### W4 · Architecture A on hardware
 
-1. **Get the first real grasp.** As of 17 Oct no run has picked up the orange (see §10). Find the cause stage by stage: the reach test (W3.2) first, then the grasp pose against the object, then the gripper.
+1. ~~**Get the first real grasp.**~~ Done 21 Oct 2026, with a full pick and place. The cause of the earlier misses was the calibration bias found by the reach test (W3.2).
 2. Run Tier 0 to the T2 threshold. This is what D2 reports.
 3. Close the loop: re-detect before each grasp instead of trusting the plan-time position. Required for Tier 3, not for Tier 0, so it waits for Semester 2. Document the failure modes you hit; they are results.
 
@@ -243,7 +244,7 @@ Nothing for B happens this semester. Every lab hour goes to A on Tier 0.
 
 | Week | Dates | Focus | Milestone |
 |------|-------|-------|-----------|
-| **W10** | 19–25 Oct | Reach test with `check_calibration.py` (W3.2). Find why no grasp succeeds (W4.1). SAM localisation and the ADR 0010 retry on the arm | **T1 — `T_base_cam` validated; first real pick** |
+| **W10** | 19–25 Oct | Reach test with `check_calibration.py` (W3.2). Find why no grasp succeeds (W4.1). SAM localisation and the ADR 0010 retry on the arm | **T1 — `T_base_cam` validated; first real pick** (reached 21 Oct) |
 | **W11** | 26 Oct–1 Nov | A picks and places reliably on Tier 0. 20-trial Tier 0 run through the harness, success judged at the bench | **T2 — A passes Tier 0** |
 | **W12** | 2–8 Nov | Write D2; record the D2 video of A | D2 draft to supervisor |
 | **W13** | 9–15 Nov | **Submit D2 interim + video, 10 Nov** | **D2 submitted** |
@@ -307,21 +308,18 @@ Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distincti
 
 ## 10 · Status and open actions
 
-### Status, 17 Oct 2026
+### Status, 21 Oct 2026
 
 This is the only status record in the repo. Update it here, not in `CLAUDE.md` or `README.md`.
 
-- **Runs on the real cell:** speech; `URController` motion (`go_home.py` within 0.012 degrees of `home_q`, `tests/hardware -k "not gripper"` 7 of 7 twice, 23 Sep); the RG2 gripper; the fixed camera and OWLv2 on real frames; Architecture A from speech to arm motion (1 Oct; 41 spoken runs on 13 Oct), but with no successful grasp; the ball fit of `T_base_cam` (13 Oct, fit RMS 11.7 mm, `validated: false`).
-- **Written, not yet run on hardware:** the lift check in `pick` (a second close after the retreat) and the camera check after each pick and place, with positions in the scene sent back to the planner; the operator's typed y/n after each step, recorded beside A's check and never given to A (`<arch>_tier<n>_steps.csv`); success scored only by the operator (all 17 Oct); SAM masks on the OWLv2 boxes (`mask_ray` localisation); the home-pose TCP height as the `z` cap; speech as the only input to A and to the evaluation trials (14 Oct); A's refactors of 16 Oct (planner owns the turn loop and sends rejected calls back to the model, ADR 0010; one `Perception` module; `CalibrationStore`); `test_orientation.py`; the evaluation harness; Architecture B's robot side. There is no Architecture B agent for the harness yet: `run_evaluation.py --architecture B` prints a message and exits.
-- **No run has picked up the orange** (JJ at the bench, 17 Oct). This is the current problem. It covers 1 Oct and 13 Oct. The traces disagree: planner summaries say "I picked up the orange", and the finger-width check recorded 5 of 20 grasps on 13 Oct as held. **Trace outcomes are not evidence of a pick.** Success in a recorded trial is judged at the bench.
-- **Session of 13 Oct (11:30–14:50), from the traces, speech logs and calibration files:**
-  - 41 runs, 3 with no end record. The cause of the missed grasps is not known. Calibration is the first suspect: it cannot be trusted until the reach test runs.
-  - The first fit put objects about 0.83 m out, beyond the 0.75 m limit, so the first 9 runs failed at the transform. A refit with the grid where the objects sit fixed it. A hand shift of (2.3, 10.3) mm at 13:18 was not checked.
-  - 12 poses refused by the height limits (5 below `z_min` 0.177 m, 7 above `z_max` 0.380 m, mostly places on the white box). Twice the planner repeated a rejected pose and gave up after 6 turns; ADR 0010 targets this.
-  - OWLv2 scored the white box 0.32–0.34 against a 0.3 threshold and often missed it; about 11 runs ended in a correct refusal. Whisper heard "red tray" as "red tree" 4 times.
-  - Once, the gripper stopped opening at 64.9 mm instead of 99.8 mm.
-- **Checks without the arm (16 Oct):** import and boundary tests, an end-to-end smoke test through the harness and A to a fake controller, an agent contract test, and a pre-commit hook that runs `tests/unit`. `pytest tests`: 309 passed, 21 skipped (17 Oct). Pyright from the integration-checks spec is not done.
-- **Not done:** a single real grasp; the reach-test validation of `T_base_cam` (W3.2); SAM localisation on hardware; re-detection before each grasp (W4.1); a 20-trial Tier 0 run of A (T2); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
+- **Runs on the real cell:** speech; `URController` motion and the RG2 gripper; the fixed camera, OWLv2 and SAM (`mask_ray`) on real frames; **Architecture A from speech to a full pick and place (21 Oct, first ever)**: two runs, the second correct end to end with the heavy red container; in the first the place was correct but the light pink container was knocked away by the drop, and A's camera check after the step reported it correctly as not done. The camera check after each pick and place ran on the arm. `test_orientation.py` passed on the arm (21 Oct).
+- **Calibration, 21 Oct:** the arm had been moved, so the envelope, the table height (now 0.176 m) and the camera were all redone. Camera moved to 0.74 m from the work area, about 45 deg down, beside it on the robot's left. Ball fit RMS 7.3 mm over 39 poses, then levelled (table offset -16.8 mm, tilt 2.1 deg). The reach test with keyboard jog (`check_calibration.py --jog`) then showed a common miss of 18 to 34 mm, mostly base +x, that the fit RMS could not see; the likely cause is the fingers hiding part of the orange in every fit pose. An **empirical** correction (yaw +3.3 deg and a shift, from 4 points) is in `T_base_cam.json` as the `reach_correction` step; 3 new points then needed no jog at the 2 mm step. Replace it with a fit on a matte ball before the 20-trial run.
+- **Envelope is now a ring sector** (ADR 0011): radius 0.40 to 0.70 m, bearing -80 to -25 deg, z 0.181 to 0.380 m. The -25 deg edge keeps the arm away from the camera, which stands inside the reach radius.
+- **Found and fixed on 21 Oct:** a held object reading above the z ceiling was refused as out of reach, so the instruction after a pick failed; a failed hardware test kept the RTDE registers taken (`close()` now disconnects); the reach test read keys typed during a move as answers.
+- **Written, not yet run on hardware:** the operator's y/n per step in the evaluation harness (`<arch>_tier<n>_steps.csv`); the 20-trial harness run itself; Architecture B's robot side. There is no Architecture B agent for the harness yet.
+- **Open on A:** OWLv2 scores "pink tray" below the 0.3 threshold and "pink container" at 0.317 on the same box, and `evaluation/suite.py` says "tray"; nothing sets the release height of a place, which decides whether a light container stays put; the gripper missed one open in 20 cycles of the hardware test (-1.9 mm, 21 Oct).
+- **Checks without the arm:** `tests/unit` 331 passed, 1 skipped, in both venvs (21 Oct). Pyright from the integration-checks spec is not done.
+- **Not done:** a 20-trial Tier 0 run of A (T2); re-detection before each grasp (W4.3); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
 
 ### Open actions
 
@@ -333,9 +331,10 @@ Closed actions are in git history.
 | **A7** | Agree the D5 demonstration date with the examiner. Arrange it months ahead, not in April 2027 | JJ | Jan 2027 |
 | **A16** | Tell Prof Cheah about the re-baseline: the comparison now finishes in Feb 2027, not Nov 2026; D2 reports A on Tier 0 only; no FYP work during Semester 1 exams | JJ | next update |
 | **A9** | Send Prof Cheah a short written progress update **every two weeks**. This was skipped through July. It is directly worth 8 marks | JJ | fortnightly |
-| **A10** | Set `ANTHROPIC_API_KEY`. Architecture A cannot run a single instruction without it | JJ | open |
+| **A10** | `ANTHROPIC_API_KEY` is in `.env` (gitignored) but nothing loads it: run `set -a; source .env; set +a` in each new terminal, see `docs/commands.md` | JJ | each session |
 | **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
-| **A14** | Ask Koji about moving the arm closer to the table and about the new layout. The arm base is about 40 cm from the useful table area. Measure `workspace.x` and `workspace.y` again only after the layout is fixed | JJ | next week |
+| **A17** | Decide the tray wording: OWLv2 misses "pink tray" and only just finds "pink container", and `evaluation/suite.py` is frozen. Options: a detector threshold for A, an object that scores well, or a dated `suite.py` CHANGELOG entry | JJ | before T2 |
+| **A18** | Fix the camera position for the rest of the semester: tape marks and a photo. The calibration is valid only for this position | JJ | next session |
 | **A15** | Confirm the 3D jog device that will drive the demonstrations, see `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` | JJ | before W5 |
 
 ---
