@@ -157,10 +157,7 @@ def _table_candidates(depth, intr, T, table_z: float, band: float, envelope,
     p_cam = np.stack([(u - intr.cx) * z / intr.fx, (v - intr.cy) * z / intr.fy, z], axis=1)
     p = p_cam @ T[:3, :3].T + T[:3, 3]
     x, y = p[:, 0], p[:, 1]
-    inside = ((envelope.x[0] <= x) & (x <= envelope.x[1])
-              & (envelope.y[0] <= y) & (y <= envelope.y[1])
-              & (np.hypot(x, y) <= envelope.max_radius)
-              & (np.abs(p[:, 2] - table_z) < band))
+    inside = envelope.contains_xy(x, y) & (np.abs(p[:, 2] - table_z) < band)
     return p[inside]
 
 

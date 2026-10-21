@@ -29,14 +29,21 @@ class WorkspaceEnvelope:
     It takes the workspace block from config and gives you a checker that accepts
     or rejects candidate poses.
 
-    Deliberately an axis-aligned box rather than anything cleverer. A box is easy
-    to measure with a tape, easy to explain in the report, and impossible to get
-    subtly wrong. The real UR5e already enforces its own joint and singularity
-    limits, so this only has to stop the obvious catastrophes: driving into the
-    table, reaching off the bench, or commanding a speed nobody intended.
+    Horizontally the limit is a ring sector around the base axis: between
+    `min_radius` and `max_radius`, and between the two bearings in `angle_deg`.
+    Vertically it is the `z` range. The arm's reach is round and the table sits
+    in an arc in front of it, so a sector follows both with three numbers a tape
+    measure gives you; a box either left half its area off the table or cut the
+    reach short (21 Oct 2026, after the arm was moved). The real UR5e enforces its
+    own joint and singularity limits, so this only has to stop the obvious
+    catastrophes: driving into the table, reaching off the bench, swinging into
+    the camera, or commanding a speed nobody intended.
 
-    One limit is added to the box: `max_radius`, the horizontal distance from the
-    base axis. A box has corners, and the arm's reach is round. On 23 Sep 2026 a
+    The `x` and `y` box stays as a loose backstop around the sector, so a typo in
+    one sector number is still caught. `min_radius` and `angle_deg` are optional;
+    without them the limit is the box and `max_radius` alone, as before.
+
+    Why `max_radius` exists at all: the horizontal distance from the base axis. A box has corners, and the arm's reach is round. On 23 Sep 2026 a
     target 0.81 m out was inside the box and still out of reach, because its
     approach and retreat poses could not be reached. The controller refuses such
     a pose itself, but only after the skill has started, so the arm stops half
@@ -52,17 +59,34 @@ class WorkspaceEnvelope:
         self.y = tuple(float(v) for v in ws["y"])
         self.z = tuple(float(v) for v in ws["z"])
         self.max_radius = float(ws["max_radius"])
+        self.min_radius = float(ws.get("min_radius", 0.0))
+        # The bearing of the POINT, atan2(y, x), not the base joint angle. They
+        # differ by a few degrees because the shoulder is offset from the base axis.
+        self.angle_deg = tuple(float(v) for v in ws.get("angle_deg", (-180.0, 180.0)))
         self.max_joint_step_deg = float(ws["max_joint_step_deg"])
         self.max_speed = float(ws["max_speed"])
         self.max_acc = float(ws["max_acc"])
 
+    def contains_xy(self, x, y):
+        """
+        It takes base-frame x and y, scalars or arrays, and gives you whether each
+        is inside the horizontal limit: the box and the ring sector.
+
+        Vectorised so a script filtering thousands of depth points uses exactly
+        the same test as a commanded pose.
+        """
+        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        r = np.hypot(x, y)
+        a = np.degrees(np.arctan2(y, x))
+        return ((self.x[0] <= x) & (x <= self.x[1])
+                & (self.y[0] <= y) & (y <= self.y[1])
+                & (self.min_radius <= r) & (r <= self.max_radius)
+                & (self.angle_deg[0] <= a) & (a <= self.angle_deg[1]))
+
     def contains(self, xyz) -> bool:
-        """It takes a base-frame point and gives you whether it is inside the box."""
+        """It takes a base-frame point and gives you whether it is inside the envelope."""
         x, y, z = (float(v) for v in np.asarray(xyz, dtype=float).reshape(3))
-        return (self.x[0] <= x <= self.x[1]
-                and self.y[0] <= y <= self.y[1]
-                and self.z[0] <= z <= self.z[1]
-                and float(np.hypot(x, y)) <= self.max_radius)
+        return bool(self.z[0] <= z <= self.z[1] and self.contains_xy(x, y))
 
     def check_point(self, xyz, what: str = "point") -> np.ndarray:
         """
@@ -92,6 +116,18 @@ class WorkspaceEnvelope:
             raise SafetyViolation(
                 f"{what} radius={radius:.3f} is above max {self.max_radius:.3f} "
                 f"(by {radius - self.max_radius:.3f} m)")
+        if radius < self.min_radius:
+            raise SafetyViolation(
+                f"{what} radius={radius:.3f} is below min {self.min_radius:.3f} "
+                f"(by {self.min_radius - radius:.3f} m)")
+        angle = float(np.degrees(np.arctan2(p[1], p[0])))
+        lo, hi = self.angle_deg
+        if angle < lo:
+            raise SafetyViolation(
+                f"{what} angle={angle:.1f} deg is below min {lo:.1f} (by {lo - angle:.1f} deg)")
+        if angle > hi:
+            raise SafetyViolation(
+                f"{what} angle={angle:.1f} deg is above max {hi:.1f} (by {angle - hi:.1f} deg)")
         return p
 
     def check_pose(self, pose, what: str = "pose") -> list[float]:
@@ -161,4 +197,5 @@ class WorkspaceEnvelope:
         return (f"x[{self.x[0]:.3f},{self.x[1]:.3f}] "
                 f"y[{self.y[0]:.3f},{self.y[1]:.3f}] "
                 f"z[{self.z[0]:.3f},{self.z[1]:.3f}] "
-                f"radius<={self.max_radius:.3f} metres, base frame")
+                f"radius[{self.min_radius:.3f},{self.max_radius:.3f}] "
+                f"angle[{self.angle_deg[0]:.0f},{self.angle_deg[1]:.0f}] deg, metres, base frame")

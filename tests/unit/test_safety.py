@@ -55,7 +55,9 @@ def test_the_limit_is_round_in_every_direction(env, angle):
 
 def test_the_radius_ignores_height(env):
     """Horizontal on purpose, so the same x and y pass at the bottom and the top of z."""
-    xy = [0.9 * R, 0.0]
+    # Inside the sector's bearings when it has them, so only the height varies.
+    a = np.radians(sum(W.get("angle_deg", (0.0, 0.0))) / 2)
+    xy = [0.9 * R * np.cos(a), 0.9 * R * np.sin(a)]
     env.check_point([*xy, W["z"][0]])
     env.check_point([*xy, W["z"][1]])
 
@@ -107,3 +109,56 @@ def test_the_same_wrist_angle_one_turn_away_is_refused(env):
 def test_a_malformed_joint_target_is_refused(env, bad):
     with pytest.raises(SafetyViolation):
         env.check_joint_move(Q0, bad)
+
+
+# The ring sector, added 21 Oct 2026. Built from a copy of the real config with
+# the sector set, so these tests still mean something if config.yaml drops it.
+SECTOR = {**W, "x": [-1.0, 1.0], "y": [-1.0, 1.0],
+          "min_radius": 0.40, "max_radius": 0.70, "angle_deg": [-85.0, 0.0]}
+
+
+@pytest.fixture
+def sector():
+    return WorkspaceEnvelope({**CFG, "workspace": SECTOR})
+
+
+def _at(r, deg):
+    return [r * np.cos(np.radians(deg)), r * np.sin(np.radians(deg)), Z]
+
+
+def test_a_point_inside_the_sector_passes(sector):
+    sector.check_point(_at(0.55, -40))
+    assert sector.contains(_at(0.55, -40))
+
+
+def test_a_point_nearer_than_min_radius_is_rejected(sector):
+    with pytest.raises(SafetyViolation, match="radius=0.350 is below min"):
+        sector.check_point(_at(0.35, -40))
+    assert not sector.contains(_at(0.35, -40))
+
+
+@pytest.mark.parametrize("deg, word", [(-88, "below"), (5, "above")])
+def test_a_point_past_either_bearing_is_rejected(sector, deg, word):
+    with pytest.raises(SafetyViolation, match=f"angle=.* is {word}"):
+        sector.check_point(_at(0.55, deg))
+    assert not sector.contains(_at(0.55, deg))
+
+
+def test_without_the_sector_keys_the_limit_is_the_box_and_radius_alone():
+    """Old configs carry neither key, and must behave exactly as before."""
+    plain = {k: v for k, v in SECTOR.items() if k not in ("min_radius", "angle_deg")}
+    env = WorkspaceEnvelope({**CFG, "workspace": plain})
+    env.check_point(_at(0.10, 170))
+
+
+def test_contains_xy_agrees_with_check_point_on_a_grid(sector):
+    """level_to_table filters depth points with contains_xy; it must be the same test."""
+    xs, ys = np.meshgrid(np.linspace(-0.8, 0.8, 41), np.linspace(-0.8, 0.8, 41))
+    mask = sector.contains_xy(xs, ys)
+    for x, y, inside in zip(xs.ravel(), ys.ravel(), mask.ravel()):
+        try:
+            sector.check_point([x, y, Z])
+            ok = True
+        except SafetyViolation:
+            ok = False
+        assert ok == bool(inside), (x, y)

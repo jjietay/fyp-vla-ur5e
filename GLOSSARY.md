@@ -48,11 +48,11 @@ The UR5e base coordinate frame. Every position in the project is in it.
 _Avoid_: world frame, table frame, robot frame
 
 **Envelope**:
-The box of base-frame poses the arm may go to. Every motion of either architecture is checked against it.
+The base-frame region the arm may go to: a ring sector around the base axis (radius and bearing) and a height range. Every motion of either architecture is checked against it.
 _Avoid_: workspace, safety box, limits
 
 **Out of reach**:
-A located object outside the envelope. The planner gets its name and the reason, never its position.
+A located object outside the envelope's sector or below its floor. The planner gets its name and the reason, never its position. The height ceiling is not applied, because a held object reads above it.
 _Avoid_: out of workspace, unreachable
 
 ## Architecture A
@@ -74,7 +74,7 @@ A located object's point as the camera and the calibration give it, before any r
 _Avoid_: unclamped point
 
 **Runtime point**:
-The point Architecture A acts on: the raw point after the floor lift, kept only if it is inside the envelope.
+The point Architecture A acts on: the raw point after the floor lift, kept only if it is not out of reach.
 _Avoid_: final point, corrected point
 
 **Floor lift**:

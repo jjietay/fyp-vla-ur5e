@@ -2,7 +2,7 @@
 # not here. Per-session bench steps are in docs/commands.md, "Each session at the bench".
 #
 # MEASURE BEFORE DRIVING THE ARM: robot.host, robot.gripper.*, workspace.x/y/z,
-# architecture_a.skills.down_rotvec, and robot.home_q which is absent.
+# architecture_a.skills.down_rotvec, robot.home_q, and calibration.table_z.
 
 robot:
   host: "10.149.230.1"       # NEW IP ADDRESS CONFIRMED
@@ -25,9 +25,16 @@ robot:
     gain: 300             # 100 to 2000. Higher chases harder and can oscillate
 
 workspace:                # base frame, not world. Every commanded pose is checked
-  x: [ 0.150, 0.823]      # RTDE 1 Oct 2026, bounding box of the 4 table corners. Table is ~41 deg to the base axes, so half this box is OFF the table
-  y: [-0.724, 0.030]      # corners (0.756,0.030) (0.824,-0.139) (0.415,-0.725) (0.149,-0.499). max_radius cuts the far arc
-  z: [ 0.177, 0.380]      # table 0.172 in base frame (fingertips ~1 mm above it, 23 Sep 2026) + 5 mm. Max 0.38 from 13 Oct 2026, paired with max_radius 0.70, see below
+  # 21 Oct 2026: the arm was moved away from the table, so the 1 Oct corners no
+  # longer apply. The horizontal limit is now the ring sector below; the box is a
+  # loose backstop drawn just around it. Table points read from RTDE that day:
+  # straight-arm arc r=0.867 at z 0.180, near edge ~0.40 m, table spans bearings
+  # about -87 deg (0.037,-0.664) to +17 deg (0.828,0.259).
+  x: [ 0.030, 0.710]      # backstop around the sector, not the limit
+  y: [-0.700, 0.030]      # backstop. +y is the camera side
+  z: [ 0.181, 0.380]      # calibration.table_z 0.176 (touched, 21 Oct 2026) + 5 mm. Max 0.38 from 13 Oct 2026, paired with max_radius 0.70, see below
+  min_radius: 0.40        # m, horizontal. Near table edge measured ~0.40 m from the base axis, 21 Oct 2026
+  angle_deg: [-80, -25]   # bearing of the point, atan2(y, x), base frame. 21 Oct 2026, camera moved to 0.74 m: at -12 deg (r 0.76) the wrist filled the camera frame, so the arm was close to hitting the tripod; -33 and -77 deg were in view. -25 checked by eye at (0.634, -0.296, 0.38): a very safe distance from the camera. -80 keeps off the far table edge (~-87)
   max_radius: 0.70        # m, horizontal distance from the base axis. 0.81 was out of reach on 23 Sep 2026. 13 Oct 2026: reach limit MEASURED 0.769 at TCP z 0.32 (elbow -28.4 deg, tool down) and it shrinks with height (~0.71 at 0.40), so 0.75 had no margin above z 0.35 and the 0.42 calibration pose protective-stopped. 0.70 with z max 0.38 keeps >= 2 cm of reach margin everywhere
   max_joint_step_deg: 30  # a joint move turning any joint more than this is refused. Stops a full wrist spin
   max_speed: 0.25         # m/s ceiling. Architecture B derives its per-step limit from this
@@ -88,7 +95,7 @@ architecture_a:
     resting_gap_mm: 25.0           # depth: lowest points this close to the table = resting on it (centre = half its top);
                                    # further up (a drawer handle) the centre is the middle of its own points
     min_mask_points: 30            # fewer valid depth points than this and the height comes from pixel size instead
-    min_object_height_mm: 10.0     # clamp on the estimated height; 10 keeps the centre at workspace.z min (table 0.172 + 5)
+    min_object_height_mm: 10.0     # clamp on the estimated height; 10 keeps the centre at workspace.z min (table_z + 5 mm)
     max_object_height_mm: 300.0
     depth_frames: 5                # A's depth = per-pixel median over this many frames, arm at rest (~0.17 s at 30 fps). Noise only, not bias
     duplicate_separation_mm: 20.0  # closer than this is one object seen twice
@@ -120,8 +127,8 @@ architecture_a:
     ball_query: "orange"  # OWLv2 noun phrase. Name the colour if the ball is plain, e.g. "orange ball"
     ball_radius_m: 0.03425  # MEASURE the ball once. 0.020 is a 40 mm table tennis ball. 13 Oct 2026: orange, 54 mm tall x 83 mm wide, so (h+w)/4 because it is not round
     ball_offset_tool_m: [0.0, 0.0, -0.027]  # 13 Oct 2026: orange held stem up, so minus HALF THE HEIGHT, not the radius. ball centre in the TOOL frame from the TCP. Tool z points out of the flange, so negative is back towards it. -radius = ball bottom flush with the fingertips (the TCP is at the tips). A wrong value shifts the whole fit and the residual CANNOT see it
-    grid_centre_xy: [0.52, -0.30]  # 13 Oct 2026 (2nd): widened to the whole reachable table, see grid_half_extent_m. 13 Oct 2026: moved to cover the object area in front of the camera (an orange at (0.39,-0.44) read 34 mm low outside the old grid). Was [0.536, -0.333], the mean of the 4 table corners. Far corner (0.57,-0.52) is past max_radius 0.70 and is dropped
-    grid_half_extent_m: 0.20  # 13 Oct 2026: was 0.12. Picks were missing objects OUTSIDE the old 24 cm patch (extrapolation); 0.20 with n=5 gives 34 poses, x 0.32-0.62, y -0.50 to -0.10, all in frame
+    grid_centre_xy: [0.33, -0.47]  # 21 Oct 2026: centred on the camera's new view (bearing -55, r 0.57), inside angle_deg. Before: 13 Oct 2026 (2nd): widened to the whole reachable table, see grid_half_extent_m. 13 Oct 2026: moved to cover the object area in front of the camera (an orange at (0.39,-0.44) read 34 mm low outside the old grid). Was [0.536, -0.333], the mean of the 4 table corners. Far corner (0.57,-0.52) is past max_radius 0.70 and is dropped
+    grid_half_extent_m: 0.15  # 21 Oct 2026: 0.15, the camera view is smaller at 0.74 m. Before: 13 Oct 2026: was 0.12. Picks were missing objects OUTSIDE the old 24 cm patch (extrapolation); 0.20 with n=5 gives 34 poses, x 0.32-0.62, y -0.50 to -0.10, all in frame
     grid_n: 5             # n x n positions per height. 4 from 13 Oct 2026 (was 3): 26 usable poses instead of 16, about 2.5 min
     z_levels: [0.19, 0.30]  # 13 Oct 2026: 0.19 so ball centres reach down to object height (~0.2) instead of extrapolating 5 cm below the grid; orange bottom ~18 mm above the table. Was [0.22, 0.30]. TCP heights. At least two, or the points are coplanar and the fit is refused. 13 Oct 2026: 0.42 hit a protective stop; JJ's rule, never above the home TCP z (0.302). 0.22 keeps the ball bottom ~5 cm above the table (0.172)
     speed: 0.10           # m/s, slow because the ball is held only by friction
@@ -130,7 +137,7 @@ architecture_a:
     max_rms_mm: 8.0       # a fit worse than this is written only if you confirm it
     # scripts/level_to_table.py, run AFTER the ball fit (13 Oct 2026). The table is the one surface
     # whose base-frame height is known, so it corrects the fit's height and tilt
-    table_z: 0.172        # table surface, base frame. Fingertips touched it on 23 Sep 2026 (workspace.z min is this + 5 mm)
+    table_z: 0.176        # table surface, base frame. Fingertips touched it at (0.633, -0.416) on 21 Oct 2026, after the arm was moved; was 0.172 from 23 Sep 2026 (workspace.z min is this + 5 mm)
     level_frames: 15      # depth frames combined per pixel (median), so single-frame jitter (24 mm seen at 1.24 m) averages out
     level_band_m: 0.08    # only points within this of table_z under the CURRENT transform are considered table
     level_max_tilt_deg: 5.0    # a larger correction means something else is wrong; refused without --force

@@ -35,11 +35,13 @@ from fakes import FakeController
 CFG = get_config()
 W = CFG["workspace"]
 
-# Derived, so editing config.yaml moves the target with it. Low in the box, so
-# that adding retreat_height still leaves it inside.
-TARGET = [(W["x"][0] + W["x"][1]) / 2,
-          (W["y"][0] + W["y"][1]) / 2,
-          W["z"][0] + 0.05]
+# Derived, so editing config.yaml moves the target with it. At the middle of
+# the ring sector, not of the box: the box is only a backstop now, and its centre
+# sits near min_radius, where a 0.2 m drawer pull crosses it. Low, so that adding
+# retreat_height still leaves it inside.
+_R = (float(W.get("min_radius", 0.0)) + float(W["max_radius"])) / 2
+_A = np.radians(sum(W.get("angle_deg", (-90.0, 0.0))) / 2)
+TARGET = [_R * float(np.cos(_A)), _R * float(np.sin(_A)), W["z"][0] + 0.05]
 
 
 @pytest.fixture(autouse=True)
