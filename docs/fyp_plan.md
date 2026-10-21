@@ -334,7 +334,6 @@ Closed actions are in git history.
 | **A10** | `ANTHROPIC_API_KEY` is in `.env` (gitignored) but nothing loads it: run `set -a; source .env; set +a` in each new terminal, see `docs/commands.md` | JJ | each session |
 | **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
 | **A17** | Decide the tray wording: OWLv2 misses "pink tray" and only just finds "pink container", and `evaluation/suite.py` is frozen. Options: a detector threshold for A, an object that scores well, or a dated `suite.py` CHANGELOG entry | JJ | before T2 |
-| **A18** | Fix the camera position for the rest of the semester: tape marks and a photo. The calibration is valid only for this position | JJ | next session |
 | **A15** | Confirm the 3D jog device that will drive the demonstrations, see `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` | JJ | before W5 |
 
 ---

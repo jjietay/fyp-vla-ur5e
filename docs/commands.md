@@ -132,7 +132,9 @@ uv run python scripts/check_gripper.py --cycles 20
 the view), about 0.75 m from it and 45 to 60 degrees down; the centre pixel should read under
 0.9 m. Aim it with `realsense-viewer` (close it before any script). Tripod feet on the tape
 marks, USB 3 cable. It stands inside the reach radius: `workspace.angle_deg` is what keeps the
-arm off it, so check that edge again after moving it (ADR 0011). Good is USB **3.2**, coverage above 50 percent, centre pixel at **positive** z.
+arm off it, so check that edge again after moving it (ADR 0011). Since 21 Oct 2026 the tripod
+stays fixed on its tape marks; each session, `check_camera.py` must read the centre pixel at
+about 0.738 m. If it does not, the camera was bumped: fit again from (5). Good is USB **3.2**, coverage above 50 percent, centre pixel at **positive** z.
 Negative z means the OpenGL convention is back in `pixel_to_3d.py` (ADR 0009): stop and fix it
 
 ```bash
