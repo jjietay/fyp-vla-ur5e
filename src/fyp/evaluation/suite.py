@@ -72,23 +72,23 @@ TASKS: dict[Tier, Task] = {
     Tier.PICK_PLACE: Task(
         tier=Tier.PICK_PLACE,
         name="pick and place",
-        objects=("orange", "box"),
+        objects=("orange", "red container"),
         train_utterances=(
-            "place that orange into that box",
-            "put the orange in the box",
-            "pick up the orange and drop it in the box",
-            "move the orange to the box",
-            "the orange goes in the box",
+            "place that orange into that red container",
+            "put the orange in the red container",
+            "pick up the orange and drop it in the red container",
+            "move the orange to the red container",
+            "the orange goes in the red container",
         ),
         heldout_utterances=(
-            "could you pop that fruit into the box",
-            "I need the orange moved into the box please",
-            "stick the orange one in the box",
+            "could you pop that fruit into the red container",
+            "I need the orange moved into the red container please",
+            "stick the orange one in the red container",
         ),
         success_criterion=(
-            "The orange is fully inside the box, the gripper is clear of "
-            "the box, and the arm has returned above the workspace. Orange resting "
-            "on the box rim counts as a failure."
+            "The orange is fully inside the red container, the gripper is clear of "
+            "the red container, and the arm has returned above the workspace. Orange resting "
+            "on the red container rim counts as a failure."
         ),
         notes="Verification only. Not a headline result. Deictic phrasing is deliberate.",
     ),
@@ -262,4 +262,8 @@ CHANGELOG: list[str] = [
     "the same reason, no red cube in hand. Held-out phrasings keep their roles: 'red "
     "block' became 'fruit' (a synonym the training set never uses) and 'the red one' "
     "became 'the orange one' (a colour reference). Same layouts. Same caveat: temporary.",
+    "2026-10-26  Tier 0 destination changed from 'box' to 'red container' in the objects, "
+    "every utterance and the success criterion, because a red container is easier to "
+    "work with in the cell than the box. Same layouts, same seed, same object count. "
+    "Same caveat as 13 Oct: temporary, and say so in the report.",
 ]
