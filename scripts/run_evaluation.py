@@ -85,9 +85,8 @@ def main() -> int:
         controller.gripper_start()
         try:
             with RealSenseCamera() as camera:
-                # No queries passed: Architecture A derives its own detector
-                # vocabulary from the instruction, the same string Architecture B
-                # receives. Passing task.queries here would hand A the answer.
+                # A gets only the instruction, the same string Architecture B
+                # receives, and chooses its own detector words in perceive.
                 # judge_step: the operator types y/n after each step. Recorded
                 # only, never given to A (see ArchitectureA).
                 agent = ArchitectureA(camera, controller, ask=ears.answer, judge=judge_step)

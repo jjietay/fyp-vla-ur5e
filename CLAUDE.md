@@ -20,8 +20,6 @@ Only what you need to not break things. Each fact has one home:
   report.
 - **The harness never imports `architecture_a` or `architecture_b`.** It talks to an agent
   through `run(instruction) -> outcome`. A test enforces this.
-- **Never pass `queries=` to `ArchitectureA` for a recorded trial.** It skips grounding and hands
-  A a list of what is on the table that B never receives. Debugging aid only.
 - **`simulation/`** is a gitignored archive and not part of this project. Never read it, raise
   it, or spend a tool call on it.
 
@@ -64,8 +62,8 @@ Each of these has already cost time.
 - **faster-whisper on the RTX 50-series** needs `compute_type="float16"`; int8 crashes (ADR 0003).
 - **`detect()` loads OWLv2 once per process** (`_load` in `detector.py`). Never move loading back
   into `detect()`: it cost 10.7 s per detection, all counted as A's latency.
-- **OWLv2 takes short noun phrases, never sentences** (ADR 0004). This is why
-  `planner.py::extract_queries` exists.
+- **OWLv2 takes short noun phrases, never sentences** (ADR 0004). This is why the `perceive`
+  tool description in `tools.py` carries the query rules (ADR 0012).
 - **`open_drawer(pull_axis=...)` is still a placeholder** and WILL misbehave on hardware.
 - **The RG2 gripper is driven by URScript via `sendCustomScriptFunction`.** Pendant in Remote
   Control mode. Each call ends any open servo stream and blocks until the fingers stop (about

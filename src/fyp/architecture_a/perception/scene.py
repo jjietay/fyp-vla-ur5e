@@ -77,7 +77,7 @@ class Perception:
         self.max_below_floor = float(a["perception"]["max_below_floor_mm"]) / 1000.0
 
     def see(self, frame, queries: list[str], trace: Trace | None = None, *,
-            strict: bool = True) -> Seen:
+            strict: bool = True, per_query: int = 1) -> Seen:
         """
         It takes a frame, the detector vocabulary and optionally the run's trace,
         and gives you a `Seen`.
@@ -87,8 +87,10 @@ class Perception:
         the trace blames that stage. The calibration scripts pass `strict=False`
         and read empty lists instead, because for them "not seen" is a skipped
         sample and an out-of-reach point is still a measurement.
+
+        `per_query` is how many boxes each query may keep (see `detect`).
         """
-        kept = self.detect(frame, queries, trace, strict=strict)
+        kept = self.detect(frame, queries, trace, strict=strict, per_query=per_query)
         if not kept:
             return Seen()
 
@@ -143,7 +145,7 @@ class Perception:
         return Seen(in_reach=in_reach, out_of_reach=out_of_reach, located=located)
 
     def detect(self, frame, queries: list[str], trace: Trace | None = None, *,
-               strict: bool = True) -> list[tuple]:
+               strict: bool = True, per_query: int = 1) -> list[tuple]:
         """
         It takes a frame and the detector vocabulary and gives you the kept
         detections as (query, score, box_xyxy), best first, with no depth yet.
@@ -151,15 +153,20 @@ class Perception:
         `see` runs this as its DETECTION stage. `calibrate_ball.py` calls it alone,
         because the ball fit builds its own camera-frame point and must not go
         through the transform it is trying to fit.
+
+        `per_query` keeps that many best boxes for each query. 1 is right for a
+        scene with one of each thing and is what the calibration scripts use; the
+        planner raises it in `perceive` when two objects can share a name.
         """
         with _stage(trace, Stage.DETECTION) as ev:
             from PIL import Image
             raw = detect(Image.fromarray(frame.rgb), queries, self.det_model)
             kept, counts = apply_filters(raw, threshold=self.det_threshold,
-                                         nms_iou=self.det_nms_iou, keep_top1=True)
+                                         nms_iou=self.det_nms_iou, keep_top_k=per_query)
             ev.data["counts"] = {"raw": counts[0], "over_threshold": counts[1],
                                  "after_nms": counts[2], "final": counts[3]}
             ev.data["found"] = [d[0] for d in kept]
+            ev.data["per_query"] = per_query
             if not kept and strict:
                 raise RuntimeError(
                     f"nothing detected above {self.det_threshold} for queries {queries}")

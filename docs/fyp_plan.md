@@ -98,7 +98,7 @@ Objects and instruction phrasings never seen in the demonstrations or the prompt
 
 ### Why Architecture A needs a language model in front of its detector
 
-OWLv2 matches one embedding per query, so it takes short noun phrases, never sentences. `planner.py::extract_queries` converts the command first, and that step is failure mode H9, which B does not have. Reasoning in `docs/adr/0004-owlv2-takes-noun-phrases.md`.
+OWLv2 matches one embedding per query, so it takes short noun phrases, never sentences. The planner chooses the noun phrases in each `perceive` call (ADR 0012), and that step is failure mode H9, which B does not have. Reasoning in `docs/adr/0004-owlv2-takes-noun-phrases.md`.
 
 ### Hypotheses to state up front
 
@@ -316,6 +316,7 @@ This is the only status record in the repo. Update it here, not in `CLAUDE.md` o
 - **Calibration, 21 Oct:** the arm had been moved, so the envelope, the table height (now 0.176 m) and the camera were all redone. Camera moved to 0.74 m from the work area, about 45 deg down, beside it on the robot's left. Ball fit RMS 7.3 mm over 39 poses, then levelled (table offset -16.8 mm, tilt 2.1 deg). The reach test with keyboard jog (`check_calibration.py --jog`) then showed a common miss of 18 to 34 mm, mostly base +x, that the fit RMS could not see; the likely cause is the fingers hiding part of the orange in every fit pose. An **empirical** correction (yaw +3.3 deg and a shift, from 4 points) is in `T_base_cam.json` as the `reach_correction` step; 3 new points then needed no jog at the 2 mm step. Replace it with a fit on a matte ball before the 20-trial run.
 - **Envelope is now a ring sector** (ADR 0011): radius 0.40 to 0.70 m, bearing -80 to -25 deg, z 0.181 to 0.380 m. The -25 deg edge keeps the arm away from the camera, which stands inside the reach radius.
 - **Found and fixed on 21 Oct:** a held object reading above the z ceiling was refused as out of reach, so the instruction after a pick failed; a failed hardware test kept the RTDE registers taken (`close()` now disconnects); the reach test read keys typed during a move as answers.
+- **Rebuilt on 26 Oct, not yet run on hardware:** Architecture A as a loop of one tool call per turn, with `perceive` as a tool, a look after every skill and a state with stable object IDs (ADR 0012). A pick must now aim at an object in the latest look. T2 runs on this A. Branch `agentic-loop-a`; the A before it is tag `a-pipeline-final`.
 - **Written, not yet run on hardware:** the operator's y/n per step in the evaluation harness (`<arch>_tier<n>_steps.csv`); the 20-trial harness run itself; Architecture B's robot side. There is no Architecture B agent for the harness yet.
 - **Open on A:** OWLv2 scores "pink tray" below the 0.3 threshold and "pink container" at 0.317 on the same box, and `evaluation/suite.py` says "tray"; nothing sets the release height of a place, which decides whether a light container stays put; the gripper missed one open in 20 cycles of the hardware test (-1.9 mm, 21 Oct).
 - **Checks without the arm:** `tests/unit` 331 passed, 1 skipped, in both venvs (21 Oct). Pyright from the integration-checks spec is not done.

@@ -19,7 +19,8 @@ import numpy as np
 import pytest
 
 from fyp.architecture_a.perception.filters import (apply_filters, iou, nms,
-                                                   to_json_records, top1_per_query)
+                                                   to_json_records, top1_per_query,
+                                                   top_k_per_query)
 from fyp.architecture_a.perception.localiser import (find_duplicates, locate,
                                                      nearest_truth)
 from fyp.architecture_a.perception.pixel_to_3d import (camera_to_pixel, depth_at,
@@ -85,6 +86,18 @@ def test_top1_keeps_the_best_of_each_label():
             ("tray", 0.7, [9, 9, 10, 10])]
     kept = top1_per_query(dets)
     assert sorted(d[1] for d in kept) == [0.7, 0.9]
+
+
+def test_top_k_keeps_the_k_best_of_each_label():
+    dets = [("bottle", 0.4, [0, 0, 1, 1]), ("bottle", 0.9, [5, 5, 6, 6]),
+            ("bottle", 0.6, [9, 9, 10, 10]), ("glass", 0.5, [20, 20, 21, 21])]
+    kept = top_k_per_query(dets, 2)
+    assert [(d[0], d[1]) for d in kept] == [("bottle", 0.9), ("bottle", 0.6), ("glass", 0.5)]
+
+
+def test_keep_top1_is_top_k_of_one():
+    dets = [("cube", 0.4, [0, 0, 1, 1]), ("cube", 0.9, [5, 5, 6, 6])]
+    assert apply_filters(dets, 0.3, keep_top1=True)[0] == apply_filters(dets, 0.3, keep_top_k=1)[0]
 
 
 # ---------------------------------------------------------- apply_filters

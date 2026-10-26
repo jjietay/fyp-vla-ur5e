@@ -22,8 +22,8 @@ VARIABLE: the same transcript reaches Architecture A and Architecture B
 unchanged. A pipeline that owned a microphone would be a pipeline that could
 quietly clean up its own input, and the comparison would stop meaning anything.
 
-The detector vocabulary is derived from the instruction by the planner, so there
-is nothing to configure per task.
+The planner chooses the detector vocabulary itself, in its `perceive` calls
+(ADR 0012), so there is nothing to configure per task.
 
 Before every instruction it saves what the camera sees into the trace folder,
 named after the run so it sits next to `<run_id>.jsonl`:
@@ -56,13 +56,6 @@ import sys
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--queries", nargs="+", default=None,
-                   help="DEBUG ONLY: pin the detector vocabulary and skip grounding. "
-                        "Leave unset for any recorded trial, or Architecture A is handed "
-                        "a list of what is on the table that Architecture B never gets.")
-    p.add_argument("--no-reperceive", action="store_true",
-                   help="plan once against the opening scene instead of re-detecting each turn "
-                        "(open-loop; use it to measure what closing the loop is worth)")
     p.add_argument("--input-device", default=None,
                    help="microphone index or name; scripts/listen.py --devices lists them")
     p.add_argument("--cpu", action="store_true",
@@ -86,9 +79,8 @@ def main() -> int:
         with RealSenseCamera() as camera:
             # Clarifying questions are answered by voice too, through the same
             # recogniser, so no step of a run reads the keyboard for user input.
-            agent = ArchitectureA(camera, controller, args.queries,
+            agent = ArchitectureA(camera, controller,
                                   ask=ears.answer,
-                                  reperceive=not args.no_reperceive,
                                   # Typed y/n after each step, recorded in the
                                   # trace only. A never sees it.
                                   judge=judge_step)

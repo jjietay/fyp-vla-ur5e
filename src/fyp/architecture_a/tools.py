@@ -15,6 +15,9 @@ Tier 2 experiment. Asking a clarifying question is, to this architecture, just
 another tool call. Architecture B has no equivalent: SmolVLA emits TCP pose
 deltas and has no channel through which a question could travel. The asymmetry is a
 result, not something to paper over.
+
+`perceive` is a tool for the same reason (ADR 0012). The planner chooses what to
+look for and when, so a clarification answer can become new detector words.
 """
 from __future__ import annotations
 
@@ -29,6 +32,47 @@ _XYZ = {
 }
 
 TOOLS: list[dict] = [
+    {
+        "name": "perceive",
+        # ADR 0004's rules live here now, because choosing these words IS the
+        # grounding step (ADR 0012). OWLv2 matches each phrase as one embedding,
+        # so a sentence finds nothing.
+        "description": (
+            "Look at the table for the objects you name, and get back the state: what is "
+            "in the gripper, each object in view with an id and a base-frame position, "
+            "what is no longer in view, and what is seen but out of reach. Your first "
+            "call must be this one. Call it again whenever you need different objects, "
+            "for example after the user answers a question. Name objects as short noun "
+            "phrases, lower case, no articles or verbs. Keep every distinguishing word "
+            "the user said ('red cube', not 'cube') and add none they did not say. "
+            "Include the destination as well as the object to move, and name a drawer "
+            "by its handle ('drawer handle'). If the user names no specific object, name "
+            "the categories the task implies ('a drink': 'bottle', 'glass', 'cup')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "description": "Short noun phrases for the object detector.",
+                },
+                "max_per_query": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "How many objects each phrase may find. Default 1, the best match "
+                        "only, which is right when there is one of each thing. Raise it when "
+                        "several objects may share a name and you need to see them all, for "
+                        "example two bottles. Each extra one is also a chance of a false "
+                        "detection, so keep it small."
+                    ),
+                },
+            },
+            "required": ["queries"],
+        },
+    },
     {
         "name": "pick",
         "description": (
@@ -115,7 +159,7 @@ TOOLS: list[dict] = [
             "Use this when the instruction does not determine which object to act on, "
             "for example when the user asks for 'a drink' and both juice and water are "
             "present. Do NOT guess in that situation. Do not use this for questions you "
-            "could answer yourself from the detected objects."
+            "could answer yourself from the state, or by calling perceive with other words."
         ),
         "input_schema": {
             "type": "object",
@@ -124,7 +168,7 @@ TOOLS: list[dict] = [
                 "options": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "The choices you are deciding between, taken from the detected objects.",
+                    "description": "The choices you are deciding between, taken from the objects in view.",
                 },
             },
             "required": ["question"],
@@ -133,7 +177,9 @@ TOOLS: list[dict] = [
 ]
 
 TOOL_NAMES = {t["name"] for t in TOOLS}
-MOTION_TOOLS = TOOL_NAMES - {"ask_user"}
+# perceive and ask_user are handled by the pipeline itself, not by Skills.
+NON_MOTION_TOOLS = {"perceive", "ask_user"}
+MOTION_TOOLS = TOOL_NAMES - NON_MOTION_TOOLS
 
 
 def validate_schemas_against_skills(skills_obj) -> list[str]:
@@ -150,7 +196,7 @@ def validate_schemas_against_skills(skills_obj) -> list[str]:
     problems: list[str] = []
     for tool in TOOLS:
         name = tool["name"]
-        if name == "ask_user":
+        if name in NON_MOTION_TOOLS:
             continue
         method = getattr(skills_obj, name, None)
         if method is None:

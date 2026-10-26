@@ -24,8 +24,8 @@ comfortably and still fails.
 
 This is precisely why Architecture A needs a language model in front of the
 detector. Something has to turn "place that red cube into that metal tray" into
-["red cube", "metal tray"] before OWLv2 can be asked anything at all. See
-`architecture_a/planner.py::extract_queries`, which is that step.
+["red cube", "metal tray"] before OWLv2 can be asked anything at all. The
+planner does it, in its `perceive` calls (`architecture_a/tools.py`, ADR 0012).
 """
 from __future__ import annotations
 

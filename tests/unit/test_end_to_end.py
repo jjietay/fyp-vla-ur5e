@@ -1,8 +1,8 @@
 """One spoken instruction through the real harness and the real Architecture A, with no arm.
 
 The rest of the unit suite proves that each module works alone. This proves they
-connect: harness -> ArchitectureA.run -> grounding -> perception -> planner ->
-validation -> skills -> envelope -> controller, and the outcome back into a
+connect: harness -> ArchitectureA.run -> planner -> perceive -> perception ->
+planner -> validation -> skills -> envelope -> controller, and the outcome back into a
 trial record. A new pipeline file with the wrong signature, the wrong return
 shape, or a motion that skips the envelope fails here, on a laptop, instead of
 at the bench.
@@ -179,20 +179,27 @@ def _text(text):
     return SimpleNamespace(type="text", text=text)
 
 
+def _state_in(text) -> dict:
+    """It takes a tool_result text and gives you the state in it."""
+    return json.loads(text.split("State now:\n", 1)[1])
+
+
 def _seen(kwargs) -> list[dict]:
-    """It takes a planner request and gives you the object table the planner was shown."""
-    first = kwargs["messages"][0]["content"]
-    return json.loads(first.split("Detected objects:\n", 1)[1].split("\n\n", 1)[0])
+    """It takes a planner request and gives you the objects in view in the
+    latest state the planner was shown."""
+    texts = [r["content"] for m in kwargs["messages"]
+             if m["role"] == "user" and isinstance(m["content"], list)
+             for r in m["content"] if "State now:" in r["content"]]
+    return _state_in(texts[-1])["objects"]
 
 
 class FakeLLM:
     """
     It takes a planner script and gives you an Anthropic client that plays it.
 
-    Grounding is always answered with `look_for(["orange"])`. Each planner turn
-    then takes the next entry of `script`: a function from the request to the
-    reply's content blocks. Requests are kept in `calls`, so a test can see what
-    the model was shown.
+    Each planner turn takes the next entry of `script`: a function from the
+    request to the reply's content blocks. Requests are kept in `calls`, so a
+    test can see what the model was shown.
     """
 
     def __init__(self, script):
@@ -204,12 +211,13 @@ class FakeLLM:
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        if kwargs["tools"][0]["name"] == "look_for":
-            content = [_tool("look_for", {"queries": ["orange"]})]
-        else:
-            content = self.script.pop(0)(kwargs)
+        content = self.script.pop(0)(kwargs)
         return SimpleNamespace(content=content,
                                usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+
+
+def look(kwargs):
+    return [_text("Find the orange."), _tool("perceive", {"queries": ["orange"]}, len(kwargs["messages"]))]
 
 
 def pick_what_was_seen(kwargs):
@@ -296,7 +304,7 @@ def _repo_snapshot() -> dict[str, int]:
 
 def test_a_spoken_instruction_reaches_the_arm_through_the_whole_chain(cell):
     before = _repo_snapshot()
-    records, controller, _, llm = _run_one_trial(cell, [pick_what_was_seen, finish])
+    records, controller, _, llm = _run_one_trial(cell, [look, pick_what_was_seen, finish])
 
     assert len(records) == 1
     rec = records[0]
@@ -305,7 +313,7 @@ def test_a_spoken_instruction_reaches_the_arm_through_the_whole_chain(cell):
     assert rec.run_id and not rec.asked_question
 
     # The planner saw the orange where it was rendered, so perception connects.
-    seen = _seen(llm.calls[1])
+    seen = _state_in(_fed_back(llm)[0])["objects"]
     assert seen[0]["name"] == "orange"
     assert np.linalg.norm(np.array(seen[0]["xyz"]) - cell.centre) < 0.01
 
@@ -323,7 +331,7 @@ def test_a_spoken_instruction_reaches_the_arm_through_the_whole_chain(cell):
 
 def test_a_clarifying_question_is_asked_and_recorded(cell):
     question = [_tool("ask_user", {"question": "Which orange do you mean?"})]
-    records, _, ask, _ = _run_one_trial(cell, [lambda kw: question, pick_what_was_seen, finish])
+    records, _, ask, _ = _run_one_trial(cell, [look, lambda kw: question, pick_what_was_seen, finish])
 
     assert ask.questions == ["Which orange do you mean?"]
     assert records[0].asked_question
@@ -339,7 +347,7 @@ def test_a_plan_outside_the_envelope_never_reaches_the_arm(cell):
     # The model repeats the bad call until the turn limit, so the plan stays rejected.
     bad = lambda kw: [_tool("pick", {"xyz": _too_far(cell)}, len(kw["messages"]))]
     records, controller, _, _ = _run_one_trial(
-        cell, [bad] * int(cell.cfg["architecture_a"]["planner"]["max_turns"]))
+        cell, [look] + [bad] * (int(cell.cfg["architecture_a"]["planner"]["max_turns"]) - 1))
 
     assert records[0].failed_stage == "planning"
     assert not [c for c in controller.calls if c[0] in ("move_to_pose", "move_joints")]
@@ -347,13 +355,14 @@ def test_a_plan_outside_the_envelope_never_reaches_the_arm(cell):
 
 def test_a_rejected_plan_is_corrected_by_the_model_and_then_runs(cell):
     bad = lambda kw: [_tool("pick", {"xyz": _too_far(cell)}, len(kw["messages"]))]
-    records, controller, _, llm = _run_one_trial(cell, [bad, pick_what_was_seen, finish])
+    records, controller, _, llm = _run_one_trial(cell, [look, bad, pick_what_was_seen, finish])
 
     assert records[0].failed_stage is None
     assert controller.poses, "the corrected pick never reached the controller"
     # The model was shown why its first call failed.
     # The request holds the live message list, so index it: [-1] is a later turn.
-    feedback = llm.calls[2]["messages"][2]["content"][0]
+    # 0 instruction, 1 look, 2 its result, 3 the bad pick, 4 the rejection.
+    feedback = llm.calls[2]["messages"][4]["content"][0]
     assert feedback["is_error"] and feedback["content"].startswith("REJECTED:")
 
 
@@ -365,19 +374,24 @@ def _fed_back(llm) -> list[str]:
             for r in m["content"] if r.get("type") == "tool_result"]
 
 
-def _scene_after(text):
-    """It takes a tool_result text and gives you the scene table in it."""
-    return json.loads(text.split("Scene now:\n", 1)[1].split("\nSeen but", 1)[0])
+def test_the_first_look_is_traced_as_the_planners_choice_of_words(cell):
+    _run_one_trial(cell, [look, pick_what_was_seen, finish])
+
+    lines = [json.loads(line) for line in next((cell.tmp / "traces").glob("*.jsonl")).open()]
+    grounding = [r for r in lines if r.get("stage") == "grounding"]
+    assert grounding and grounding[0]["data"]["queries"] == ["orange"]
+    looks = [r for r in lines if r["type"] == "look"]
+    assert looks[0]["found"]["orange"]
+    assert _fed_back(cell.last_llm)[0].startswith("OK: looked for ['orange']")
 
 
-def test_the_planner_sees_where_each_object_is_after_a_step(cell):
+def test_after_a_pick_the_object_is_in_the_gripper_by_id(cell):
     """Names alone hid a pick that lifted nothing (13 Oct 2026)."""
-    _, controller, _, llm = _run_one_trial(cell, [pick_what_was_seen, finish])
+    _run_one_trial(cell, [look, pick_what_was_seen, finish])
 
-    scene = _scene_after(_fed_back(llm)[0])
-    assert [o["name"] for o in scene] == ["orange"]
-    held = np.asarray(controller.tcp_pose[:3]) + [0.0, 0.0, HELD_ABOVE_TCP]
-    assert np.linalg.norm(np.asarray(scene[0]["xyz"]) - held) < 0.02
+    state = _state_in(_fed_back(cell.last_llm)[1])
+    assert state["in_gripper"] == "orange_1"
+    assert state["objects"] == []
 
 
 # ------------------------------------------- the check after every motion
@@ -389,27 +403,31 @@ def test_a_pick_that_left_the_object_on_the_table_is_a_failed_step(cell):
     was, not at the gripper, so the step fails and the planner is told why.
     """
     cell.scene.mode = "stays"
-    _run_one_trial(cell, [pick_what_was_seen, finish])
+    _run_one_trial(cell, [look, pick_what_was_seen, finish])
 
-    result = _fed_back(cell.last_llm)[0]
+    result = _fed_back(cell.last_llm)[1]
     assert result.startswith("FAILED"), result
     assert "not at the gripper" in result
+    state = _state_in(result)
+    assert state["in_gripper"] is None
+    assert [o["id"] for o in state["objects"]] == ["orange_1"]
 
 
 def test_a_pick_with_the_object_at_the_gripper_is_verified(cell):
-    _run_one_trial(cell, [pick_what_was_seen, finish])
+    _run_one_trial(cell, [look, pick_what_was_seen, finish])
 
-    result = _fed_back(cell.last_llm)[0]
-    assert result.startswith("OK") and "verified: orange is at the gripper" in result
+    result = _fed_back(cell.last_llm)[1]
+    assert result.startswith("OK") and "verified: orange_1 is at the gripper" in result
 
 
 def test_an_object_the_camera_cannot_see_after_the_pick_is_unverified_not_failed(cell):
     """The gripper can hide the orange; failing every hidden pick hides the good ones."""
     cell.scene.mode = "vanishes"
-    _run_one_trial(cell, [pick_what_was_seen, finish])
+    _run_one_trial(cell, [look, pick_what_was_seen, finish])
 
-    result = _fed_back(cell.last_llm)[0]
-    assert result.startswith("OK") and "unverified: orange not seen" in result
+    result = _fed_back(cell.last_llm)[1]
+    assert result.startswith("OK") and "unverified: orange_1 not seen" in result
+    assert _state_in(result)["in_gripper"] == "orange_1"
 
 
 def place_in_front(kwargs):
@@ -419,19 +437,22 @@ def place_in_front(kwargs):
 
 def test_a_place_that_left_the_object_in_the_gripper_is_a_failed_step(cell):
     cell.scene.mode = "sticks"
-    _run_one_trial(cell, [pick_what_was_seen, place_in_front, finish])
+    _run_one_trial(cell, [look, pick_what_was_seen, place_in_front, finish])
 
-    pick, place = _fed_back(cell.last_llm)[:2]
+    pick, place = _fed_back(cell.last_llm)[1:3]
     assert pick.startswith("OK")
     assert place.startswith("FAILED"), place
     assert "still at the gripper" in place
 
 
 def test_a_place_that_released_the_object_is_verified(cell):
-    _run_one_trial(cell, [pick_what_was_seen, place_in_front, finish])
+    _run_one_trial(cell, [look, pick_what_was_seen, place_in_front, finish])
 
-    place = _fed_back(cell.last_llm)[1]
-    assert place.startswith("OK") and "verified: orange released" in place
+    place = _fed_back(cell.last_llm)[2]
+    assert place.startswith("OK") and "verified: orange_1 released" in place
+    state = _state_in(place)
+    assert state["in_gripper"] is None
+    assert [o["id"] for o in state["objects"]] == ["orange_1"]
 
 
 # ------------------------------------------- the operator's verdict per step
@@ -465,7 +486,7 @@ def test_the_operator_judges_each_step_and_a_never_hears_the_answer(cell):
     a perfect sensor Architecture B does not have.
     """
     judge = FakeJudge(False)
-    agent, llm = _agent(cell, [pick_what_was_seen, finish], judge)
+    agent, llm = _agent(cell, [look, pick_what_was_seen, finish], judge)
 
     outcome = agent.run(INSTRUCTION)
 
@@ -473,7 +494,7 @@ def test_the_operator_judges_each_step_and_a_never_hears_the_answer(cell):
     assert [(j["tool"], j["a_ok"], j["operator_ok"]) for j in outcome.judged] == \
         [("pick", True, False)]
     fed = _fed_back(llm)
-    assert fed[0].startswith("OK"), "A's own result reached the planner unchanged"
+    assert fed[1].startswith("OK"), "A's own result reached the planner unchanged"
     assert not any("operator" in t.lower() for t in fed)
 
 
@@ -484,7 +505,7 @@ def _architecture_a(cell):
     cell.scene.controller = controller
     return ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=FakeAsk("yes"),
                          calibration=cell.T,
-                         planner_client=FakeLLM([pick_what_was_seen, finish]))
+                         planner_client=FakeLLM([look, pick_what_was_seen, finish]))
 
 
 AGENTS = {
@@ -507,3 +528,15 @@ def test_every_agent_returns_what_the_harness_reads(cell, name):
     assert isinstance(outcome.asked, list)
     assert isinstance(outcome.run_id, str) and outcome.run_id
     assert isinstance(outcome.summary, str)
+
+
+def test_the_planners_max_per_query_reaches_the_detector(cell):
+    """Two bottles need two boxes for one query, and only the planner knows to ask."""
+    look_for_two = lambda kw: [_tool("perceive", {"queries": ["orange"], "max_per_query": 2},
+                                     len(kw["messages"]))]
+    _run_one_trial(cell, [look_for_two, pick_what_was_seen, finish])
+
+    lines = [json.loads(line) for line in next((cell.tmp / "traces").glob("*.jsonl")).open()]
+    detection = [r for r in lines if r.get("stage") == "detection"]
+    assert detection[0]["data"]["per_query"] == 2
+    assert _fed_back(cell.last_llm)[0].startswith("OK: looked for ['orange'], up to 2 each")

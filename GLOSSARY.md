@@ -62,8 +62,12 @@ One short noun phrase the detector looks for, such as "orange" or "box".
 _Avoid_: noun phrase, detector vocabulary, prompt
 
 **Grounding**:
-Turning an instruction into queries. Only Architecture A does it, so only A can fail there.
+The planner's choice of queries in each `perceive` call. Only Architecture A does it, so only A can fail there.
 _Avoid_: query extraction, parsing
+
+**State**:
+What the planner is shown after each call: the object in the gripper, the objects in view with IDs and base-frame positions, the objects no longer in view (no position), and the objects out of reach.
+_Avoid_: scene, world model
 
 **Located object**:
 A detected object with a base-frame point.

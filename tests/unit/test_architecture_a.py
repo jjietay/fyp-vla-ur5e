@@ -224,80 +224,36 @@ def test_every_tier_has_a_written_success_criterion():
         assert TASKS[tier].heldout_utterances
 
 
-# ----------------------------------------------------------------- grounding
+# ------------------------------------------------------------- perceive calls
 
-class _FakeBlock:
-    type = "tool_use"
-    name = "look_for"
-
-    def __init__(self, queries):
-        self.input = {"queries": queries}
+def test_perceive_queries_are_normalised_and_deduped(env):
+    args = validate_call("perceive", {"queries": ["  Red Cube ", "RED CUBE", "metal tray.", ""]}, env)
+    assert args == {"queries": ["red cube", "metal tray"], "max_per_query": 1}
 
 
-class _FakeResponse:
-    def __init__(self, queries):
-        self.content = [_FakeBlock(queries)]
-        self.usage = type("U", (), {"input_tokens": 10, "output_tokens": 5})()
+def test_the_planner_may_ask_for_more_than_one_box_per_query(env):
+    args = validate_call("perceive", {"queries": ["bottle"], "max_per_query": 2}, env)
+    assert args["max_per_query"] == 2
 
 
-class _FakeClient:
-    """Records the call and returns whatever queries the test wants."""
-
-    def __init__(self, queries):
-        self._queries = queries
-        self.calls = []
-        self.messages = self
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        return _FakeResponse(self._queries)
+@pytest.mark.parametrize("k", [0, 5, True, 1.5, "2"])
+def test_max_per_query_outside_one_to_the_cap_is_rejected(env, k):
+    # True is an int in Python, so it must be refused on its own.
+    with pytest.raises(PlanRejected, match="max_per_query"):
+        validate_call("perceive", {"queries": ["bottle"], "max_per_query": k}, env,
+                      max_per_query=4)
 
 
-def test_grounding_normalises_and_dedupes():
-    from fyp.architecture_a.planner import extract_queries
-    client = _FakeClient(["  Red Cube ", "RED CUBE", "metal tray.", "", "  "])
-    assert extract_queries("x", client, "m") == ["red cube", "metal tray"]
+def test_perceive_over_the_query_cap_is_rejected_not_cut(env):
+    """A silent cut drops the words ranked last, and those can be the destination."""
+    with pytest.raises(PlanRejected, match="at most 3"):
+        validate_call("perceive", {"queries": [f"object {i}" for i in range(4)]}, env,
+                      max_queries=3)
 
 
-def test_grounding_respects_max_queries():
-    from fyp.architecture_a.planner import extract_queries
-    client = _FakeClient([f"object {i}" for i in range(20)])
-    assert len(extract_queries("x", client, "m", max_queries=3)) == 3
-
-
-def test_grounding_asks_for_the_tool_call():
-    """
-    Without the tool call the parse returns nothing. Sonnet 5.5 refuses a forced
-    tool_choice, so the call is asked for with a strict tool and a prompt rule
-    instead, and a reply in prose still ends in GroundingFailed, never a fallback.
-    """
-    from fyp.architecture_a.planner import extract_queries
-    client = _FakeClient(["cube"])
-    extract_queries("put the cube away", client, "m")
-    call = client.calls[0]
-    assert call["tool_choice"] == {"type": "auto"}
-    assert call["tools"][0]["strict"] is True
-    assert "calling look_for" in call["system"]
-
-
-def test_grounding_raises_rather_than_falling_back():
-    """
-    A silent fallback to a default vocabulary would restore the very advantage
-    this step removes, and would do it invisibly on the hardest trials.
-    """
-    from fyp.architecture_a.planner import GroundingFailed, extract_queries
-    with pytest.raises(GroundingFailed):
-        extract_queries("hello", _FakeClient([]), "m")
-
-
-def test_grounding_sees_only_the_instruction():
-    """Architecture A must start from the same string Architecture B gets."""
-    from fyp.architecture_a.planner import extract_queries
-    client = _FakeClient(["cube"])
-    extract_queries("place that red cube into that metal tray", client, "m")
-    sent = client.calls[0]["messages"]
-    assert sent == [{"role": "user",
-                     "content": "place that red cube into that metal tray"}]
+def test_perceive_needs_a_noun_phrase(env):
+    with pytest.raises(PlanRejected, match="at least one"):
+        validate_call("perceive", {"queries": ["  ", ""]}, env)
 
 
 def test_grounding_is_its_own_trace_stage():
@@ -310,23 +266,119 @@ def test_grounding_is_its_own_trace_stage():
     assert Stage.GROUNDING != Stage.DETECTION
 
 
-def test_out_of_reach_objects_reach_the_planner_by_name_only(env):
+# -------------------------------------------------------------- the state
+
+TOL = float(CFG["architecture_a"]["verify"]["tolerance_mm"]) / 1000.0
+
+
+def _row(name, xyz, conf=0.5):
+    return {"name": name, "confidence": conf, "xyz": list(xyz)}
+
+
+def _state():
+    from fyp.architecture_a.state import WorldState
+    return WorldState(TOL)
+
+
+def test_two_objects_with_one_name_get_two_ids():
+    s = _state()
+    s.update([_row("bottle", [0.4, -0.3, 0.2]), _row("bottle", [0.5, -0.2, 0.2])],
+             [], ["bottle"], 1)
+    assert sorted(o["id"] for o in s.render()["objects"]) == ["bottle_1", "bottle_2"]
+
+
+def test_an_id_follows_position_when_the_planner_changes_its_words():
+    """
+    Tier 2: after "orange juice" the planner looks for "orange juice bottle".
+    The bottle that answers is the same bottle_2, so the planner can act on the
+    ID it already knows. A match by query would have given it a new ID.
+    """
+    s = _state()
+    s.update([_row("bottle", [0.4, -0.3, 0.2]), _row("bottle", [0.5, -0.2, 0.2])],
+             [], ["bottle"], 1)
+    s.update([_row("orange juice bottle", [0.505, -0.2, 0.2])], [], ["orange juice bottle"], 3)
+
+    shown = s.render()
+    assert [(o["id"], o["name"]) for o in shown["objects"]] == [("bottle_2", "orange juice bottle")]
+    assert shown["not_in_view"] == [{"id": "bottle_1", "name": "bottle", "last_seen_turn": 1,
+                                     "why": "not looked for"}]
+
+
+def test_nothing_out_of_view_carries_a_position():
+    """A stale position is one the planner could act on; in Tier 3 a person moves things."""
+    s = _state()
+    s.update([_row("orange", [0.4, -0.3, 0.2])], [], ["orange"], 1)
+    s.update([], [], ["orange"], 2)
+
+    shown = s.render()
+    assert shown["objects"] == []
+    assert shown["not_in_view"][0]["why"] == "not seen"
+    assert "xyz" not in shown["not_in_view"][0]
+    assert s.target([0.4, -0.3, 0.2]) is None
+
+
+def test_the_held_object_stays_in_the_gripper_by_id_with_no_position():
+    s = _state()
+    s.update([_row("orange", [0.4, -0.3, 0.2])], [], ["orange"], 1)
+    s.grab("orange_1")
+    tcp = [0.4, -0.3, 0.35]
+    s.update([_row("orange", [0.4, -0.3, 0.37])], [], ["orange"], 2, gripper=tcp)
+
+    shown = s.render()
+    assert shown["in_gripper"] == "orange_1"
+    assert shown["objects"] == [] and shown["not_in_view"] == []
+
+
+def test_a_look_with_other_words_does_not_offer_the_held_object():
+    """Holding orange_1, a look for "fruit" boxes it at the gripper. It is still
+    the held object, not fruit_1 for the planner to pick."""
+    s = _state()
+    s.update([_row("orange", [0.4, -0.3, 0.2])], [], ["orange"], 1)
+    s.grab("orange_1")
+    tcp = [0.4, -0.3, 0.35]
+    s.update([_row("fruit", [0.4, -0.3, 0.37])], [], ["fruit"], 2, gripper=tcp)
+
+    assert s.render()["objects"] == []
+    assert s.target([0.4, -0.3, 0.37]) is None
+
+
+def test_a_released_object_keeps_its_id_where_it_landed():
+    s = _state()
+    s.update([_row("orange", [0.4, -0.3, 0.2])], [], ["orange"], 1)
+    s.grab("orange_1")
+    s.release([0.3, -0.45, 0.2], 2)
+    s.update([_row("orange", [0.302, -0.45, 0.2])], [], ["orange"], 2)
+
+    shown = s.render()
+    assert shown["in_gripper"] is None
+    assert [o["id"] for o in shown["objects"]] == ["orange_1"]
+
+
+def test_out_of_reach_objects_are_shown_by_name_only():
     """
     13 Oct 2026: a box found by OWLv2 but out of reach was filtered before the
     planner, which then told the user it saw no box. It must be named, with a
     reason, and must carry no position the planner could act on.
     """
-    planner = Planner(CFG, env)
-    planner._turn = lambda: None
-    planner.start("put the orange in the box",
-                  [{"name": "orange", "confidence": 0.7, "xyz": INSIDE}],
-                  [{"name": "white box", "confidence": 0.44,
-                    "reason": "position radius=0.849 is above max 0.700"}])
-    text = planner.messages[0]["content"]
-    assert "Seen but out of reach" in text
-    assert "white box" in text and "radius=0.849" in text
-    after = text.split("Seen but out of reach")[1]
-    assert "xyz" not in after
+    s = _state()
+    s.update([], [{"name": "white box", "confidence": 0.44,
+                   "reason": "position radius=0.849 is above max 0.700"}], ["white box"], 1)
+    assert s.render()["out_of_reach"] == [{"name": "white box", "confidence": 0.44,
+                                           "reason": "position radius=0.849 is above max 0.700"}]
+
+
+def test_a_pick_must_aim_at_an_object_in_view(env):
+    s = _state()
+    s.update([_row("orange", INSIDE)], [], ["orange"], 1)
+    assert validate_call("pick", {"xyz": INSIDE}, env, state=s)
+    away = [INSIDE[0], INSIDE[1] + 2 * TOL, INSIDE[2]]
+    with pytest.raises(PlanRejected, match="not within"):
+        validate_call("pick", {"xyz": away}, env, state=s)
+
+
+def test_a_place_may_aim_at_open_table(env):
+    s = _state()
+    assert validate_call("place", {"xyz": INSIDE}, env, state=s)
 
 
 # ------------------------------------------------- the planner's turn loop
@@ -337,9 +389,11 @@ class ScriptedClient:
 
     def __init__(self, replies):
         self.replies = list(replies)
+        self.calls: list[dict] = []
         self.messages = self
 
     def create(self, **kwargs):
+        self.calls.append(kwargs)
         return SimpleNamespace(
             content=self.replies.pop(0),
             usage=SimpleNamespace(input_tokens=10, output_tokens=5))
@@ -353,6 +407,10 @@ def _say(text):
     return SimpleNamespace(type="text", text=text)
 
 
+def _look(tid="look"):
+    return _use("perceive", {"queries": ["orange"]}, tid)
+
+
 def _planner(env, replies):
     return Planner(CFG, env, client=ScriptedClient(replies))
 
@@ -364,92 +422,105 @@ def _results(planner):
             for r in m["content"]}
 
 
+def test_the_model_starts_from_the_instruction_alone(env):
+    """Architecture A must start from the same string Architecture B gets."""
+    planner = _planner(env, [[_look()]])
+    planner.start("place that red cube into that metal tray")
+    assert planner.messages[0] == {"role": "user",
+                                   "content": "Instruction: place that red cube into that metal tray"}
+
+
+def test_parallel_tool_use_is_switched_off_at_the_api(env):
+    planner = _planner(env, [[_look()]])
+    planner.start("pick it")
+    assert planner.client.calls[0]["tool_choice"] == {"type": "auto",
+                                                      "disable_parallel_tool_use": True}
+
+
+def test_the_first_call_must_be_perceive(env):
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "t1")], [_look("t2")]])
+
+    reply = planner.start("pick it")
+
+    assert reply.step.tool == "perceive"
+    fed_back = _results(planner)["t1"]
+    assert fed_back["is_error"] and "first call must be perceive" in fed_back["content"]
+
+
+def test_a_reply_with_two_calls_is_refused_whole(env):
+    """The model must see the pick's result before it chooses the place."""
+    planner = _planner(env, [[_look()],
+                             [_use("pick", {"xyz": INSIDE}, "a"), _use("place", {"xyz": INSIDE}, "b")],
+                             [_use("pick", {"xyz": INSIDE}, "c")]])
+    planner.start("move it")
+
+    reply = planner.report("look", "OK: looked")
+
+    assert reply.step.tool_use_id == "c"
+    results = _results(planner)
+    for tid in ("a", "b"):
+        assert results[tid]["is_error"] and "one tool call per turn" in results[tid]["content"]
+
+
+def test_the_intent_line_comes_back_with_the_call(env):
+    planner = _planner(env, [[_say("Look for the orange first."), _look()]])
+    reply = planner.start("pick it")
+    assert reply.text == "Look for the orange first." and reply.step.tool == "perceive"
+
+
 def test_a_rejected_call_goes_back_to_the_model_and_the_corrected_call_runs(env):
-    bad = _use("pick", {"xyz": OUTSIDE[2]}, "t1")
-    good = _use("pick", {"xyz": INSIDE}, "t2")
-    planner = _planner(env, [[bad], [good]])
+    planner = _planner(env, [[_look()], [_use("pick", {"xyz": OUTSIDE[2]}, "t1")],
+                             [_use("pick", {"xyz": INSIDE}, "t2")]])
+    planner.start("pick it")
 
-    reply = planner.start("pick it", [])
+    reply = planner.report("look", "OK: looked")
 
-    assert [s.tool_use_id for s in reply.steps] == ["t2"]
+    assert reply.step.tool_use_id == "t2"
     fed_back = _results(planner)["t1"]
     assert fed_back["is_error"] is True
     assert "below min" in fed_back["content"]
-    assert planner.usage == {"input_tokens": 20, "output_tokens": 10, "calls": 2}
-
-
-def test_one_bad_call_in_a_reply_rejects_the_whole_reply_with_one_result_each(env):
-    ok1 = _use("pick", {"xyz": INSIDE}, "a")
-    bad = _use("place", {"xyz": OUTSIDE[0]}, "b")
-    ok2 = _use("pick", {"xyz": INSIDE}, "c")
-    planner = _planner(env, [[ok1, bad, ok2], [_use("pick", {"xyz": INSIDE}, "d")]])
-
-    reply = planner.start("do it", [])
-
-    assert [s.tool_use_id for s in reply.steps] == ["d"]
-    results = _results(planner)
-    assert set(results) == {"a", "b", "c"}
-    assert results["b"]["content"].startswith("REJECTED:")
-    for tid in ("a", "c"):
-        assert results[tid]["content"].startswith("NOT EXECUTED")
-    assert all(r["is_error"] for r in results.values())
+    assert planner.usage == {"input_tokens": 30, "output_tokens": 15, "calls": 3}
 
 
 def test_repeated_rejection_ends_as_plan_rejected_inside_the_turn_limit(env):
     n = int(CFG["architecture_a"]["planner"]["max_turns"])
-    planner = _planner(env, [[_use("pick", {"xyz": OUTSIDE[2]}, f"t{i}")] for i in range(n + 3)])
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, f"t{i}")] for i in range(n + 3)])
 
-    with pytest.raises(PlanRejected, match="below min"):
-        planner.start("pick it", [])
+    with pytest.raises(PlanRejected, match="first call must be perceive"):
+        planner.start("pick it")
 
     assert planner.usage["calls"] == n
 
 
 def test_running_out_of_turns_without_a_rejection_is_gave_up(env):
     n = int(CFG["architecture_a"]["planner"]["max_turns"])
-    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, f"t{i}")] for i in range(n)])
+    planner = _planner(env, [[_look(f"t{i}")] for i in range(n)])
 
-    reply = planner.start("pick it", [])
+    reply = planner.start("pick it")
     for i in range(n - 1):
-        assert reply.steps and not reply.gave_up
-        reply = planner.report_results([(f"t{i}", "OK: done")])
+        assert reply.step and not reply.gave_up
+        reply = planner.report(f"t{i}", "OK: looked")
 
-    assert reply.steps
-    reply = planner.report_results([(f"t{n - 1}", "OK: done")])
+    assert reply.step
+    reply = planner.report(f"t{n - 1}", "OK: looked")
     assert reply.gave_up and not reply.is_done
     assert planner.usage["calls"] == n
 
 
-def test_report_results_answers_steps_that_did_not_run_and_adds_the_scene(env):
-    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a"),
-                              _use("place", {"xyz": INSIDE}, "b")],
-                             [_say("done")]])
-    planner.start("move it", [])
-
-    cup = {"name": "cup", "confidence": 0.5, "xyz": [0.4, -0.3, 0.2]}
-    reply = planner.report_results([("a", "FAILED: no grasp")], scene=([cup], ["box"]))
-
-    assert reply.is_done
-    results = _results(planner)
-    assert results["b"]["content"].startswith("SKIPPED")
-    assert "Scene now" in results["b"]["content"]
-    assert '"cup"' in results["b"]["content"]
-    assert "out of reach: ['box']" in results["b"]["content"]
-    assert "Scene now" not in results["a"]["content"]
-
-
-def test_the_scene_after_a_step_carries_positions_so_a_failed_pick_shows(env):
+def test_the_state_goes_inside_the_result(env):
     """
     13 Oct 2026: after a pick that lifted nothing, the scene said only "orange",
     so the model could not tell "held" from "still on the table" and reported
-    success. With the position, an orange still at the table height, where it
-    was, is visible to the model.
+    success. The state carries the position and what is in the gripper.
     """
-    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a")], [_say("done")]])
-    planner.start("pick it", [])
-    orange = {"name": "orange", "confidence": 0.7, "xyz": [0.6478, -0.1597, 0.1954]}
+    planner = _planner(env, [[_look()], [_say("done")]])
+    planner.start("pick it")
+    s = _state()
+    s.update([_row("orange", [0.6478, -0.1597, 0.1954])], [], ["orange"], 1)
 
-    planner.report_results([("a", "OK: picked")], scene=([orange], []))
+    reply = planner.report("look", "OK: looked", s.render())
 
-    content = _results(planner)["a"]["content"]
-    assert "0.6478" in content and "-0.1597" in content and "0.1954" in content
+    assert reply.is_done
+    content = _results(planner)["look"]["content"]
+    assert "State now" in content and '"in_gripper": null' in content
+    assert "0.6478" in content and '"orange_1"' in content

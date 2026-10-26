@@ -57,16 +57,29 @@ def top1_per_query(dets):
     because two boxes on genuinely different objects do not overlap and so never
     suppress each other. Leave it off the moment a scene can hold two red cubes.
     """
-    best: dict[str, tuple] = {}
-    for det in dets:
-        q, score, _box = det
-        if q not in best or score > best[q][1]:
-            best[q] = det
-    return sorted(best.values(), key=lambda d: -d[1])
+    return top_k_per_query(dets, 1)
+
+
+def top_k_per_query(dets, k: int):
+    """
+    It takes detections and a count k and gives you the k best scoring boxes per
+    label, returned in descending score order.
+
+    k above 1 is for a scene that can hold two of a thing, such as two bottles.
+    Each extra box is also a chance of a false detection, so keep k small.
+    """
+    kept: list = []
+    count: dict[str, int] = {}
+    for det in sorted(dets, key=lambda d: -d[1]):
+        if count.get(det[0], 0) < k:
+            count[det[0]] = count.get(det[0], 0) + 1
+            kept.append(det)
+    return kept
 
 
 def apply_filters(dets, threshold: float, nms_iou: float = 0.5,
-                  per_query_nms: bool = False, keep_top1: bool = False) -> tuple:
+                  per_query_nms: bool = False, keep_top1: bool = False,
+                  keep_top_k: int | None = None) -> tuple:
     """
     this function requires these few inputs:
     - detections
@@ -74,6 +87,8 @@ def apply_filters(dets, threshold: float, nms_iou: float = 0.5,
     - nms_iou which is threshold for maximum overlap of default 50%
     - per_query_nms only let boxes wih the same label to suppress each other (off by default)
     - keep_top1 keeps only the single best-scoring box per label (off by default)
+    - keep_top_k keeps the k best-scoring boxes per label (None keeps all). keep_top1
+      is keep_top_k=1
     """
     n_raw = len(dets)
     keep = [d for d in dets if d[1] >= threshold]
@@ -84,7 +99,9 @@ def apply_filters(dets, threshold: float, nms_iou: float = 0.5,
     n_nms = len(keep)
 
     if keep_top1:
-        keep = top1_per_query(keep)
+        keep_top_k = 1
+    if keep_top_k is not None:
+        keep = top_k_per_query(keep, keep_top_k)
 
     return keep, (n_raw, n_thresh, n_nms, len(keep))
 
