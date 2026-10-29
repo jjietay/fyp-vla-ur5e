@@ -1,7 +1,7 @@
 """planner.py
 
-It takes an instruction and a list of objects the camera found, and gives you an
-ordered sequence of skill calls to execute.
+It takes an instruction and a list of objects the camera found, and gives you the
+tool calls that carry it out, one per turn.
 
 The model never sees pixels and never emits a pose. It sees a table of object
 names with base-frame coordinates, and it selects tools by name with arguments
@@ -43,6 +43,8 @@ anything: tell the user it is out of reach and should be moved closer to the arm
 before picking something else.
 - If the instruction does not determine which object to act on, call ask_user. \
 Do not guess and do not pick the first plausible candidate.
+- Call one tool per reply. You see its result and the table as it is now before \
+you choose the next.
 - Work in the order the task requires. If something must be open before you can \
 put an object inside it, open it first.
 - When the task is complete, stop calling tools and reply with one short sentence \
@@ -313,7 +315,7 @@ def _scene_text(objects: list[dict], unreachable: list[str]) -> str:
 
 class Planner:
     """
-    It takes the detected objects and gives you the next batch of skill calls.
+    It takes the detected objects and gives you the next tool call.
 
     Stateful across a run, because clarification requires it: the question, the
     user's answer, and the results of skills already executed all have to stay in
@@ -336,12 +338,6 @@ class Planner:
         # Model calls made for the current instruction. Retries after a rejection
         # count too, so the limit bounds the whole exchange, not only good replies.
         self._turns = 0
-        # The steps of the last reply, so report_results can answer the ones the
-        # caller did not run.
-        self._open_steps: list[Step] = []
-        # The id of a look in the last reply. It needs a result like any call, and
-        # a question answered first leaves it unrun.
-        self._open_look = ""
 
     @property
     def client(self):
@@ -376,8 +372,6 @@ class Planner:
             ),
         }]
         self._turns = 0
-        self._open_steps = []
-        self._open_look = ""
         return self._turn()
 
     def report_results(self, results: list[tuple[str, str]],
@@ -391,10 +385,6 @@ class Planner:
         reports "controller refused pose z=-0.02 below min 0.005" gives it enough
         to retry sensibly; a bare "failed" does not.
 
-        The API wants exactly one tool_result for every tool_use, or the next
-        request is a 400. Steps the caller did not run (it stops at the first
-        failure) get a result that says so rather than none at all.
-
         `scene` is (objects on the table as {name, confidence, xyz}, names out of
         reach). Positions, not names: 13 Oct 2026, a pick lifted nothing, the
         scene said only "orange", and the model could not tell "held" from
@@ -405,12 +395,6 @@ class Planner:
         mid-task is informative but not fatal.
         """
         results = list(results)
-        answered = {tid for tid, _ in results}
-        results += [(s.tool_use_id, "SKIPPED: not run, an earlier step failed")
-                    for s in self._open_steps if s.tool_use_id not in answered]
-        if self._open_look and self._open_look not in answered:
-            results.append((self._open_look, "SKIPPED: not run, the steps ran instead"))
-        self._open_look = ""
 
         if results and (scene is not None or scene_error):
             tid, text = results[-1]
@@ -430,17 +414,8 @@ class Planner:
     def answer_question(self, question_id: str, answer: str) -> PlannerReply:
         """
         It takes the user's answer and gives you the re-planned next step.
-
-        Calls that came in the same reply as the question never ran, and each
-        still needs its own result or the next request is a 400.
         """
         content = [{"type": "tool_result", "tool_use_id": question_id, "content": answer}]
-        unrun = [s.tool_use_id for s in self._open_steps] + (
-            [self._open_look] if self._open_look else [])
-        content += [{"type": "tool_result", "tool_use_id": tid,
-                     "content": "SKIPPED: not run, the question had to be answered first"}
-                    for tid in unrun]
-        self._open_steps, self._open_look = [], ""
         self.messages.append({"role": "user", "content": content})
         return self._turn()
 
@@ -454,9 +429,6 @@ class Planner:
         Each name is said to be found or not found, in words. A name missing from
         a JSON table is easy for the model to read past, and then it acts on a
         drink that was never seen.
-
-        Steps in the same reply as the look did not run, because they were
-        planned before the look could change the scene.
         """
         if scene_error:
             text = f"FAILED: could not look: {scene_error}"
@@ -472,10 +444,6 @@ class Planner:
                 text += f" Not found: {', '.join(missing)}."
             text += _scene_text(objects, unreachable)
         content = [{"type": "tool_result", "tool_use_id": look_id, "content": text}]
-        content += [{"type": "tool_result", "tool_use_id": s.tool_use_id,
-                     "content": "SKIPPED: not run, the look came first"}
-                    for s in self._open_steps]
-        self._open_steps, self._open_look = [], ""
         self.messages.append({"role": "user", "content": content})
         return self._turn()
 
@@ -506,6 +474,9 @@ class Planner:
                 max_tokens=self.max_tokens,
                 system=SYSTEM_PROMPT.format(workspace=self.env.describe()),
                 tools=TOOLS,
+                # At most one call per reply (ADR 0014). `_read` refuses more, in case
+                # a reply ever carries two anyway.
+                tool_choice={"type": "auto", "disable_parallel_tool_use": True},
                 messages=self.messages,
                 extra_body=MODEL_OPTIONS,
             )
@@ -514,8 +485,6 @@ class Planner:
 
             reply, rejected = self._read(response.content)
             if not rejected:
-                self._open_steps = reply.steps
-                self._open_look = reply.look_id
                 return reply
             last_rejection = next(iter(rejected.values()))
             self._send_rejection(response.content, rejected)
@@ -525,10 +494,16 @@ class Planner:
         It takes the model's content blocks and gives you the reply and a
         {tool_use_id: reason} map of the calls that failed validation.
 
-        Every call is checked, not just the first bad one, so the model hears
-        about all its mistakes in one round trip.
+        A reply with more than one call is refused whole (ADR 0014). Running the
+        first alone is no better: the model chose it as part of a plan it can no
+        longer follow once the result changes the table.
         """
         reply = PlannerReply()
+        calls = [b for b in content if b.type == "tool_use"]
+        if len(calls) > 1:
+            why = (f"{len(calls)} tool calls in one reply. Call one tool per turn; you "
+                   "will see its result and the table before choosing the next")
+            return reply, {b.id: why for b in calls}
         rejected: dict[str, str] = {}
         for block in content:
             if block.type == "text":
@@ -544,12 +519,6 @@ class Planner:
                     reply.options = list(args.get("options", []))
                     reply.question_id = block.id
                 elif block.name == "look":
-                    if reply.look is not None:
-                        # One look per reply keeps one id to answer; a second one
-                        # would be left without a result and the next request is a 400.
-                        rejected[block.id] = ("call look once per reply, with every "
-                                              "name in one list")
-                        continue
                     reply.look = args["queries"]
                     reply.look_id = block.id
                 elif block.name in MOTION_TOOLS:
@@ -561,23 +530,11 @@ class Planner:
         It takes the rejected reply and gives you the error results appended to
         the conversation.
 
-        The whole reply is refused, not just the bad call. The calls are a plan in
-        order, and running the good ones around a bad one could pick before the
-        drawer is open. Each rejected call gets its own reason; the others get
-        a result saying they did not run, because every tool_use needs exactly one.
+        Every call in a rejected reply is in `rejected`, with its reason, because
+        every tool_use needs exactly one result or the next request is a 400.
         """
-        results = []
-        for block in content:
-            if block.type != "tool_use":
-                continue
-            if block.id in rejected:
-                results.append({"type": "tool_result", "tool_use_id": block.id,
-                                "content": f"REJECTED: {rejected[block.id]}. "
-                                           "Correct this and try again.",
-                                "is_error": True})
-            else:
-                results.append({"type": "tool_result", "tool_use_id": block.id,
-                                "content": "NOT EXECUTED: another call in this reply "
-                                           "was rejected. Send it again if still needed.",
-                                "is_error": True})
+        results = [{"type": "tool_result", "tool_use_id": block.id,
+                    "content": f"REJECTED: {rejected[block.id]}. Correct this and try again.",
+                    "is_error": True}
+                   for block in content if block.type == "tool_use"]
         self.messages.append({"role": "user", "content": results})

@@ -413,21 +413,32 @@ def test_a_rejected_call_goes_back_to_the_model_and_the_corrected_call_runs(env)
                              "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
 
 
-def test_one_bad_call_in_a_reply_rejects_the_whole_reply_with_one_result_each(env):
-    ok1 = _use("pick", {"xyz": INSIDE}, "a")
-    bad = _use("place", {"xyz": OUTSIDE[0]}, "b")
-    ok2 = _use("pick", {"xyz": INSIDE}, "c")
-    planner = _planner(env, [[ok1, bad, ok2], [_use("pick", {"xyz": INSIDE}, "d")]])
+def test_a_reply_with_two_calls_is_refused_whole_and_the_next_single_call_runs(env):
+    """
+    One call per turn (ADR 0014). Running only the first of two is no better:
+    the model chose it as part of a plan it cannot follow once the result
+    changes the table.
+    """
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a"), _use("place", {"xyz": INSIDE}, "b")],
+                             [_use("pick", {"xyz": INSIDE}, "c")]])
 
     reply = planner.start("do it", [])
 
-    assert [s.tool_use_id for s in reply.steps] == ["d"]
+    assert [s.tool_use_id for s in reply.steps] == ["c"]
     results = _results(planner)
-    assert set(results) == {"a", "b", "c"}
-    assert results["b"]["content"].startswith("REJECTED:")
-    for tid in ("a", "c"):
-        assert results[tid]["content"].startswith("NOT EXECUTED")
-    assert all(r["is_error"] for r in results.values())
+    assert set(results) == {"a", "b"}
+    for r in results.values():
+        assert r["is_error"] and r["content"].startswith("REJECTED: 2 tool calls in one reply")
+
+
+def test_every_request_asks_the_api_for_at_most_one_call(env):
+    client = ScriptedClient([[_say("done")]])
+    sent = []
+    create = client.create
+    client.create = lambda **kw: (sent.append(kw), create(**kw))[1]
+    Planner(CFG, env, client=client).start("do it", [])
+
+    assert sent[0]["tool_choice"] == {"type": "auto", "disable_parallel_tool_use": True}
 
 
 def test_repeated_rejection_ends_as_plan_rejected_inside_the_turn_limit(env):
@@ -455,22 +466,18 @@ def test_running_out_of_turns_without_a_rejection_is_gave_up(env):
     assert planner.usage["calls"] == n
 
 
-def test_report_results_answers_steps_that_did_not_run_and_adds_the_scene(env):
-    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a"),
-                              _use("place", {"xyz": INSIDE}, "b")],
-                             [_say("done")]])
+def test_report_results_adds_the_scene_to_the_result(env):
+    planner = _planner(env, [[_use("pick", {"xyz": INSIDE}, "a")], [_say("done")]])
     planner.start("move it", [])
 
     cup = {"name": "cup", "confidence": 0.5, "xyz": [0.4, -0.3, 0.2]}
     reply = planner.report_results([("a", "FAILED: no grasp")], scene=([cup], ["box"]))
 
     assert reply.is_done
-    results = _results(planner)
-    assert results["b"]["content"].startswith("SKIPPED")
-    assert "Scene now" in results["b"]["content"]
-    assert '"cup"' in results["b"]["content"]
-    assert "out of reach: ['box']" in results["b"]["content"]
-    assert "Scene now" not in results["a"]["content"]
+    content = _results(planner)["a"]["content"]
+    assert content.startswith("FAILED: no grasp")
+    assert "Scene now" in content and '"cup"' in content
+    assert "out of reach: ['box']" in content
 
 
 def test_the_scene_after_a_step_carries_positions_so_a_failed_pick_shows(env):
@@ -493,9 +500,8 @@ def test_the_scene_after_a_step_carries_positions_so_a_failed_pick_shows(env):
 JUICE = {"name": "orange juice bottle", "confidence": 0.6, "xyz": INSIDE}
 
 
-def test_a_look_says_in_words_what_was_found_and_skips_steps_beside_it(env):
-    planner = _planner(env, [[_use("look", {"queries": ["Orange Juice Bottle", "glass"]}, "L"),
-                              _use("pick", {"xyz": INSIDE}, "p")],
+def test_a_look_says_in_words_what_was_found(env):
+    planner = _planner(env, [[_use("look", {"queries": ["Orange Juice Bottle", "glass"]}, "L")],
                              [_say("done")]])
     reply = planner.start("pour me a drink", [])
 
@@ -505,37 +511,10 @@ def test_a_look_says_in_words_what_was_found_and_skips_steps_beside_it(env):
     reply = planner.report_look("L", reply.look, scene=([JUICE], []))
 
     assert reply.is_done
-    results = _results(planner)
-    assert "Found: orange juice bottle." in results["L"]["content"]
-    assert "Not found: glass." in results["L"]["content"]
-    assert '"orange juice bottle"' in results["L"]["content"]
-    # Planned before the look could change the scene, so it never ran.
-    assert results["p"]["content"].startswith("SKIPPED")
-
-
-def test_a_question_answered_first_leaves_a_look_in_the_same_reply_unrun(env):
-    planner = _planner(env, [[_use("ask_user", {"question": "Which drink?"}, "q"),
-                              _use("look", {"queries": ["bottle"]}, "L")],
-                             [_say("done")]])
-    reply = planner.start("pour me a drink", [])
-
-    planner.answer_question(reply.question_id, "orange juice")
-
-    results = _results(planner)
-    assert results["q"]["content"] == "orange juice"
-    assert results["L"]["content"].startswith("SKIPPED")
-
-
-def test_a_second_look_in_one_reply_is_rejected_so_none_is_left_unanswered(env):
-    planner = _planner(env, [[_use("look", {"queries": ["bottle"]}, "L1"),
-                              _use("look", {"queries": ["glass"]}, "L2")],
-                             [_use("look", {"queries": ["bottle", "glass"]}, "L3")]])
-    reply = planner.start("pour me a drink", [])
-
-    assert reply.look_id == "L3"
-    results = _results(planner)
-    assert results["L2"]["content"].startswith("REJECTED: call look once per reply")
-    assert results["L1"]["content"].startswith("NOT EXECUTED")
+    content = _results(planner)["L"]["content"]
+    assert "Found: orange juice bottle." in content
+    assert "Not found: glass." in content
+    assert '"orange juice bottle"' in content
 
 
 # ----------------------------------------------------------------- API cost

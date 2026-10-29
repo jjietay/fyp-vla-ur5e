@@ -211,7 +211,8 @@ class ArchitectureA:
         It takes validated steps and gives you (tool_use_id, outcome) pairs to feed
         back to the planner.
 
-        Stops at the first failure rather than pushing on. Later steps assume
+        The planner sends one step per turn (ADR 0014), so this runs one. It still
+        stops at the first failure if ever given more: a later step assumes the
         earlier ones worked, and a place after a failed pick drops nothing onto
         the table from a height.
         """

@@ -1,3 +1,5 @@
 # A rejected plan goes back to the model as an error, and the model retries inside the turn limit
 
 Decided 16 Oct 2026. When `validate_call` refuses a tool call, the planner returns the reason to the model as a tool_result with `is_error` set, and asks again. It refuses the whole reply, not only the bad call: the other calls in that reply get "NOT EXECUTED" results, because every tool_use needs exactly one result and the calls are an ordered plan. Retries count against `max_turns`. If no turn is left, the run ends as `plan rejected: <last reason>` in the PLANNING stage, which stays distinguishable from `gave up after N planning turns`. A modular pipeline retries in practice, so aborting on the first rejection was unfair to A, and a run that recovers is a result. Turn and token counts now include retries. Trials recorded before this date aborted on the first rejection and are not comparable.
+
+*29 Oct 2026:* a reply now holds at most one call (ADR 0014), so "NOT EXECUTED" no longer arises. A reply with more than one call is refused whole, each call with the same reason, and retried like any rejection.
