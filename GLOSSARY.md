@@ -13,6 +13,10 @@ _Avoid_: level, difficulty
 One reproducible starting arrangement of objects on the table for a tier.
 _Avoid_: scene setup, configuration
 
+**Layout cross**:
+One of the five fixed points on the table, marked with a thin cross, where an object stands in a layout (ADR 0012). Demonstrations and Architecture A's tuning stay off them.
+_Avoid_: position, slot, spot, mark
+
 **Utterance**:
 One phrasing in the frozen suite that the operator is told to say. It is a training utterance or a held-out utterance.
 _Avoid_: command, prompt
@@ -28,6 +32,10 @@ _Avoid_: command, query
 **Trial**:
 One scored attempt by one architecture at one instruction on one layout.
 _Avoid_: run, episode, attempt
+
+**Unscored check**:
+Practice attempts off the layout crosses, never logged as trials, that confirm an architecture works end to end before its scored trials start.
+_Avoid_: smoke test, dry run, warm-up
 
 **Failure stage**:
 The stage a failed trial is blamed on: capture, grounding, detection, depth, transform, planning, clarify or execution. This list is the failure taxonomy of the report.
@@ -89,6 +97,14 @@ _Avoid_: primitive, action
 Something the planner can call: each skill, plus ask_user, which is a tool but not a skill.
 _Avoid_: function, command
 
+**Re-perceive**:
+Capturing and locating again after a tool runs, so the next planning turn sees the located objects as they are now.
+_Avoid_: new observation (B's camera input is its observation), fresh scene, rescan
+
+**Verify**:
+After a pick or place, Architecture A captures again and measures the object's distance from the TCP. A pick verifies when the object is within `verify.tolerance_mm` of the TCP, a place when it is not. Not seeing the object leaves the step unverified, which is not a failure.
+_Avoid_: automatic check, pick check, place check, camera check
+
 **Calibration**:
 The current camera-to-base transform, T_base_cam. Only Architecture A forms a 3D point, so only A has one.
 _Avoid_: extrinsics, hand-eye result
@@ -97,9 +113,17 @@ _Avoid_: extrinsics, hand-eye result
 One of the operations that writes a new calibration: ball fit, levelling, place-and-look, or a measured mount as the fallback.
 _Avoid_: calibration pass
 
+**Reach correction**:
+The empirical calibration step written on top of the ball fit: a yaw and a shift fitted to jogged reach-test points. It stays only until a matte-ball refit makes it unnecessary (ADR 0007).
+_Avoid_: empirical correction, hand correction
+
 **Reach test**:
 The check where the arm goes to points the camera located and the operator measures the miss.
 _Avoid_: validation run, accuracy check
+
+**Reach-test cross**:
+A thin cross drawn on the table that the reach test sends the arm to. It is never a layout cross.
+_Avoid_: target, pen mark
 
 **Validated calibration**:
 A calibration that passed the reach test after it was last written. Any calibration step makes it unvalidated again.
