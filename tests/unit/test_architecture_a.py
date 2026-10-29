@@ -215,6 +215,21 @@ def test_layouts_respect_minimum_separation():
                     assert math.dist(p, q) >= 0.12 - 1e-9
 
 
+def test_layouts_lie_inside_the_envelope():
+    """A layout the arm may not reach scores the envelope, not the architecture.
+    Moving the arm or the envelope again must fail here before a trial is run."""
+    import math
+    from fyp.evaluation.suite import Tier, build_layouts
+    from fyp.shared.helpers.config import get_config
+    ws = get_config()["workspace"]
+    lo, hi = ws["angle_deg"]
+    for tier in Tier:
+        for layout in build_layouts(tier, 20):
+            for x, y in layout.positions.values():
+                assert ws["min_radius"] <= math.hypot(x, y) <= ws["max_radius"]
+                assert lo <= math.degrees(math.atan2(y, x)) <= hi
+
+
 def test_every_tier_has_a_written_success_criterion():
     """A criterion that lives only in someone's head is how a marginal trial
     becomes a success on a good day and a failure on a bad one."""

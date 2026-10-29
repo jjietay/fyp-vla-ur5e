@@ -15,6 +15,7 @@ one of them.
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -209,8 +210,10 @@ class Layout:
 
 
 def build_layouts(tier: Tier, n: int = 20, seed: int = 20260811,
-                  x_range: tuple[float, float] = (0.30, 0.55),
-                  y_range: tuple[float, float] = (-0.20, 0.20),
+                  radius_range: tuple[float, float] = (0.45, 0.65),
+                  bearing_range_deg: tuple[float, float] = (-70.0, -35.0),
+                  x_range: tuple[float, float] = (0.20, 0.47),
+                  y_range: tuple[float, float] = (-0.60, -0.33),
                   min_separation: float = 0.12) -> list[Layout]:
     """
     It takes a tier and gives you n reproducible starting layouts, half using
@@ -219,6 +222,14 @@ def build_layouts(tier: Tier, n: int = 20, seed: int = 20260811,
     Seeded so the same 20 layouts are used for both architectures, in the same
     order. Randomising per architecture would mean the two were scored on
     different problems, and any difference in success rate could be the layouts.
+
+    A position must lie in the ring sector AND in the x/y box. The sector is the
+    envelope of 21 Oct 2026 pulled in by 5 cm and 5 to 10 degrees, so an object
+    can be reached from above with room for the fingers. The box is the
+    calibration grid, the patch of table both in the camera's view and covered by
+    the ball fit; outside it the camera-to-base transform is extrapolating. The
+    first layouts used the table before the arm was moved, and on the new cell
+    almost none of their positions could be reached.
 
     Objects are kept `min_separation` apart because two items closer than the
     gripper is wide make a failed grasp a property of the layout rather than of
@@ -229,12 +240,20 @@ def build_layouts(tier: Tier, n: int = 20, seed: int = 20260811,
     train = list(task.train_utterances)
     held = list(task.heldout_utterances)
 
+    def draw() -> tuple[float, float]:
+        while True:
+            r = rng.uniform(*radius_range)
+            b = math.radians(rng.uniform(*bearing_range_deg))
+            x, y = round(r * math.cos(b), 3), round(r * math.sin(b), 3)
+            if x_range[0] <= x <= x_range[1] and y_range[0] <= y <= y_range[1]:
+                return x, y
+
     layouts: list[Layout] = []
     for i in range(n):
         positions: dict[str, tuple[float, float]] = {}
         for obj in task.objects:
             for _ in range(200):
-                p = (round(rng.uniform(*x_range), 3), round(rng.uniform(*y_range), 3))
+                p = draw()
                 if all((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 >= min_separation ** 2
                        for q in positions.values()):
                     positions[obj] = p
@@ -242,7 +261,8 @@ def build_layouts(tier: Tier, n: int = 20, seed: int = 20260811,
             else:
                 raise RuntimeError(
                     f"could not place {obj} with {min_separation} m separation in "
-                    f"x{x_range} y{y_range}. Widen the ranges or reduce the separation.")
+                    f"r{radius_range} bearing{bearing_range_deg} x{x_range} y{y_range}. "
+                    "Widen the ranges or reduce the separation.")
 
         use_held = (i % 2 == 1) and held
         pool = held if use_held else (train or held)
