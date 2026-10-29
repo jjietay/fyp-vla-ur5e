@@ -122,7 +122,7 @@ H6 is the one that most cleanly separates the architectures and it costs nothing
 
 **Fixed before tuning. Any change after tuning begins must be recorded with a reason in the report.**
 
-- **Trials:** 20 per (architecture × tier). Object start poses drawn from a written randomisation table, identical for both architectures — same 20 layouts, same order.
+- **Trials:** 20 per (architecture × tier). Objects are placed on five fixed crosses, the same for every tier, as permutations with fixed orientation (`docs/adr/0012-layouts-are-five-fixed-crosses.md`), identical for both architectures — same 20 layouts, same order. Demonstrations and A's tuning stay off the crosses.
 - **Spoken commands are scripted and shared.** Write the 20 utterances down in advance, half using training-set phrasings and half held-out paraphrases (H7). Speak the same utterance to both architectures. Do not improvise at the microphone — an unscripted phrasing that happens to favour one architecture is an uncontrolled variable.
 - **Record the transcript with every trial.** If ASR mis-transcribes, that trial's failure belongs to the speech front-end, not to A or B, and you can only tell them apart if you kept the text.
 - **Success:** defined per tier in one sentence each, in the harness source, not in your head. E.g. Tier 1 success = "liquid transferred into the glass, glass upright, bottle returned to table, no spill outside the tray."
@@ -334,6 +334,7 @@ Closed actions are in git history.
 | **A10** | `ANTHROPIC_API_KEY` is in `.env` (gitignored) but nothing loads it: run `set -a; source .env; set +a` in each new terminal, see `docs/commands.md` | JJ | each session |
 | **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
 | **A17** | Decide the tray wording: OWLv2 misses "pink tray" and only just finds "pink container", and `evaluation/suite.py` is frozen. Options: a detector threshold for A, an object that scores well, or a dated `suite.py` CHANGELOG entry | JJ | before T2 |
+| **A19** | Measure the object footprints, choose the five crosses inside the envelope and the calibration grid, and put their base-frame positions in `suite.py` (ADR 0012). The cross-based layouts in code wait for this | JJ | before any scored trial or demonstration |
 | **A15** | Confirm the 3D jog device that will drive the demonstrations, see `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` | JJ | before W5 |
 
 ---
