@@ -108,9 +108,11 @@ def main() -> int:
                     print(f"  executed: {' -> '.join(outcome.executed)}")
                 if outcome.asked:
                     print(f"  asked: {outcome.asked}")
+                cost = outcome.usage.get("cost_usd")
                 print(f"  tokens: {outcome.usage.get('input_tokens', 0)} in / "
                       f"{outcome.usage.get('output_tokens', 0)} out "
-                      f"over {outcome.usage.get('calls', 0)} calls")
+                      f"over {outcome.usage.get('calls', 0)} calls"
+                      + (f", US${cost:.4f}" if cost is not None else ""))
                 print(f"  trace: logs/traces/{outcome.run_id}.jsonl")
                 for path in scene.values():
                     print(f"  scene: {path}")

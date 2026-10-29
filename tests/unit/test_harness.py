@@ -131,3 +131,34 @@ def test_the_step_prompt_asks_again_until_it_gets_y_or_n():
     op = Operator("", "maybe", "Y")
     assert judge_step("pick {'xyz': [0.4, -0.3, 0.2]}", operator=op) is True
     assert len(op.prompts) == 3 and "pick" in op.prompts[0]
+
+
+def test_a_trial_records_its_api_cost_and_the_peoples_time_apart(tmp_path):
+    """
+    End-to-end latency runs from the end of speech recognition to when the agent
+    stops. The user's spoken answers and the operator's typing happen inside it,
+    so they are recorded beside it and taken off the architecture's own time.
+    """
+    usage = {"calls": 3, "input_tokens": 1200, "output_tokens": 300,
+             "cache_creation_input_tokens": 0, "cache_read_input_tokens": 800,
+             "cost_usd": 0.00556}
+    agent = FakeAgent(busy_s=0.40, operator_s=0.10, clarify_s=0.20, usage=usage)
+    rec = _one_trial(tmp_path, agent, Operator("", "y"))[0]
+
+    assert 0.38 <= rec.latency_s <= 0.50, rec.latency_s
+    assert (rec.operator_s, rec.clarify_s) == (0.1, 0.2)
+    assert abs(rec.duration_s - (rec.latency_s - 0.30)) < 0.02
+    assert (rec.api_calls, rec.input_tokens, rec.output_tokens) == (3, 1200, 300)
+    assert rec.cache_read_tokens == 800 and rec.api_cost_usd == 0.00556
+    assert rec.agent_said == "I did it."
+
+    row = next(csv.DictReader(open(tmp_path / "A_tier0.csv")))
+    assert float(row["api_cost_usd"]) == 0.00556
+
+
+def test_an_agent_that_reports_chunk_times_has_them_recorded(tmp_path):
+    """Architecture B's wrapper reports how long each action chunk took to infer."""
+    agent = FakeAgent(timing={"chunk_ms": [80.0, 100.0, 120.0]})
+    rec = _one_trial(tmp_path, agent, Operator("", "y"))[0]
+    assert (rec.chunks, rec.chunk_ms_mean, rec.chunk_ms_max) == (3, 100.0, 120.0)
+    assert rec.api_cost_usd == 0.0

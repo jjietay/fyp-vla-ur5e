@@ -507,3 +507,27 @@ def test_every_agent_returns_what_the_harness_reads(cell, name):
     assert isinstance(outcome.asked, list)
     assert isinstance(outcome.run_id, str) and outcome.run_id
     assert isinstance(outcome.summary, str)
+
+
+def test_a_trial_carries_the_cost_of_every_api_call_including_grounding(cell):
+    """One grounding call and two planning calls, 10 in and 5 out each."""
+    records, _, _, llm = _run_one_trial(cell, [pick_what_was_seen, finish])
+    rec = records[0]
+    assert rec.api_calls == len(llm.calls) == 3
+    assert (rec.input_tokens, rec.output_tokens) == (30, 15)
+    p = cell.cfg["architecture_a"]["planner"]["price_usd_per_mtok"]
+    assert abs(rec.api_cost_usd - (30 * p["input"] + 15 * p["output"]) / 1e6) < 1e-9
+
+
+def test_grounding_runs_again_on_every_trial_even_for_the_same_words(cell):
+    """A cache kept across runs would let a repeated phrasing skip grounding,
+    making that trial cheaper, faster and unable to fail there."""
+    llm = FakeLLM([pick_what_was_seen, finish, pick_what_was_seen, finish])
+    controller = FakeController()
+    cell.scene.controller = controller
+    agent = ArchitectureA(cell.camera, controller, cfg=cell.cfg, ask=FakeAsk("x"),
+                          calibration=cell.T, planner_client=llm)
+    agent.run(INSTRUCTION)
+    agent.run(INSTRUCTION)
+    grounding = [c for c in llm.calls if c["tools"][0]["name"] == "look_for"]
+    assert len(grounding) == 2

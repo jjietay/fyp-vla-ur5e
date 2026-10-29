@@ -132,6 +132,15 @@ class Trace:
         ev.duration_s = round(time.perf_counter() - t0, 4)
         self.record(ev)
 
+    def usage(self, usage: dict) -> None:
+        """
+        It takes the run's API tally and gives you it written to disk.
+
+        Its own record, beside the stage events, so a trace alone answers what a
+        run cost, without the trial CSV.
+        """
+        self._write({"type": "usage", **usage})
+
     def finish(self, ok: bool, summary: str = "") -> None:
         """It takes the run outcome and gives you a closed, complete trace file."""
         self._write({"type": "run_end", "ok": ok, "summary": summary,

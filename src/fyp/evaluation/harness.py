@@ -57,6 +57,29 @@ class TrialRecord:
     transcript: str = ""
     run_id: str = ""
     utc: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Time. latency_s runs from the end of speech recognition to the moment the
+    # agent stops, by finishing or by failing. operator_s (typed step verdicts)
+    # and clarify_s (the user answering a question aloud) are people's time
+    # inside that span; duration_s above is latency_s minus both.
+    latency_s: float = 0.0
+    operator_s: float = 0.0
+    clarify_s: float = 0.0
+    # Money. API calls and tokens for the trial, and their list-price cost. Zero
+    # for an agent that calls no API, which is a result, not a gap.
+    api_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_write_tokens: int = 0
+    cache_read_tokens: int = 0
+    api_cost_usd: float = 0.0
+    # Architecture B's control loop: action chunks produced and how long each
+    # took to infer. Empty for an agent that does not report them.
+    chunks: int = 0
+    chunk_ms_mean: float = 0.0
+    chunk_ms_max: float = 0.0
+    # The agent's own last word, recorded after the verdict and never shown
+    # before it. Says why a run stopped, e.g. "gave up after 6 planning turns".
+    agent_said: str = ""
 
 
 class Harness:
@@ -67,6 +90,13 @@ class Harness:
     `failed_stage`, `asked`, and `run_id`. Architecture A's Outcome satisfies
     this already; Architecture B's wrapper must be written to match rather than
     the harness being bent to fit it.
+
+    Optional fields, read when present and recorded as zero otherwise:
+    `operator_s` and `clarify_s` (seconds of people's time inside `run`),
+    `usage` (a dict with `calls`, the four token counts and `cost_usd`), and
+    `timing` (a dict with `chunk_ms`, the inference time of each action chunk).
+    `run` must return when the attempt ends, finished or failed, because the
+    clock stops there.
     """
 
     def __init__(self, agent, architecture: str, ears, cfg: dict | None = None,
@@ -127,9 +157,15 @@ class Harness:
             # architecture's time alone. ASR latency is in the speech log.
             t0 = time.perf_counter()
             outcome = self.agent.run(heard.text)
-            # An agent that stops for the operator's per-step verdicts reports
-            # the wait, which is the operator's time, not the architecture's.
-            duration = time.perf_counter() - t0 - float(getattr(outcome, "operator_s", 0.0))
+            latency = time.perf_counter() - t0
+            # An agent that stops for the operator's per-step verdicts, or for the
+            # user's spoken answer to a question, reports the wait. That is
+            # people's time, not the architecture's.
+            operator_s = float(getattr(outcome, "operator_s", 0.0))
+            clarify_s = float(getattr(outcome, "clarify_s", 0.0))
+            duration = latency - operator_s - clarify_s
+            usage = getattr(outcome, "usage", None) or {}
+            chunk_ms = list((getattr(outcome, "timing", None) or {}).get("chunk_ms", []))
 
             rec = TrialRecord(
                 architecture=self.architecture,
@@ -143,12 +179,24 @@ class Harness:
                 question_text=" | ".join(getattr(outcome, "asked", [])),
                 transcript=heard.text,
                 run_id=getattr(outcome, "run_id", ""),
+                latency_s=round(latency, 2), operator_s=round(operator_s, 2),
+                clarify_s=round(clarify_s, 2),
+                api_calls=int(usage.get("calls", 0)),
+                input_tokens=int(usage.get("input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                cache_write_tokens=int(usage.get("cache_creation_input_tokens", 0)),
+                cache_read_tokens=int(usage.get("cache_read_input_tokens", 0)),
+                api_cost_usd=round(float(usage.get("cost_usd", 0.0)), 6),
+                chunks=len(chunk_ms),
+                chunk_ms_mean=round(sum(chunk_ms) / len(chunk_ms), 1) if chunk_ms else 0.0,
+                chunk_ms_max=round(max(chunk_ms), 1) if chunk_ms else 0.0,
             )
 
             # Nothing the agent concluded is printed before this question, so the
             # verdict is independent of the system it judges.
             rec.success = self.operator("  SUCCESS by the criterion above? [y/N] > ").strip().lower() == "y"
-            print(f"  the agent said: {getattr(outcome, 'summary', '')}")
+            rec.agent_said = str(getattr(outcome, "summary", ""))
+            print(f"  the agent said: {rec.agent_said}")
             if tier is Tier.AMBIGUITY:
                 rec.chosen_object = self.operator("  which object did it act on? > ").strip()
             iv = self.operator("  interventions (Enter for 0) > ").strip()
@@ -219,10 +267,10 @@ def summarise(rows: list[dict]) -> str:
     """
     It takes trial records and gives you the tables that go into the report.
 
-    Four tables, because four different claims are being made: overall success,
+    Five tables, because five different claims are being made: overall success,
     where Architecture A fails (which Architecture B cannot answer at all),
-    robustness to unseen phrasing, and what Architecture B does when the
-    instruction is ambiguous.
+    robustness to unseen phrasing, what each costs in time and money per trial,
+    and what Architecture B does when the instruction is ambiguous.
     """
     if not rows:
         return "no trials recorded yet"
@@ -266,6 +314,22 @@ def summarise(rows: list[dict]) -> str:
         rt = 100.0 * sum(truthy(r, "success") for r in tr) / len(tr) if tr else 0.0
         rh = 100.0 * sum(truthy(r, "success") for r in ho) / len(ho) if ho else 0.0
         out.append(f"  {a:<28}{rt:13.1f}%{rh:13.1f}%{rh - rt:+9.1f}")
+
+    out.append("\nTIME AND COST PER TRIAL (means)")
+    out.append(f"  {'':<14}{'tier':>5}{'architecture s':>16}{'end to end s':>14}"
+               f"{'API US$':>10}{'chunk ms':>10}")
+
+    def mean(sel, k):
+        vals = [float(r[k]) for r in sel if str(r.get(k, "")).strip() not in ("", "None")]
+        return sum(vals) / len(vals) if vals else 0.0
+
+    for a in archs:
+        for t in tiers:
+            sel = [r for r in rows if r["architecture"] == a and int(r["tier"]) == t]
+            if sel:
+                out.append(f"  {a:<14}{t:>5}{mean(sel, 'duration_s'):16.1f}"
+                           f"{mean(sel, 'latency_s'):14.1f}{mean(sel, 'api_cost_usd'):10.4f}"
+                           f"{mean(sel, 'chunk_ms_mean'):10.1f}")
 
     out.append("\nTIER 2: WHAT WAS CHOSEN WHEN THE INSTRUCTION WAS AMBIGUOUS")
     for a in archs:

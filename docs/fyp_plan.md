@@ -126,7 +126,7 @@ H6 is the one that most cleanly separates the architectures and it costs nothing
 - **Spoken commands are scripted and shared.** Write the 20 utterances down in advance, half using training-set phrasings and half held-out paraphrases (H7). Speak the same utterance to both architectures. Do not improvise at the microphone — an unscripted phrasing that happens to favour one architecture is an uncontrolled variable.
 - **Record the transcript with every trial.** If ASR mis-transcribes, that trial's failure belongs to the speech front-end, not to A or B, and you can only tell them apart if you kept the text.
 - **Success:** defined per tier in one sentence each, in the harness source, not in your head. E.g. Tier 1 success = "liquid transferred into the glass, glass upright, bottle returned to table, no spill outside the tray."
-- **Per-trial record:** architecture, tier, trial index, layout ID, **spoken utterance + ASR transcript**, outcome, failure stage (shared: ASR; A only: detection / depth / transform / planning / execution), wall-clock duration, human interventions.
+- **Per-trial record:** architecture, tier, trial index, layout ID, **spoken utterance + ASR transcript**, outcome, failure stage (shared: ASR; A only: detection / depth / transform / planning / execution), wall-clock duration, human interventions. Latency runs from the end of speech recognition to when the agent stops; the operator's typing and the user's spoken answers are recorded beside it and taken off the architecture's time. A's API calls, tokens and list-price cost, and B's chunk inference times, are columns too. Build effort, demonstrations and GPU-hours go in `docs/effort_log.md`.
 
 ### Metrics
 

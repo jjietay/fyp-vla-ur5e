@@ -108,8 +108,46 @@ class GroundingFailed(Exception):
     """Raised when an instruction could not be turned into detector queries."""
 
 
+USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens",
+              "cache_read_input_tokens")
+
+
+def new_usage() -> dict:
+    """It takes nothing and gives you an empty tally of API calls and tokens."""
+    return {"calls": 0, **{k: 0 for k in USAGE_KEYS}}
+
+
+def add_usage(usage: dict, response) -> None:
+    """
+    It takes a running tally and one API response and gives you the tally with
+    that call added.
+
+    Thinking tokens arrive inside `output_tokens` and are billed as output, so
+    nothing extra is needed for them. Cache writes and reads are billed at their
+    own rates and are kept apart for that reason.
+    """
+    usage["calls"] += 1
+    for k in USAGE_KEYS:
+        usage[k] += int(getattr(response.usage, k, 0) or 0)
+
+
+def api_cost_usd(usage: dict, prices: dict) -> float:
+    """
+    It takes a tally of tokens and the price per million tokens and gives you
+    the cost in US dollars.
+
+    `prices` holds `input`, `output`, `cache_write` and `cache_read`, all per
+    million tokens, from `architecture_a.planner.price_usd_per_mtok`.
+    """
+    per = {"input_tokens": "input", "output_tokens": "output",
+           "cache_creation_input_tokens": "cache_write",
+           "cache_read_input_tokens": "cache_read"}
+    return sum(usage.get(k, 0) * float(prices.get(v, 0.0)) for k, v in per.items()) / 1e6
+
+
 def extract_queries(instruction: str, client, model: str,
-                    max_queries: int = 8, max_tokens: int = 512) -> list[str]:
+                    max_queries: int = 8, max_tokens: int = 512,
+                    usage: dict | None = None) -> list[str]:
     """
     It takes an instruction and gives you the object names to hand the detector.
 
@@ -125,6 +163,9 @@ def extract_queries(instruction: str, client, model: str,
     Failure raises rather than falling back to a default vocabulary. A silent
     fallback would restore the very advantage this removes, and would do it
     invisibly, on exactly the trials where the model struggled.
+
+    Pass the planner's `usage` so this call is counted with the rest of the run.
+    It is part of A's cost per command, and leaving it out understates it.
     """
     response = client.messages.create(
         model=model,
@@ -135,6 +176,8 @@ def extract_queries(instruction: str, client, model: str,
         messages=[{"role": "user", "content": instruction}],
         extra_body=MODEL_OPTIONS,
     )
+    if usage is not None:
+        add_usage(usage, response)
 
     raw: list = []
     for block in response.content:
@@ -253,7 +296,9 @@ class Planner:
         self.max_turns = int(p["max_turns"])
         self.env = envelope or WorkspaceEnvelope(cfg)
         self.messages: list[dict] = []
-        self.usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0}
+        self.usage = new_usage()
+        # Per million tokens. None leaves the cost uncomputed rather than guessed.
+        self.prices = p.get("price_usd_per_mtok")
         self._client = client
         # Model calls made for the current instruction. Retries after a rejection
         # count too, so the limit bounds the whole exchange, not only good replies.
@@ -390,9 +435,7 @@ class Planner:
                 messages=self.messages,
                 extra_body=MODEL_OPTIONS,
             )
-            self.usage["calls"] += 1
-            self.usage["input_tokens"] += getattr(response.usage, "input_tokens", 0)
-            self.usage["output_tokens"] += getattr(response.usage, "output_tokens", 0)
+            add_usage(self.usage, response)
             self.messages.append({"role": "assistant", "content": response.content})
 
             reply, rejected = self._read(response.content)

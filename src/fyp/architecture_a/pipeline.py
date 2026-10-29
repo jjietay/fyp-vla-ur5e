@@ -37,7 +37,8 @@ import numpy as np
 
 from fyp.architecture_a.calibration.store import CalibrationStore
 from fyp.architecture_a.perception.scene import Perception
-from fyp.architecture_a.planner import GroundingFailed, PlanRejected, Planner, extract_queries
+from fyp.architecture_a.planner import (GroundingFailed, PlanRejected, Planner, api_cost_usd,
+                                        extract_queries)
 from fyp.architecture_a.skills import Skills
 from fyp.architecture_a.tools import validate_schemas_against_skills
 from fyp.architecture_a.trace import Stage, Trace
@@ -62,6 +63,9 @@ class Outcome:
     # Seconds spent waiting for the operator's typed verdicts. Not A's time: the
     # harness takes it off the trial duration.
     operator_s: float = 0.0
+    # Seconds spent waiting for the user to answer a clarifying question by voice.
+    # The user's time, not A's, so the harness reports it apart.
+    clarify_s: float = 0.0
 
 
 class ArchitectureA:
@@ -166,7 +170,8 @@ class ArchitectureA:
 
         with trace.stage(Stage.GROUNDING, instruction) as ev:
             queries = extract_queries(instruction, planner.client, self.grounding_model,
-                                      self.max_queries, self.grounding_max_tokens)
+                                      self.max_queries, self.grounding_max_tokens,
+                                      usage=planner.usage)
             ev.data["queries"] = queries
             ev.message = f"{instruction!r} -> {queries}"
 
@@ -326,6 +331,10 @@ class ArchitectureA:
         """
         trace = Trace(instruction, cfg=self.cfg)
         planner = Planner(self.cfg, self.envelope, client=self.planner_client)
+        # The cache saves re-extracting within one run. Kept across runs, a
+        # repeated phrasing in a scored block would skip grounding: cheaper,
+        # faster, and unable to fail there, on that trial only.
+        self._query_cache.clear()
         outcome = Outcome(ok=False, summary="", run_id=trace.run_id)
 
         try:
@@ -343,7 +352,9 @@ class ArchitectureA:
             while True:
                 if reply.question is not None:
                     with trace.stage(Stage.CLARIFY, reply.question) as ev:
+                        t_ask = time.perf_counter()
                         answer = self.ask(reply.question, reply.options)
+                        outcome.clarify_s += time.perf_counter() - t_ask
                         ev.data["answer"] = answer
                     outcome.asked.append(reply.question)
                     with trace.stage(Stage.PLANNING):
@@ -381,6 +392,9 @@ class ArchitectureA:
             outcome.summary = f"{type(e).__name__}: {e}"
 
         outcome.failed_stage = trace.failed_stage.value if trace.failed_stage else None
-        outcome.usage = planner.usage
+        outcome.usage = dict(planner.usage)
+        if planner.prices:
+            outcome.usage["cost_usd"] = round(api_cost_usd(planner.usage, planner.prices), 6)
+        trace.usage(outcome.usage)
         trace.finish(outcome.ok, outcome.summary)
         return outcome

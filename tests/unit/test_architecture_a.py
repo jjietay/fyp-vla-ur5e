@@ -390,7 +390,8 @@ def test_a_rejected_call_goes_back_to_the_model_and_the_corrected_call_runs(env)
     fed_back = _results(planner)["t1"]
     assert fed_back["is_error"] is True
     assert "below min" in fed_back["content"]
-    assert planner.usage == {"input_tokens": 20, "output_tokens": 10, "calls": 2}
+    assert planner.usage == {"input_tokens": 20, "output_tokens": 10, "calls": 2,
+                             "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
 
 
 def test_one_bad_call_in_a_reply_rejects_the_whole_reply_with_one_result_each(env):
@@ -468,3 +469,33 @@ def test_the_scene_after_a_step_carries_positions_so_a_failed_pick_shows(env):
 
     content = _results(planner)["a"]["content"]
     assert "0.6478" in content and "-0.1597" in content and "0.1954" in content
+
+
+# ----------------------------------------------------------------- API cost
+
+def test_the_grounding_call_is_counted_in_the_run_usage():
+    """Grounding is a model call of its own. Leaving it out of the tally would
+    understate A's cost per command on every trial."""
+    from fyp.architecture_a.planner import extract_queries, new_usage
+    client = _FakeClient(["orange"])
+    usage = new_usage()
+    extract_queries("pick up the orange", client, "m", usage=usage)
+    assert usage["calls"] == 1
+    assert (usage["input_tokens"], usage["output_tokens"]) == (10, 5)
+
+
+def test_api_cost_prices_each_token_kind_at_its_own_rate():
+    from fyp.architecture_a.planner import api_cost_usd
+    usage = {"calls": 3, "input_tokens": 1_000_000, "output_tokens": 100_000,
+             "cache_creation_input_tokens": 200_000, "cache_read_input_tokens": 500_000}
+    prices = {"input": 2.0, "output": 10.0, "cache_write": 2.5, "cache_read": 0.2}
+    assert abs(api_cost_usd(usage, prices) - (2.0 + 1.0 + 0.5 + 0.1)) < 1e-9
+
+
+def test_the_configured_price_is_the_planner_models_list_price():
+    """A price that drifts from the model makes every cost in the report wrong."""
+    from fyp.shared.helpers.config import get_config
+    p = get_config()["architecture_a"]["planner"]
+    assert p["model"] == "claude-sonnet-5-5", "the model changed: update price_usd_per_mtok"
+    assert p["price_usd_per_mtok"] == {"input": 2.0, "output": 10.0,
+                                       "cache_write": 2.5, "cache_read": 0.2}
