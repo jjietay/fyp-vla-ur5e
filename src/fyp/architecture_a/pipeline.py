@@ -178,7 +178,7 @@ class ArchitectureA:
         self._query_cache[instruction] = queries
         return queries
 
-    def perceive(self, queries: list[str], trace: Trace) -> list[dict]:
+    def perceive(self, queries: list[str], trace: Trace, *, strict: bool = True) -> list[dict]:
         """
         It takes the detector vocabulary and gives you the objects currently on
         the table, in base frame, ready to hand to the planner.
@@ -187,6 +187,9 @@ class ArchitectureA:
         Capture is opened here; the other three are opened by `Perception.see`.
         "The run failed" is not a result; "the run failed at depth on 3 of 20
         trials" is.
+
+        `strict=False` is for a look: a name it does not find is an answer for the
+        planner, not a detection failure to blame the trial on.
         """
         with trace.stage(Stage.CAPTURE) as ev:
             # Depth averaged over a few frames while the arm is at rest; see camera.capture.
@@ -196,7 +199,7 @@ class ArchitectureA:
 
         # Detection, depth and transform are opened inside `see`, one trace stage
         # each, so a failure is still blamed on the stage that caused it.
-        seen = self.perception.see(frame, queries, trace)
+        seen = self.perception.see(frame, queries, trace, strict=strict)
         self.out_of_reach = seen.out_of_reach
         return seen.in_reach
 
@@ -359,6 +362,25 @@ class ArchitectureA:
                     outcome.asked.append(reply.question)
                     with trace.stage(Stage.PLANNING):
                         reply = planner.answer_question(reply.question_id, answer)
+                    continue
+
+                if reply.look is not None:
+                    # The planner's own names join the run's queries, so every later
+                    # re-perception and check looks for them too. Grounding chose the
+                    # first ones from the instruction alone, and an answer like
+                    # "orange juice" names something it never asked for.
+                    queries = queries + [q for q in reply.look if q not in queries]
+                    outcome.queries = list(queries)
+                    self._queries = queries
+                    scene, scene_error = None, None
+                    try:
+                        objects = self.perceive(queries, trace, strict=False)
+                        scene = (objects, [o["name"] for o in self.out_of_reach])
+                    except Exception as e:
+                        scene_error = str(e)
+                    with trace.stage(Stage.PLANNING):
+                        reply = planner.report_look(reply.look_id, reply.look, scene,
+                                                    scene_error)
                     continue
 
                 if reply.is_done:

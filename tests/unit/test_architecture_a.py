@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from fyp.architecture_a.planner import PlanRejected, Planner, validate_call
-from fyp.architecture_a.tools import TOOL_NAMES, validate_schemas_against_skills
+from fyp.architecture_a.tools import MOTION_TOOLS, TOOL_NAMES, validate_schemas_against_skills
 from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
 from fyp.shared.helpers.config import get_config
 
@@ -136,6 +136,25 @@ def test_ask_user_is_exposed_to_the_model(env):
     # Tier 2 depends on this tool existing. If it is ever dropped, the
     # clarification result silently becomes untestable.
     assert "ask_user" in TOOL_NAMES
+
+
+def test_look_is_a_tool_the_arm_never_runs(env):
+    # Tier 2 needs it after the answer: "orange juice" names what grounding
+    # never asked the detector to find.
+    assert "look" in TOOL_NAMES
+    assert "look" not in MOTION_TOOLS
+
+
+def test_look_cleans_its_names_like_grounding_does(env):
+    args = validate_call("look", {"queries": [" Orange Juice Bottle. ", "orange juice bottle"]}, env)
+    assert args == {"queries": ["orange juice bottle"]}
+
+
+def test_look_needs_a_name(env):
+    with pytest.raises(PlanRejected, match="no noun phrase"):
+        validate_call("look", {"queries": ["  ", ""]}, env)
+    with pytest.raises(PlanRejected, match="list of noun phrases"):
+        validate_call("look", {"queries": "orange juice bottle"}, env)
 
 
 # --------------------------------------------------------- schema agreement
@@ -469,6 +488,54 @@ def test_the_scene_after_a_step_carries_positions_so_a_failed_pick_shows(env):
 
     content = _results(planner)["a"]["content"]
     assert "0.6478" in content and "-0.1597" in content and "0.1954" in content
+
+
+JUICE = {"name": "orange juice bottle", "confidence": 0.6, "xyz": INSIDE}
+
+
+def test_a_look_says_in_words_what_was_found_and_skips_steps_beside_it(env):
+    planner = _planner(env, [[_use("look", {"queries": ["Orange Juice Bottle", "glass"]}, "L"),
+                              _use("pick", {"xyz": INSIDE}, "p")],
+                             [_say("done")]])
+    reply = planner.start("pour me a drink", [])
+
+    assert reply.look == ["orange juice bottle", "glass"] and reply.look_id == "L"
+    assert not reply.is_done
+
+    reply = planner.report_look("L", reply.look, scene=([JUICE], []))
+
+    assert reply.is_done
+    results = _results(planner)
+    assert "Found: orange juice bottle." in results["L"]["content"]
+    assert "Not found: glass." in results["L"]["content"]
+    assert '"orange juice bottle"' in results["L"]["content"]
+    # Planned before the look could change the scene, so it never ran.
+    assert results["p"]["content"].startswith("SKIPPED")
+
+
+def test_a_question_answered_first_leaves_a_look_in_the_same_reply_unrun(env):
+    planner = _planner(env, [[_use("ask_user", {"question": "Which drink?"}, "q"),
+                              _use("look", {"queries": ["bottle"]}, "L")],
+                             [_say("done")]])
+    reply = planner.start("pour me a drink", [])
+
+    planner.answer_question(reply.question_id, "orange juice")
+
+    results = _results(planner)
+    assert results["q"]["content"] == "orange juice"
+    assert results["L"]["content"].startswith("SKIPPED")
+
+
+def test_a_second_look_in_one_reply_is_rejected_so_none_is_left_unanswered(env):
+    planner = _planner(env, [[_use("look", {"queries": ["bottle"]}, "L1"),
+                              _use("look", {"queries": ["glass"]}, "L2")],
+                             [_use("look", {"queries": ["bottle", "glass"]}, "L3")]])
+    reply = planner.start("pour me a drink", [])
+
+    assert reply.look_id == "L3"
+    results = _results(planner)
+    assert results["L2"]["content"].startswith("REJECTED: call look once per reply")
+    assert results["L1"]["content"].startswith("NOT EXECUTED")
 
 
 # ----------------------------------------------------------------- API cost

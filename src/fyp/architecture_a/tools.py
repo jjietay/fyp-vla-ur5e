@@ -15,6 +15,10 @@ Tier 2 experiment. Asking a clarifying question is, to this architecture, just
 another tool call. Architecture B has no equivalent: SmolVLA emits TCP pose
 deltas and has no channel through which a question could travel. The asymmetry is a
 result, not something to paper over.
+
+`look` is the other half of that experiment. Grounding picks the queries once, from
+the instruction, so an answer like "orange juice" names something the detector was
+never asked to find. `look` lets the planner add that name for the rest of the run.
 """
 from __future__ import annotations
 
@@ -130,10 +134,33 @@ TOOLS: list[dict] = [
             "required": ["question"],
         },
     },
+    {
+        "name": "look",
+        "description": (
+            "Look at the table again for objects by name, and add what is found to the "
+            "detected objects. Use this when an object you need is not in the list, for "
+            "example one the user named in answer to ask_user. Give short noun phrases "
+            "such as 'orange juice bottle', never sentences."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "description": "Short noun phrases for the detector, lower case.",
+                },
+            },
+            "required": ["queries"],
+        },
+    },
 ]
 
 TOOL_NAMES = {t["name"] for t in TOOLS}
-MOTION_TOOLS = TOOL_NAMES - {"ask_user"}
+# Tools the pipeline answers itself. They never reach Skills or the arm.
+NON_MOTION_TOOLS = {"ask_user", "look"}
+MOTION_TOOLS = TOOL_NAMES - NON_MOTION_TOOLS
 
 
 def validate_schemas_against_skills(skills_obj) -> list[str]:
@@ -150,7 +177,7 @@ def validate_schemas_against_skills(skills_obj) -> list[str]:
     problems: list[str] = []
     for tool in TOOLS:
         name = tool["name"]
-        if name == "ask_user":
+        if name in NON_MOTION_TOOLS:
             continue
         method = getattr(skills_obj, name, None)
         if method is None:

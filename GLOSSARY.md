@@ -66,7 +66,7 @@ _Avoid_: out of workspace, unreachable
 ## Architecture A
 
 **Query**:
-One short noun phrase the detector looks for, such as "orange" or "box".
+One short noun phrase the detector looks for, such as "orange" or "box". Grounding gives the first queries, and the planner adds more with look.
 _Avoid_: noun phrase, detector vocabulary, prompt
 
 **Grounding**:
@@ -94,7 +94,7 @@ A scripted motion Architecture A can perform: pick, place, pour or open_drawer.
 _Avoid_: primitive, action
 
 **Tool**:
-Something the planner can call: each skill, plus ask_user, which is a tool but not a skill.
+Something the planner can call: each skill, plus ask_user and look, which are tools but not skills.
 _Avoid_: function, command
 
 **Re-perceive**:
@@ -104,6 +104,10 @@ _Avoid_: new observation (B's camera input is its observation), fresh scene, res
 **Verify**:
 After a pick or place, Architecture A captures again and measures the object's distance from the TCP. A pick verifies when the object is within `verify.tolerance_mm` of the TCP, a place when it is not. Not seeing the object leaves the step unverified, which is not a failure.
 _Avoid_: automatic check, pick check, place check, camera check
+
+**Look**:
+The tool the planner calls with queries of its own, for an object it needs that is not among the located objects, such as one named in a clarification. Its queries join the run's queries, and a query it does not find is reported to the planner, not counted as a failed detection.
+_Avoid_: search, rescan, re-ground
 
 **Calibration**:
 The current camera-to-base transform, T_base_cam. Only Architecture A forms a 3D point, so only A has one.

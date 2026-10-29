@@ -34,8 +34,8 @@ tools available to you.
 Rules:
 - Only act on positions taken from the detected objects list. Never invent \
 coordinates, never estimate a position for something that was not detected.
-- If the instruction names an object that is not in the list, say so instead of \
-substituting a similar one.
+- If you need an object that is not in the list, call look with its name first. If \
+it is still not found, say so instead of substituting a similar one.
 - Objects under "Seen but out of reach" were detected but are too far for the arm. \
 They have no position and must not be used. If the task needs one, do not move \
 anything: tell the user it is out of reach and should be moved closer to the arm.
@@ -145,6 +145,23 @@ def api_cost_usd(usage: dict, prices: dict) -> float:
     return sum(usage.get(k, 0) * float(prices.get(v, 0.0)) for k, v in per.items()) / 1e6
 
 
+def clean_queries(raw) -> list[str]:
+    """
+    It takes the phrases a model gave and gives you them as detector queries:
+    lower case, single-spaced, without edge punctuation, empty ones and repeats
+    dropped.
+
+    Grounding and the look tool both use it, so "Orange Juice Bottle." from either
+    reaches the detector as the same "orange juice bottle".
+    """
+    queries: list[str] = []
+    for item in raw:
+        text = " ".join(str(item).lower().split()).strip(" .,;:'\"")
+        if text and text not in queries:
+            queries.append(text)
+    return queries
+
+
 def extract_queries(instruction: str, client, model: str,
                     max_queries: int = 8, max_tokens: int = 512,
                     usage: dict | None = None) -> list[str]:
@@ -185,12 +202,7 @@ def extract_queries(instruction: str, client, model: str,
             raw = list(block.input.get("queries", []))
             break
 
-    queries: list[str] = []
-    for item in raw:
-        text = " ".join(str(item).lower().split()).strip(" .,;:'\"")
-        if text and text not in queries:
-            queries.append(text)
-
+    queries = clean_queries(raw)
     if not queries:
         raise GroundingFailed(
             f"no detector queries could be derived from {instruction!r}. "
@@ -213,9 +225,9 @@ class Step:
 @dataclass
 class PlannerReply:
     """
-    What the planner produced this turn: steps to run, a question to ask, a
-    final message meaning it considers the task done, or `gave_up` meaning the
-    turn limit ran out first.
+    What the planner produced this turn: steps to run, a question to ask, names
+    to look for, a final message meaning it considers the task done, or `gave_up`
+    meaning the turn limit ran out first.
 
     Every reply here is already validated. A rejected call never becomes a
     reply: the planner sends it back to the model, or raises PlanRejected when
@@ -225,12 +237,15 @@ class PlannerReply:
     question: str | None = None
     options: list[str] = field(default_factory=list)
     question_id: str = ""
+    look: list[str] | None = None
+    look_id: str = ""
     final_text: str = ""
     gave_up: bool = False
 
     @property
     def is_done(self) -> bool:
-        return not self.steps and self.question is None and not self.gave_up
+        return (not self.steps and self.question is None and self.look is None
+                and not self.gave_up)
 
 
 def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
@@ -249,6 +264,15 @@ def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
         if not str(args.get("question", "")).strip():
             raise PlanRejected("ask_user called with an empty question")
         return args
+
+    if tool == "look":
+        raw = args.get("queries")
+        if not isinstance(raw, list):
+            raise PlanRejected(f"look.queries must be a list of noun phrases, got {raw!r}")
+        queries = clean_queries(raw)
+        if not queries:
+            raise PlanRejected("look called with no noun phrase to look for")
+        return {"queries": queries}
 
     schema = next(t for t in TOOLS if t["name"] == tool)["input_schema"]
     allowed = set(schema.get("properties", {}))
@@ -276,6 +300,15 @@ def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
             raise PlanRejected(f"{tool}.{key} must be one of {spec['enum']}, got {value!r}")
 
     return args
+
+
+def _scene_text(objects: list[dict], unreachable: list[str]) -> str:
+    """It takes the objects on the table and the names out of reach, and gives you
+    the scene as the planner reads it after a step or a look."""
+    text = f"\nScene now:\n{json.dumps(objects, indent=2)}"
+    if unreachable:
+        text += f"\nSeen but out of reach: {unreachable}"
+    return text
 
 
 class Planner:
@@ -306,6 +339,9 @@ class Planner:
         # The steps of the last reply, so report_results can answer the ones the
         # caller did not run.
         self._open_steps: list[Step] = []
+        # The id of a look in the last reply. It needs a result like any call, and
+        # a question answered first leaves it unrun.
+        self._open_look = ""
 
     @property
     def client(self):
@@ -341,6 +377,7 @@ class Planner:
         }]
         self._turns = 0
         self._open_steps = []
+        self._open_look = ""
         return self._turn()
 
     def report_results(self, results: list[tuple[str, str]],
@@ -371,16 +408,16 @@ class Planner:
         answered = {tid for tid, _ in results}
         results += [(s.tool_use_id, "SKIPPED: not run, an earlier step failed")
                     for s in self._open_steps if s.tool_use_id not in answered]
+        if self._open_look and self._open_look not in answered:
+            results.append((self._open_look, "SKIPPED: not run, the steps ran instead"))
+        self._open_look = ""
 
         if results and (scene is not None or scene_error):
             tid, text = results[-1]
             if scene_error:
                 text += f"\nRe-perception failed: {scene_error}"
             else:
-                objects, unreachable = scene
-                text += f"\nScene now:\n{json.dumps(objects, indent=2)}"
-                if unreachable:
-                    text += f"\nSeen but out of reach: {unreachable}"
+                text += _scene_text(*scene)
             results[-1] = (tid, text)
 
         self.messages.append({
@@ -398,10 +435,47 @@ class Planner:
         still needs its own result or the next request is a 400.
         """
         content = [{"type": "tool_result", "tool_use_id": question_id, "content": answer}]
-        content += [{"type": "tool_result", "tool_use_id": s.tool_use_id,
+        unrun = [s.tool_use_id for s in self._open_steps] + (
+            [self._open_look] if self._open_look else [])
+        content += [{"type": "tool_result", "tool_use_id": tid,
                      "content": "SKIPPED: not run, the question had to be answered first"}
+                    for tid in unrun]
+        self._open_steps, self._open_look = [], ""
+        self.messages.append({"role": "user", "content": content})
+        return self._turn()
+
+    def report_look(self, look_id: str, queries: list[str],
+                    scene: tuple[list[dict], list[str]] | None = None,
+                    scene_error: str | None = None) -> PlannerReply:
+        """
+        It takes the names the planner asked to look for and the scene that look
+        found, and gives you the planner's next reply.
+
+        Each name is said to be found or not found, in words. A name missing from
+        a JSON table is easy for the model to read past, and then it acts on a
+        drink that was never seen.
+
+        Steps in the same reply as the look did not run, because they were
+        planned before the look could change the scene.
+        """
+        if scene_error:
+            text = f"FAILED: could not look: {scene_error}"
+        else:
+            objects, unreachable = scene
+            seen = {o["name"] for o in objects} | set(unreachable)
+            found = [q for q in queries if q in seen]
+            missing = [q for q in queries if q not in seen]
+            text = f"OK: looked for {', '.join(queries)}."
+            if found:
+                text += f" Found: {', '.join(found)}."
+            if missing:
+                text += f" Not found: {', '.join(missing)}."
+            text += _scene_text(objects, unreachable)
+        content = [{"type": "tool_result", "tool_use_id": look_id, "content": text}]
+        content += [{"type": "tool_result", "tool_use_id": s.tool_use_id,
+                     "content": "SKIPPED: not run, the look came first"}
                     for s in self._open_steps]
-        self._open_steps = []
+        self._open_steps, self._open_look = [], ""
         self.messages.append({"role": "user", "content": content})
         return self._turn()
 
@@ -441,6 +515,7 @@ class Planner:
             reply, rejected = self._read(response.content)
             if not rejected:
                 self._open_steps = reply.steps
+                self._open_look = reply.look_id
                 return reply
             last_rejection = next(iter(rejected.values()))
             self._send_rejection(response.content, rejected)
@@ -468,6 +543,15 @@ class Planner:
                     reply.question = args["question"]
                     reply.options = list(args.get("options", []))
                     reply.question_id = block.id
+                elif block.name == "look":
+                    if reply.look is not None:
+                        # One look per reply keeps one id to answer; a second one
+                        # would be left without a result and the next request is a 400.
+                        rejected[block.id] = ("call look once per reply, with every "
+                                              "name in one list")
+                        continue
+                    reply.look = args["queries"]
+                    reply.look_id = block.id
                 elif block.name in MOTION_TOOLS:
                     reply.steps.append(Step(tool=block.name, args=args, tool_use_id=block.id))
         return reply, rejected

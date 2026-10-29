@@ -434,6 +434,39 @@ def test_a_place_that_released_the_object_is_verified(cell):
     assert place.startswith("OK") and "verified: orange released" in place
 
 
+# ------------------------------------------------- looking for a new name
+
+def test_a_look_adds_its_name_to_every_later_look_and_a_miss_is_not_a_failure(cell, monkeypatch):
+    """
+    Tier 2: the answer "orange juice" names something grounding never asked the
+    detector for. A look adds it for the rest of the run, so the check after the
+    pick and the re-perception after it search for it too. A name the detector
+    does not find is an answer for the planner, not a failed detection stage.
+    """
+    import fyp.architecture_a.perception.scene as scene_mod
+    asked = []
+    real = scene_mod.detect
+
+    def detect(img, queries, model):
+        asked.append(list(queries))
+        return real(img, queries, model)
+
+    monkeypatch.setattr(scene_mod, "detect", detect)
+    look = lambda kw: [_tool("look", {"queries": ["Red Container"]}, len(kw["messages"]))]
+    agent, llm = _agent(cell, [look, pick_what_was_seen, finish], judge=None)
+
+    outcome = agent.run(INSTRUCTION)
+
+    assert outcome.ok and outcome.failed_stage is None, outcome
+    assert outcome.queries == ["orange", "red container"]
+    assert asked[0] == ["orange"]
+    assert asked[1:] and all(q == ["orange", "red container"] for q in asked[1:]), asked
+    result = _fed_back(llm)[0]
+    assert result.startswith("OK: looked for red container."), result
+    assert "Not found: red container." in result
+    assert '"orange"' in result
+
+
 # ------------------------------------------- the operator's verdict per step
 
 class FakeJudge:
