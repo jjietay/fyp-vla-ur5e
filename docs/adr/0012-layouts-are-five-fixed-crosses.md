@@ -4,7 +4,7 @@ status: accepted, crosses not yet placed
 
 # Evaluation layouts are permutations of objects over five fixed crosses, with fixed orientation
 
-Decided 29 Oct 2026. Seeded random coordinates in the base frame cannot be placed by hand at the bench, so an object is put on one of five crosses whose base-frame positions are fixed and written in `suite.py`. The same five crosses serve every tier. Tier 0 and Tier 4 (two objects) use all 20 permutations once each. Tiers 1 and 2 (three objects, 60 permutations) use 20 chosen so each object stands on each cross exactly 4 times. Tier 3 moves only the snack, so its 5 layouts are each used 4 times with different phrasings. Each object keeps one fixed orientation on every cross, so rotation is not a variable; generalising to rotation is out of scope.
+Decided 29 Oct 2026. Seeded random coordinates in the base frame cannot be placed by hand at the bench, so an object is put on one of five crosses whose base-frame positions are fixed and written in `suite.py`. The same five crosses serve every tier. Tier 0 and Tier 4 (two objects) use all 20 permutations once each. Tiers 1 and 2 (three objects, 60 permutations) use 20 chosen so each object stands on each cross exactly 4 times. Tier 3 moves only the snack, so its 5 layouts are each used 4 times with different phrasings. The drawer stays in one place because Tier 3 tests reacting to a change in the scene mid-task, not adapting to a new position; moving it would also need `pull_axis` measured again at every spot. Each object keeps one fixed orientation on every cross, so rotation is not a variable; generalising to rotation is out of scope.
 
 ## Consequences
 
