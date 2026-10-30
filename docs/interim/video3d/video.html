@@ -1,0 +1,658 @@
+<!doctype html>
+<!--
+  The D2 video as a silent toy-like 3D animation, 1920 x 1080.
+  render.mjs calls seek(t) for each frame and screenshots it, so every
+  animation is a function of t and never of wall-clock time.
+  Open with ?play to preview in a browser, or ?t=95 to hold one frame.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2 Toy Video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@600;700;800&display=block" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root { --bg: #f6e6e4; --ink: #4a3446; --ink2: #7a5f73; --accent: #d9577f; }
+  html, body { margin: 0; background: var(--bg); overflow: hidden; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; background: var(--bg); }
+  #stage canvas { position: absolute; inset: 0; }
+  .scene { position: absolute; left: 112px; top: 112px; width: 700px; font-family: Nunito, sans-serif; color: var(--ink); display: none; }
+  .kicker { font-weight: 800; font-size: 22px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin-bottom: 18px; }
+  .title { font-family: Fredoka, sans-serif; font-weight: 600; font-size: 66px; line-height: 1.05; margin-bottom: 40px; }
+  .title.big { font-size: 92px; }
+  .line { font-weight: 700; font-size: 31px; line-height: 1.32; margin-bottom: 22px; padding-left: 34px; position: relative; }
+  .line::before { content: ""; position: absolute; left: 0; top: 13px; width: 16px; height: 16px; border-radius: 50%; background: var(--dot, #7bdff2); }
+  .line.plain { padding-left: 0; }
+  .line.plain::before { display: none; }
+  .line b { font-weight: 800; }
+  .line code { font-family: ui-monospace, monospace; font-size: 27px; background: #fff6f3; padding: 1px 8px; border-radius: 8px; }
+  .trace { font-weight: 700; font-size: 30px; margin-bottom: 14px; display: flex; gap: 18px; align-items: baseline; }
+  .trace .n { font-family: Fredoka, sans-serif; color: #fff; background: var(--dot, #7bdff2); border-radius: 12px; padding: 0 12px; font-size: 24px; min-width: 18px; text-align: center; }
+  .trace .w { color: var(--ink2); font-weight: 600; }
+  .stats { margin-top: 30px; font-family: Fredoka, sans-serif; font-weight: 600; font-size: 40px; }
+  .note { font-weight: 600; font-size: 22px; color: var(--ink2); margin-top: 10px; }
+  .ref { position: absolute; left: 112px; bottom: 76px; font-family: Nunito, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: .08em;
+         color: var(--ink); background: #fff6f3; border-radius: 22px; padding: 9px 20px; display: none; }
+  .ref::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #fcbf49; margin-right: 12px; }
+  #fade { position: absolute; inset: 0; background: var(--bg); pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="ui"></div><div id="fade"></div></div>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const W = 1920, H = 1080;
+const C = { bg: 0xf6e6e4, pink: 0xff8fab, cyan: 0x7bdff2, mint: 0xb2f7ef, yellow: 0xfcbf49, cream: 0xfff6f3, ink: '#4a3446' };
+const stage = document.getElementById('stage');
+
+// ---------- small maths ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const ease = x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const easeOutBack = x => 1 + 2.2 * Math.pow(x - 1, 3) + 1.2 * Math.pow(x - 1, 2);
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const lerpV = (a, b, u) => a.clone().lerp(b, u);
+// mulberry32: every procedural layout comes from a fixed seed, so each render is the same.
+function rng(seed) {
+  return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+// land(): an object dropped from height h at t0. It falls under gravity, squashes on
+// contact, then makes two small settles. The settles are physical hops (d = 2*sqrt(2a/g)),
+// so a heavy-looking object and a light one differ only in how far they fall.
+const G = 40;
+function land(t, t0, h) {
+  const dt = t - t0;
+  if (dt < 0) return { vis: false, y: h, sx: 1, sy: 1 };
+  const fall = Math.sqrt(2 * h / G);
+  if (dt < fall) { const sy = 1 + 0.07 * (dt / fall); return { vis: true, y: h - 0.5 * G * dt * dt, sx: 1 / Math.sqrt(sy), sy }; }
+  const s = dt - fall;
+  const a1 = Math.min(0.16, 0.05 * h + 0.02), a2 = a1 * 0.25;
+  const d1 = 2 * Math.sqrt(2 * a1 / G), d2 = 2 * Math.sqrt(2 * a2 / G);
+  let y = 0;
+  if (s < d1) { const u = s / d1; y = 4 * a1 * u * (1 - u); }
+  else if (s < d1 + d2) { const u = (s - d1) / d2; y = 4 * a2 * u * (1 - u); }
+  const kick = (c, amp) => { const x = (s - c) / 0.035; return x < 0 ? 0 : amp * x * Math.exp(1 - x); };
+  const sy = 1 - kick(0, 0.2) - kick(d1, 0.08) - kick(d1 + d2, 0.035);
+  return { vis: true, y, sx: 1 / Math.sqrt(sy), sy };
+}
+
+// ---------- renderer, one key and one fill ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// No tone mapping: the background must stay exactly #f6e6e4, and the floor is a
+// shadow-only material over it, so lights are kept low enough not to clip the pastels.
+renderer.toneMapping = THREE.NoToneMapping;
+stage.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(C.bg);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.32;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.1);
+key.position.set(-7, 12, 8);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 1, far: 40 });
+key.shadow.radius = 6;
+key.shadow.bias = -0.0004;
+key.shadow.normalBias = 0.02;
+scene.add(key, key.target);
+const fill = new THREE.DirectionalLight(0xfff0f4, 0.55);
+fill.position.set(9, 4, 6);
+scene.add(fill);
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ color: 0x6b3550, opacity: 0.13 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const camera = new THREE.PerspectiveCamera(30, W / H, 0.5, 120);
+// The text column sits on the left, so the frame is shifted and the 3D reads on the right.
+camera.setViewOffset(W, H, -380, 0, W, H);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bokeh = new BokehPass(scene, camera, { focus: 12, aperture: 0.0009, maxblur: 0.0028 });
+composer.addPass(bokeh);
+composer.addPass(new OutputPass());
+
+// ---------- materials and shapes ----------
+const matte = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, metalness: 0 });
+const gloss = c => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.36, clearcoat: 0.55, clearcoatRoughness: 0.28, metalness: 0 });
+function mesh(geo, mat, { cast = true } = {}) { const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.receiveShadow = true; return m; }
+
+const blobTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(90,40,64,0.75)'); r.addColorStop(0.45, 'rgba(90,40,64,0.32)'); r.addColorStop(1, 'rgba(90,40,64,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+function blob() {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.renderOrder = 1; return m;
+}
+
+// label(): text drawn on a canvas and put on a plane, for the faces of blocks.
+function label(text, { w = 2, h = 0.6, size = 64, color = C.ink, weight = 600, font = 'Fredoka', align = 'center' } = {}) {
+  const ppu = 256, c = document.createElement('canvas');
+  c.width = Math.round(w * ppu); c.height = Math.round(h * ppu);
+  const g = c.getContext('2d'); g.fillStyle = color; g.textAlign = align; g.textBaseline = 'middle';
+  g.font = `${weight} ${size}px ${font}`;
+  const lines = text.split('\n'), lh = size * 1.15, y0 = c.height / 2 - (lines.length - 1) * lh / 2;
+  lines.forEach((l, i) => g.fillText(l, align === 'center' ? c.width / 2 : 12, y0 + i * lh));
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+  return m;
+}
+// floorLabel(): a label lying flat on the floor, readable from the camera above.
+function floorLabel(text, x, z, opts = {}) { const m = label(text, opts); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, z); return m; }
+
+function block(w, h, d, color, text, { size = 60, glossy = false, r = 0.16 } = {}) {
+  const g = new THREE.Group();
+  const b = mesh(new RoundedBoxGeometry(w, h, d, 5, r), glossy ? gloss(color) : matte(color));
+  b.position.y = h / 2; g.add(b);
+  if (text) { const l = label(text, { w: w * 0.92, h: h * 0.86, size }); l.position.set(0, h / 2, d / 2 + 0.006); g.add(l); }
+  return g;
+}
+
+function orange() {
+  const g = new THREE.Group(), r = 0.42;
+  const s = mesh(new THREE.SphereGeometry(r, 48, 32), gloss(C.yellow)); s.scale.y = 0.94; s.position.y = r * 0.94; g.add(s);
+  const stem = mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.1, 10), matte(0x9b7b5a)); stem.position.y = r * 1.88 + 0.03; g.add(stem);
+  const leaf = mesh(new THREE.SphereGeometry(0.13, 20, 12), matte(C.mint)); leaf.scale.set(1.3, 0.28, 0.6);
+  leaf.position.set(0.12, r * 1.88 + 0.04, 0); leaf.rotation.z = -0.4; g.add(leaf);
+  return g;
+}
+function bowl() {
+  const pts = [[0, 0], [0.56, 0], [0.66, 0.06], [0.78, 0.5], [0.8, 0.56], [0.72, 0.56], [0.7, 0.5], [0.56, 0.12], [0, 0.12]].map(([x, y]) => new THREE.Vector2(x, y));
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.LatheGeometry(pts, 64), gloss(C.pink)));
+  return g;
+}
+function camProp(color = C.cyan) {
+  const g = new THREE.Group();
+  const body = mesh(new RoundedBoxGeometry(0.62, 0.36, 0.34, 4, 0.08), gloss(color)); body.position.y = 0.18; g.add(body);
+  const lens = mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.12, 24), matte(C.cream)); lens.rotation.x = Math.PI / 2; lens.position.set(0, 0.18, 0.2); g.add(lens);
+  const glass = mesh(new THREE.CircleGeometry(0.075, 24), gloss(0x3b4a66)); glass.position.set(0, 0.18, 0.262); g.add(glass);
+  return g;
+}
+function mic() {
+  const g = new THREE.Group();
+  const base = mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.12, 32), matte(C.cream)); base.position.y = 0.06; g.add(base);
+  const pole = mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.0, 12), matte(C.cyan)); pole.position.y = 0.6; g.add(pole);
+  const head = mesh(new THREE.CapsuleGeometry(0.2, 0.25, 8, 24), gloss(C.pink)); head.position.y = 1.32; g.add(head);
+  return g;
+}
+function glassBox(w, h, d) {
+  const g = new THREE.Group();
+  const geo = new RoundedBoxGeometry(w, h, d, 4, 0.12);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: C.cyan, transparent: true, opacity: 0.16, roughness: 0.2, depthWrite: false }));
+  m.position.y = h / 2; g.add(m);
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), new THREE.LineBasicMaterial({ color: 0x5bbfd6, transparent: true, opacity: 0.7 }));
+  e.position.y = h / 2; g.add(e);
+  return g;
+}
+function arrow(len, color = C.cream) {
+  const g = new THREE.Group();
+  const shaft = mesh(new RoundedBoxGeometry(len - 0.3, 0.1, 0.16, 3, 0.04), matte(color)); shaft.position.set(-0.15, 0.05, 0); g.add(shaft);
+  const head = mesh(new THREE.ConeGeometry(0.2, 0.36, 3), matte(color)); head.rotation.z = -Math.PI / 2; head.rotation.x = Math.PI / 6;
+  head.scale.y = 1; head.position.set(len / 2 - 0.18, 0.08, 0); g.add(head);
+  return g;
+}
+
+// Prop: anything that lands. It owns a contact shadow that grows and fades with height.
+class Prop {
+  constructor(parent, obj, { x = 0, z = 0, floorY = 0, r = 0.5, t0 = 0, h = 3, yaw = 0 } = {}) {
+    this.g = new THREE.Group(); this.g.add(obj); this.g.rotation.y = yaw; parent.add(this.g);
+    this.blob = blob(); parent.add(this.blob);
+    Object.assign(this, { x, z, floorY, r, t0, h, y: 0, scale: 1 });
+  }
+  update(t) {
+    const L = land(t, this.t0, this.h);
+    this.g.visible = this.blob.visible = L.vis && this.scale > 0.001;
+    this.y = this.floorY + L.y;
+    this.g.position.set(this.x, this.y, this.z);
+    this.g.scale.set(L.sx * this.scale, L.sy * this.scale, L.sx * this.scale);
+    const f = clamp(L.y / 3);
+    const s = this.r * 2.6 * (1 + 0.7 * f) * this.scale;
+    this.blob.position.set(this.x, this.floorY + 0.004, this.z);
+    this.blob.scale.set(s, s, 1);
+    this.blob.material.opacity = 0.5 * (1 - 0.7 * f);
+  }
+}
+// pop(): for things that appear without falling (rings, envelopes): a quick scale-in with overshoot.
+const pop = (t, t0, d = 0.45) => (t < t0 ? 0 : t > t0 + d ? 1 : easeOutBack(prog(t, t0, t0 + d)));
+
+// ---------- the toy arm ----------
+// Planar two-link IK in the vertical plane that the base yaw points along. The wrist
+// keeps the gripper pointing straight down, as the real skills do.
+const ARM = { H0: 1.25, L1: 1.6, L2: 1.45, GRIP: 0.78 };
+function makeArm() {
+  const root = new THREE.Group();
+  const base = mesh(new THREE.CylinderGeometry(0.55, 0.66, 0.3, 40), matte(C.cream)); base.position.y = 0.15; root.add(base);
+  const yaw = new THREE.Group(); root.add(yaw);
+  const col = mesh(new THREE.CylinderGeometry(0.3, 0.32, ARM.H0 - 0.3, 32), gloss(C.mint)); col.position.y = 0.3 + (ARM.H0 - 0.3) / 2; yaw.add(col);
+  const joint = (r, len) => { const j = mesh(new THREE.CylinderGeometry(r, r, len, 32), gloss(C.cyan)); j.rotation.x = Math.PI / 2; return j; };
+  const sh = new THREE.Group(); sh.position.y = ARM.H0; yaw.add(sh); sh.add(joint(0.36, 0.72));
+  const up = mesh(new THREE.CapsuleGeometry(0.21, ARM.L1, 8, 24), gloss(C.mint)); up.position.y = ARM.L1 / 2; sh.add(up);
+  const el = new THREE.Group(); el.position.y = ARM.L1; sh.add(el); el.add(joint(0.3, 0.6));
+  const fo = mesh(new THREE.CapsuleGeometry(0.18, ARM.L2, 8, 24), gloss(C.mint)); fo.position.y = ARM.L2 / 2; el.add(fo);
+  const wr = new THREE.Group(); wr.position.y = ARM.L2; el.add(wr); wr.add(joint(0.22, 0.44));
+  const wl = mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.3, 24), gloss(C.cyan)); wl.position.y = 0.2; wr.add(wl);
+  const palm = mesh(new RoundedBoxGeometry(0.34, 0.22, 0.56, 4, 0.07), gloss(C.pink)); palm.position.y = 0.44; wr.add(palm);
+  const fingers = [-1, 1].map(s => { const f = mesh(new RoundedBoxGeometry(0.14, 0.3, 0.1, 3, 0.04), gloss(C.pink)); f.position.y = 0.66; wr.add(f); return [f, s]; });
+  const tip = new THREE.Object3D(); tip.position.y = ARM.GRIP; wr.add(tip);
+  return {
+    root, tip,
+    // set(): tip in the arm's own frame (x forward from the base, y up), grip 0 closed .. 1 open.
+    set(p, grip = 1) {
+      const sz = ARM.H0;
+      yaw.rotation.y = Math.atan2(-p.z, p.x);
+      const d = Math.hypot(p.x, p.z), hgt = p.y + ARM.GRIP - sz;
+      const D = clamp(Math.hypot(d, hgt), 0.4, ARM.L1 + ARM.L2 - 1e-3);
+      const b = Math.acos(clamp((D * D - ARM.L1 ** 2 - ARM.L2 ** 2) / (2 * ARM.L1 * ARM.L2), -1, 1));
+      const a = Math.atan2(d, hgt) - Math.atan2(ARM.L2 * Math.sin(b), ARM.L1 + ARM.L2 * Math.cos(b));
+      sh.rotation.z = -a; el.rotation.z = -b; wr.rotation.z = -(Math.PI - a - b);
+      for (const [f, s] of fingers) f.position.z = s * (0.07 + 0.15 * grip);
+    },
+    tipWorld() { root.updateMatrixWorld(true); return tip.getWorldPosition(new THREE.Vector3()); },
+  };
+}
+// path(): piecewise eased motion through [t, value] keys.
+function path(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [t1, v1] = keys[i], [t0, v0] = keys[i - 1];
+    if (t <= t1) { const u = ease(prog(t, t0, t1)); return typeof v0 === 'number' ? v0 + (v1 - v0) * u : lerpV(v0, v1, u); }
+  }
+  return keys[keys.length - 1][1];
+}
+
+// ---------- scenes ----------
+// Each scene: a time span, a group, a camera dolly, a hero for the focus, and its text.
+const SCENES = [];
+function addScene(dur, html, ref, build) {
+  const t0 = SCENES.length ? SCENES[SCENES.length - 1].t1 : 0;
+  const group = new THREE.Group(); group.visible = false; scene.add(group);
+  const el = document.createElement('div'); el.className = 'scene'; el.innerHTML = html;
+  document.getElementById('ui').appendChild(el);
+  const refEl = document.createElement('div'); refEl.className = 'ref'; refEl.textContent = ref || '';
+  document.getElementById('ui').appendChild(refEl);
+  const s = { t0, t1: t0 + dur, group, el, refEl, ...build(group) };
+  SCENES.push(s);
+}
+const L = (t, html, dot = '#7bdff2', cls = '') => `<div class="line ${cls}" data-t="${t}" style="--dot:${dot}">${html}</div>`;
+
+function build() {
+  // 1. Title
+  addScene(10, `
+    <div class="kicker" data-t="0.3">NTU EEE · FYP A1005-261 · Interim</div>
+    <div class="title big" data-t="0.5">Modular vs<br>end-to-end</div>
+    ${L(1.6, 'Two ways to make a UR5e robot arm follow a spoken command.', '#ff8fab', 'plain')}
+    ${L(2.6, 'Tay Juen Jie<br><span style="color:#7a5f73;font-weight:600">Supervisor: A/P Cheah Chien Chern</span>', '#ff8fab', 'plain')}`,
+    '', g => {
+      const arm = makeArm(); arm.root.position.set(0.2, 0, -0.6); g.add(arm.root);
+      const armBlob = blob(); armBlob.position.set(0.2, 0.004, -0.6); armBlob.scale.set(2.4, 2.4, 1); armBlob.material.opacity = 0.45; g.add(armBlob);
+      const o = new Prop(g, orange(), { x: 2.3, z: 1.0, r: 0.45, t0: 1.0, h: 3.2 });
+      const b = new Prop(g, bowl(), { x: -1.9, z: 1.1, r: 0.8, t0: 1.5, h: 2.8 });
+      return {
+        cam: [[0, V(1.0, 3.6, 11.5), V(0.2, 1.1, 0.2)], [10, V(1.9, 3.3, 10.2), V(0.4, 1.0, 0.3)]],
+        hero: () => o.g.position.clone().add(V(0, 0.4, 0)),
+        update(t) {
+          o.update(t); b.update(t);
+          arm.set(V(1.3 + 0.25 * Math.sin(t * 0.9), 2.0 + 0.15 * Math.sin(t * 1.3), 0.9 + 0.3 * Math.sin(t * 0.7)), 0.7 + 0.3 * Math.sin(t * 1.6));
+        },
+      };
+    });
+
+  // 2. The question
+  addScene(20, `
+    <div class="kicker" data-t="0.2">The question</div>
+    <div class="title" data-t="0.3">Two ways to follow one spoken command</div>
+    ${L(1.2, '<b>A · modular:</b> an LLM plans over pretrained perception and scripted skills. Nothing is trained.', '#7bdff2')}
+    ${L(6.2, '<b>B · end-to-end:</b> one model, trained on demonstrations, maps images and words to motion.', '#ff8fab')}
+    ${L(11, 'Shan and Cheah argue that modular is more flexible. They tested no end-to-end model.', '#fcbf49')}
+    ${L(15, 'This project tests that claim on real hardware.', '#b2f7ef')}`,
+    'Interim report §1', g => {
+      const zA = -1.0, zB = 1.6;
+      const badge = (txt, col) => { const gg = new THREE.Group(); const p = mesh(new THREE.CylinderGeometry(0.5, 0.52, 0.5, 40), gloss(col)); p.position.y = 0.25; gg.add(p);
+        const l = label(txt, { w: 0.8, h: 0.8, size: 150 }); l.rotation.x = -Math.PI / 2; l.position.y = 0.505; gg.add(l); return gg; };
+      const bA = new Prop(g, badge('A', C.cyan), { x: -3.3, z: zA, r: 0.5, t0: 0.6, h: 3 });
+      const As = [['LLM\nplanner', C.cyan, -1.7], ['perception', C.mint, 0.6], ['skills', C.yellow, 2.9]]
+        .map(([txt, col, x], i) => new Prop(g, block(1.8, 0.85, 1.0, col, txt, { size: 54 }), { x, z: zA, r: 0.95, t0: 1.0 + 0.35 * i, h: 3.2 }));
+      const arrows = [-0.55, 1.75].map(x => { const a = arrow(0.5, C.pink); a.position.set(x, 0, zA); g.add(a); return a; });
+      const bB = new Prop(g, badge('B', C.pink), { x: -3.0, z: zB, r: 0.5, t0: 5.6, h: 3 });
+      const B = new Prop(g, block(6.4, 0.95, 1.1, C.pink, 'SmolVLA  ·  images + words  →  motion', { size: 58, glossy: true }), { x: 0.6, z: zB, r: 2.4, t0: 6.1, h: 4 });
+      return {
+        cam: [[0, V(0.8, 6.2, 11.0), V(0.8, 0.4, 0.3)], [20, V(1.6, 5.4, 9.8), V(0.8, 0.4, 0.4)]], zoom: 1.55,
+        hero: t => lerpV(V(0.6, 0.5, zA), V(0.6, 0.5, zB), ease(prog(t, 6.0, 7.5))),
+        update(t) { bA.update(t); bB.update(t); As.forEach(p => p.update(t)); B.update(t); arrows.forEach((a, i) => a.scale.setScalar(Math.max(1e-3, pop(t, 2.4 + 0.2 * i)))); },
+      };
+    });
+
+  // 3. Fair comparison
+  addScene(22, `
+    <div class="kicker" data-t="0.2">A fair comparison</div>
+    <div class="title" data-t="0.3">Same cell, same words, same limits</div>
+    ${L(1.0, 'A shared speech front end turns the spoken command into a transcript.', '#ff8fab')}
+    ${L(5.0, 'Both architectures get the same transcript.', '#7bdff2')}
+    ${L(9.0, 'Every motion of both goes through the same safety envelope.', '#b2f7ef')}
+    ${L(12.0, 'Five controls: cell, controller interface, speech front end, task suite, envelope.', '#fcbf49')}
+    ${L(16.5, 'The harness only calls <code>run(instruction)</code>. A unit test blocks imports across the boundary.', '#ff8fab')}`,
+    'Interim report §3.2', g => {
+      const m = new Prop(g, mic(), { x: -3.0, z: 0.5, r: 0.45, t0: 0.4, h: 3 });
+      const tileObj = () => block(2.6, 0.22, 0.95, C.mint, '“place that orange into\nthat red container”', { size: 34, r: 0.08 });
+      const tile = new Prop(g, tileObj(), { x: -0.7, z: 0.5, r: 1.1, t0: 1.5, h: 2.6 });
+      const tA = new Prop(g, tileObj(), { x: -0.7, z: 0.5, r: 1.1, t0: 1.5, h: 2.6 });
+      const blkA = new Prop(g, block(1.3, 1.1, 1.1, C.cyan, 'A', { size: 120, glossy: true }), { x: 3.5, z: -0.9, r: 0.7, t0: 2.8, h: 3.4 });
+      const blkB = new Prop(g, block(1.3, 1.1, 1.1, C.pink, 'B', { size: 120, glossy: true }), { x: 3.5, z: 1.9, r: 0.7, t0: 3.2, h: 3.4 });
+      const env = glassBox(2.2, 1.9, 4.6); env.position.set(3.5, 0, 0.5); g.add(env);
+      const names = ['cell', 'controller', 'speech', 'tasks', 'envelope'];
+      const pucks = names.map((n, i) => {
+        const x = -2.9 + 1.32 * i, z = 3.6;
+        const pg = new THREE.Group(); const p = mesh(new THREE.CylinderGeometry(0.38, 0.4, 0.22, 36), gloss(C.yellow)); p.position.y = 0.11; pg.add(p);
+        const num = label(String(i + 1), { w: 0.5, h: 0.5, size: 90 }); num.rotation.x = -Math.PI / 2; num.position.y = 0.225; pg.add(num);
+        const fl = floorLabel(n, x, z + 0.72, { w: 1.3, h: 0.36, size: 54 }); g.add(fl);
+        return [new Prop(g, pg, { x, z, r: 0.42, t0: 12.2 + 0.28 * i, h: 2.6 }), fl, 12.5 + 0.28 * i];
+      });
+      return {
+        cam: [[0, V(0.8, 6.6, 12.6), V(0.6, 0.4, 0.9)], [22, V(1.3, 6.8, 12.0), V(0.6, 0.3, 1.3)]], zoom: 1.42,
+        hero: t => t < 8.5 ? tile.g.position.clone() : t < 11.6 ? V(3.5, 0.6, 0.5) : lerpV(V(3.5, 0.6, 0.5), V(-0.3, 0.2, 3.6), ease(prog(t, 11.6, 12.6))),
+        update(t) {
+          m.update(t); blkA.update(t); blkB.update(t);
+          const u = ease(prog(t, 5.0, 6.4));
+          tile.x = -0.7 + 2.9 * u; tile.z = 0.5 + (-0.9 - 0.5) * u;
+          tA.x = -0.7 + 2.9 * u; tA.z = 0.5 + (1.9 - 0.5) * u;
+          // Once they reach A and B, the tiles hand the instruction over and shrink away.
+          tile.scale = tA.scale = 1 - ease(prog(t, 6.5, 7.1));
+          tile.update(t); tA.update(t);
+          env.scale.setScalar(Math.max(1e-3, pop(t, 9.2, 0.6)));
+          for (const [p, fl, ft] of pucks) { p.update(t); fl.material.opacity = prog(t, ft, ft + 0.4); fl.visible = t > ft; }
+        },
+      };
+    });
+
+  // 4. Architecture A
+  addScene(28, `
+    <div class="kicker" data-t="0.2">Architecture A</div>
+    <div class="title" data-t="0.3">An LLM agent in a loop</div>
+    ${L(1.0, 'The planner makes one tool call per turn.', '#7bdff2')}
+    ${L(6.0, '<b>Perceive:</b> OWLv2 finds the object from a short noun phrase, SAM cuts its mask, and depth gives a 3D point in the base frame.', '#b2f7ef')}
+    ${L(13.0, 'After each skill, A looks again and checks the step.', '#ff8fab')}
+    ${L(18.0, 'Every stage writes a trace, so each failure has a stage.', '#fcbf49')}
+    ${L(23.0, 'In October, this loop replaced a fixed pipeline.', '#7bdff2')}`,
+    'Interim report §4', g => {
+      const cx = 0.6, cz = 0.3, R = 2.5;
+      const ring = mesh(new THREE.TorusGeometry(R, 0.09, 16, 120), gloss(C.cream)); ring.rotation.x = Math.PI / 2; ring.position.set(cx, 0.1, cz); g.add(ring);
+      // Stations sit on the ring; angle 0 is the front (toward the camera), increasing clockwise from above.
+      const st = [['plan\none tool call', C.cyan, Math.PI], ['perceive\nOWLv2 · SAM · depth', C.mint, Math.PI / 2], ['skill\npick · place', C.yellow, 0], ['look again\ncheck the step', C.pink, -Math.PI / 2]];
+      const pos = a => V(cx + R * Math.sin(a), 0, cz + R * Math.cos(a));
+      const stations = st.map(([txt, col, a], i) => { const p = pos(a); return new Prop(g, block(1.9, 0.85, 0.9, col, txt, { size: 44 }), { x: p.x, z: p.z, r: 0.95, t0: 0.6 + 0.3 * i, h: 3.2 }); });
+      const cam = new Prop(g, camProp(C.cyan), { x: cx + R + 1.6, z: cz + 0.2, r: 0.4, t0: 6.4, h: 2.4, yaw: -Math.PI / 2 });
+      const token = mesh(new THREE.SphereGeometry(0.22, 32, 20), gloss(C.pink)); g.add(token);
+      const tokBlob = blob(); g.add(tokBlob);
+      // One lap is one turn. The loop starts at plan (angle pi) and runs plan -> perceive -> skill -> look again.
+      const LAP = 5, START = 3;
+      const pips = [0, 1, 2, 3, 4].map(k => {
+        const pg = block(0.36, 0.36, 0.36, C.cyan, String(k + 1), { size: 60, r: 0.08, glossy: true });
+        return new Prop(g, pg, { x: cx - 1.0 + 0.5 * k, z: cz - 0.1, r: 0.22, t0: START + LAP * (k + 1) - 0.2, h: 2.2 });
+      });
+      const turnLbl = floorLabel('turns', cx, cz + 0.55, { w: 1.4, h: 0.36, size: 54 }); g.add(turnLbl);
+      // The token hops onto each station as it passes, so it never goes through a block.
+      const tokPos = t => {
+        const u = Math.max(0, t - START) / LAP, a = Math.PI - 2 * Math.PI * u;
+        const f = (u * 4) % 1, d = Math.min(f, 1 - f);
+        const p = pos(a); p.y = 0.3 + 0.82 * Math.max(0, 1 - (d / 0.16) ** 2); return p;
+      };
+      return {
+        cam: [[0, V(1.4, 7.2, 12.0), V(1.5, 0.2, 0.6)], [28, V(2.0, 6.4, 10.8), V(1.5, 0.2, 0.8)]], zoom: 1.35,
+        hero: t => t > 6 && t < 12.8 ? lerpV(tokPos(t), pos(Math.PI / 2), ease(prog(t, 6, 7)) * (1 - ease(prog(t, 12, 12.8)))) : tokPos(t),
+        update(t) {
+          stations.forEach(p => p.update(t)); cam.update(t); pips.forEach(p => p.update(t));
+          ring.scale.setScalar(Math.max(1e-3, pop(t, 2.0, 0.6)));
+          const s = pop(t, START - 0.3, 0.3); token.visible = tokBlob.visible = s > 0;
+          const p = tokPos(t); token.position.copy(p); token.scale.setScalar(Math.max(1e-3, s));
+          tokBlob.position.set(p.x, p.y > 0.4 ? 0.856 : 0.15, p.z); tokBlob.scale.set(1.0, 1.0, 1); tokBlob.material.opacity = 0.45;
+          turnLbl.visible = t > START + LAP - 0.2;
+        },
+      };
+    });
+
+  // 5. Architecture B
+  addScene(20, `
+    <div class="kicker" data-t="0.2">Architecture B</div>
+    <div class="title" data-t="0.3">SmolVLA: one trained model</div>
+    ${L(1.0, '<b>In:</b> two camera views, the robot state and the instruction.', '#7bdff2')}
+    ${L(5.0, '<b>Out:</b> it refines noise into a chunk of 50 actions.', '#fcbf49')}
+    ${L(11.5, 'Every action goes through the same envelope as A.', '#b2f7ef')}
+    ${L(15.0, 'B has no channel to ask a question.', '#ff8fab')}
+    ${L(17.6, 'Its training starts in January 2027.', '#7bdff2')}`,
+    'Interim report §5', g => {
+      const vla = new Prop(g, block(2.4, 1.7, 2.2, C.pink, 'SmolVLA', { size: 84, glossy: true, r: 0.3 }), { x: 0.2, z: 0.4, r: 1.3, t0: 0.4, h: 4.2 });
+      const inputs = [
+        [camProp(C.cyan), -3.2, -0.6, 0.4, -0.35],
+        [camProp(C.mint), -3.4, 0.5, 0.4, 0.2],
+        [block(1.3, 0.25, 0.7, C.cyan, 'state', { size: 48, r: 0.08 }), -3.1, 1.5, 0.7, 0],
+        [block(1.9, 0.25, 0.8, C.mint, '“place that orange…”', { size: 34, r: 0.08 }), -2.9, 2.5, 0.9, 0],
+      ].map(([o, x, z, r, yaw], i) => [new Prop(g, o, { x, z, r, t0: 0.9 + 0.3 * i, h: 2.6, yaw }), x, z]);
+      // The chunk: 50 beads start as seeded noise and settle onto a smooth reach-and-lower path.
+      const R = rng(20261110), N = 50;
+      const curve = new THREE.CatmullRomCurve3([V(2.2, 0.5, 0.9), V(3.0, 1.5, 0.6), V(4.0, 1.9, -0.1), V(4.9, 1.3, -0.8), V(5.2, 0.45, -1.0)]);
+      const beadGeo = new THREE.SphereGeometry(0.1, 16, 10), cols = [C.cyan, C.yellow, C.mint];
+      const beads = Array.from({ length: N }, (_, i) => {
+        const b = mesh(beadGeo, gloss(cols[i % 3])); g.add(b);
+        const noise = V(2.0 + 3.4 * R(), 0.4 + 2.2 * R(), -1.6 + 3.2 * R());
+        const wob = [R() * 6.28, R() * 6.28, R() * 6.28];
+        return { b, noise, wob, target: curve.getPoint(i / (N - 1)) };
+      });
+      const env = glassBox(4.2, 2.6, 2.9); env.position.set(3.7, 0, -0.05); g.add(env);
+      const bubble = new THREE.Group();
+      const bb = mesh(new RoundedBoxGeometry(1.0, 0.8, 0.5, 5, 0.22), matte(C.cream)); bb.position.y = 0.4; bubble.add(bb);
+      const q = label('?', { w: 0.7, h: 0.7, size: 150, color: '#c9b3bd' }); q.position.set(0, 0.42, 0.256); bubble.add(q);
+      const slash = mesh(new RoundedBoxGeometry(1.25, 0.12, 0.12, 3, 0.05), gloss(C.pink)); slash.position.set(0, 0.42, 0.3); slash.rotation.z = 0.7; bubble.add(slash);
+      const bub = new Prop(g, bubble, { x: -1.6, z: 2.4, r: 0.55, t0: 15.2, h: 3 });
+      return {
+        cam: [[0, V(1.1, 6.0, 12.4), V(1.2, 0.7, 0.4)], [20, V(1.6, 5.6, 11.4), V(1.2, 0.6, 0.5)]], zoom: 1.45,
+        hero: t => t < 4.6 ? V(0.2, 0.9, 0.4) : t < 14.6 ? lerpV(V(0.2, 0.9, 0.4), V(3.7, 1.2, -0.1), ease(prog(t, 4.6, 5.6))) : lerpV(V(3.7, 1.2, -0.1), V(-1.6, 0.4, 2.4), ease(prog(t, 14.6, 15.6))),
+        update(t) {
+          vla.update(t);
+          inputs.forEach(([p, x, z], i) => {
+            const u = ease(prog(t, 3.0 + 0.15 * i, 4.2 + 0.15 * i));
+            p.x = x + (0.2 - 1.0 - x) * u; p.z = z + (0.4 - z) * u; p.scale = 1 - u; p.update(t);
+          });
+          const on = pop(t, 5.0, 0.4), u = ease(prog(t, 6.0, 10.0));
+          beads.forEach(({ b, noise, wob, target }, i) => {
+            const j = (1 - u) * 0.18;
+            const n = noise.clone().add(V(Math.sin(t * 3 + wob[0]) * j, Math.sin(t * 2.6 + wob[1]) * j, Math.sin(t * 3.4 + wob[2]) * j));
+            b.position.copy(lerpV(n, target, ease(prog(u, i / N * 0.35, i / N * 0.35 + 0.65))));
+            b.visible = on > 0; b.scale.setScalar(Math.max(1e-3, on));
+          });
+          env.scale.setScalar(Math.max(1e-3, pop(t, 11.7, 0.6)));
+          bub.update(t);
+        },
+      };
+    });
+
+  // 6. Calibration and grasp failures
+  addScene(20, `
+    <div class="kicker" data-t="0.2">Calibration and grasp failures</div>
+    <div class="title" data-t="0.3">Why the first picks missed</div>
+    ${L(0.8, 'The camera-to-base transform comes from a ball that the arm holds. It is fitted each session, with no markers.', '#7bdff2')}
+    ${L(6.0, 'The first picks all missed in the same way.', '#ff8fab')}
+    ${L(8.4, '<b>Cause 1, depth:</b> the box average took table pixels. SAM masks fixed it.', '#fcbf49')}
+    ${L(11.6, '<b>Cause 2, calibration bias:</b> a reach test found misses up to 36 mm.', '#ff8fab')}
+    ${L(14.6, 'A correction brought them under 7 mm.', '#b2f7ef')}`,
+    'Interim report §6.3, §6.4', g => {
+      const arm = makeArm(); arm.root.position.set(-0.6, 0, -0.8); g.add(arm.root);
+      const armBlob = blob(); armBlob.position.set(-0.6, 0.004, -0.8); armBlob.scale.set(2.4, 2.4, 1); armBlob.material.opacity = 0.45; g.add(armBlob);
+      const ball = mesh(new THREE.SphereGeometry(0.2, 32, 20), gloss(C.cyan)); g.add(ball);
+      const ballBlob = blob(); g.add(ballBlob);
+      const tri = new THREE.Group();
+      [[0.25, 0], [-0.13, 0.22], [-0.13, -0.22]].forEach(([x, z]) => { const l = mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.3, 8), matte(C.cream)); l.position.set(x * 0.6, 0.62, z * 0.6); l.rotation.set(z * 0.5, 0, -x * 0.5); tri.add(l); });
+      const cp = camProp(C.yellow); cp.position.y = 1.2; tri.add(cp);
+      // Back right, turned to face the arm, so it stays clear of the text column.
+      const tripod = new Prop(g, tri, { x: 2.6, z: -2.3, r: 0.5, t0: 0.5, h: 2.6, yaw: Math.atan2(-3.2, 1.5) });
+      const pts = [V(1.6, 1.5, 0.6), V(2.0, 0.9, -0.4), V(1.2, 1.9, -0.9), V(1.8, 1.2, 1.0)];
+      const keys = [[0, pts[0]], [1.4, pts[0]], [2.6, pts[1]], [3.8, pts[2]], [5.0, pts[3]], [6.2, pts[0]]];
+      const bar = (hgt, col, txt) => { const bg = new THREE.Group(); const c = mesh(new THREE.CylinderGeometry(0.42, 0.42, hgt, 40), gloss(col)); c.position.y = hgt / 2; bg.add(c);
+        const cap = mesh(new THREE.SphereGeometry(0.42, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), gloss(col)); cap.scale.y = 0.3; cap.position.y = hgt; bg.add(cap); return bg; };
+      // 1 unit = 20 mm, so the two bars keep their true ratio.
+      const before = new Prop(g, bar(36 / 20, C.pink), { x: 2.8, z: 1.4, r: 0.5, t0: 11.9, h: 2.4 });
+      const after = new Prop(g, bar(7 / 20, C.mint), { x: 4.0, z: 1.4, r: 0.5, t0: 14.9, h: 3.0 });
+      const l1 = floorLabel('36 mm', 2.8, 2.25, { w: 1.4, h: 0.4, size: 64 }); g.add(l1);
+      const l2 = floorLabel('< 7 mm', 4.0, 2.25, { w: 1.4, h: 0.4, size: 64 }); g.add(l2);
+      return {
+        cam: [[0, V(0.9, 5.4, 11.8), V(1.4, 0.9, 0.4)], [20, V(1.8, 5.0, 10.6), V(1.5, 0.8, 0.6)]], zoom: 1.35,
+        hero: t => t < 11.3 ? ball.position.clone() : lerpV(ball.position.clone(), V(3.4, 0.6, 1.4), ease(prog(t, 11.3, 12.3))),
+        update(t) {
+          tripod.update(t); before.update(t); after.update(t);
+          arm.set(path(keys, t < 6.2 ? t : 1.4 + (t - 6.2) % 4.8), 0.15);
+          const p = arm.tipWorld().sub(g.position); p.y -= 0.12; ball.position.copy(p);
+          ballBlob.position.set(p.x, 0.004, p.z); ballBlob.scale.set(0.9, 0.9, 1); ballBlob.material.opacity = 0.25;
+          l1.visible = t > 12.4; l2.visible = t > 15.4;
+        },
+      };
+    });
+
+  // 7. Pick and place
+  addScene(24, `
+    <div class="kicker" data-t="0.2">Result so far</div>
+    <div class="title" data-t="0.3">A does a full pick and place from speech</div>
+    <div class="line plain" data-t="0.9" style="font-size:27px;color:#7a5f73">Spoken: “Place that orange into that red container.”</div>
+    <div class="trace" data-t="2.0" style="--dot:#b2f7ef"><span class="n">1</span>perceive <span class="w">orange, container</span></div>
+    <div class="trace" data-t="6.3" style="--dot:#fcbf49"><span class="n">2</span>pick <span class="w">orange</span></div>
+    <div class="trace" data-t="7.6" style="--dot:#ff8fab"><span class="n">↺</span>look again <span class="w">held ✓</span></div>
+    <div class="trace" data-t="11.0" style="--dot:#fcbf49"><span class="n">3</span>place <span class="w">container</span></div>
+    <div class="trace" data-t="12.3" style="--dot:#ff8fab"><span class="n">↺</span>look again <span class="w">released ✓</span></div>
+    <div class="trace" data-t="14.6" style="--dot:#7bdff2"><span class="n">4</span>home <span class="w">done</span></div>
+    <div class="stats" data-t="16.0">36.0 s · 5 planner turns · about 5 cents</div>
+    <div class="note" data-t="16.4">Shown faster than real time.</div>`,
+    'Interim report §6.5', g => {
+      const arm = makeArm(); arm.root.position.set(0, 0, -0.8); g.add(arm.root);
+      const armBlob = blob(); armBlob.position.set(0, 0.004, -0.8); armBlob.scale.set(2.4, 2.4, 1); armBlob.material.opacity = 0.45; g.add(armBlob);
+      const OX = 1.9, OZ = 1.0, BX = -1.7, BZ = 1.1, BFLOOR = 0.12;
+      const o = new Prop(g, orange(), { x: OX, z: OZ, r: 0.45, t0: 0.5, h: 3.0 });
+      const b = new Prop(g, bowl(), { x: BX, z: BZ, r: 0.8, t0: 0.9, h: 2.6 });
+      const base = arm.root.position;
+      const loc = (x, y, z) => V(x - base.x, y, z - base.z);
+      const home = loc(0.9, 2.2, 0.5), aboveO = loc(OX, 1.7, OZ), atO = loc(OX, 0.4, OZ), aboveB = loc(BX, 1.9, BZ), relB = loc(BX, 1.25, BZ);
+      const keys = [[0, home], [3.0, home], [4.4, aboveO], [5.3, atO], [6.2, atO], [7.2, aboveO], [9.0, aboveB], [10.0, relB], [10.8, relB], [11.8, aboveB], [13.8, home]];
+      const grip = [[0, 1], [5.4, 1], [6.1, 0.42], [10.1, 0.42], [10.6, 1]];
+      const RELEASE = 10.35;
+      return {
+        cam: [[0, V(0.6, 5.0, 11.4), V(0.3, 0.9, 0.5)], [24, V(1.2, 4.5, 10.2), V(0.2, 0.8, 0.6)]],
+        hero: () => o.g.position.clone().add(V(0, 0.4, 0)),
+        update(t) {
+          b.update(t);
+          arm.set(path(keys, t), path(grip, t));
+          const tip = arm.tipWorld().sub(g.position);
+          o.floorY = 0; o.h = 3.0; o.t0 = 0.5;
+          if (t < 6.0) { o.x = OX; o.z = OZ; o.update(t); }
+          else if (t < RELEASE) { o.x = tip.x; o.z = tip.z; o.update(t); o.g.position.y = tip.y - 0.42; o.blob.material.opacity = 0.3; }
+          else {
+            // Released: a fresh drop from the tip height into the bowl, with its own settles.
+            o.x = BX; o.z = BZ; o.floorY = BFLOOR; o.h = Math.max(0.1, relB.y - 0.42 - BFLOOR); o.t0 = RELEASE; o.update(t);
+          }
+        },
+      };
+    });
+
+  // 8. Next steps and the report
+  addScene(16, `
+    <div class="kicker" data-t="0.2">Next</div>
+    <div class="title" data-t="0.3">What is done, and what comes next</div>
+    ${L(0.8, '<b>Done:</b> calibration, the evaluation harness, and the first pick and place by A.', '#b2f7ef')}
+    ${L(2.6, '<b>Dec:</b> pour and drawer skills, then A is frozen. <b>Jan:</b> demonstrations, then B is trained. <b>Feb:</b> scored trials of both.', '#fcbf49')}
+    ${L(6.8, 'The interim report gives the full breakdown: the method, the calibration, the trace, and the plan for B.', '#ff8fab')}
+    <div class="title" data-t="11.2" style="margin-top:34px;font-size:56px">Thank you.</div>`,
+    'Interim report §7', g => {
+      const steps = [['Dec 2026\npour · drawer\nfreeze A', C.cyan], ['Jan 2027\ndemos\ntrain B', C.mint], ['Feb 2027\nscored trials\nA and B', C.yellow]];
+      const plinths = steps.map(([txt, col], i) => new Prop(g, block(2.0, 0.75 + 0.3 * i, 1.0, col, txt, { size: 46 }), { x: -1.2 + 2.2 * i, z: -0.4, r: 1.0, t0: 2.6 + 0.4 * i, h: 3.2 }));
+      const track = mesh(new RoundedBoxGeometry(7.2, 0.06, 0.3, 3, 0.03), matte(C.cream)); track.position.set(1.0, 0.03, 0.55); g.add(track);
+      const book = new THREE.Group();
+      const pages = mesh(new RoundedBoxGeometry(1.9, 0.3, 2.5, 4, 0.06), matte(C.cream)); pages.position.y = 0.2; book.add(pages);
+      const cover = mesh(new RoundedBoxGeometry(2.0, 0.08, 2.6, 4, 0.04), gloss(C.pink)); cover.position.y = 0.39; book.add(cover);
+      const back = mesh(new RoundedBoxGeometry(2.0, 0.08, 2.6, 4, 0.04), gloss(C.pink)); back.position.y = 0.04; book.add(back);
+      const t1 = label('Interim\nReport', { w: 1.7, h: 1.0, size: 110 }); t1.rotation.x = -Math.PI / 2; t1.position.set(0, 0.436, -0.35); book.add(t1);
+      const t2 = label('FYP A1005-261', { w: 1.7, h: 0.3, size: 52, weight: 500 }); t2.rotation.x = -Math.PI / 2; t2.position.set(0, 0.436, 0.55); book.add(t2);
+      const rep = new Prop(g, book, { x: 1.3, z: 2.4, r: 1.2, t0: 6.6, h: 3.6, yaw: -0.12 });
+      return {
+        cam: [[0, V(1.2, 6.4, 12.0), V(1.6, 0.6, 0.4)], [7, V(1.3, 6.4, 11.6), V(1.6, 0.6, 0.8)], [16, V(1.8, 7.0, 10.2), V(1.5, 0.3, 1.6)]], zoom: 1.2,
+        hero: t => lerpV(V(1.0, 0.8, -0.4), V(1.3, 0.4, 2.4), ease(prog(t, 6.4, 7.6))),
+        update(t) { plinths.forEach(p => p.update(t)); rep.update(t); track.scale.x = Math.max(1e-3, ease(prog(t, 2.2, 3.0))); },
+      };
+    });
+}
+
+const fade = document.getElementById('fade');
+let TOTAL = 0;
+
+// seek(T): draw the whole video at time T in seconds.
+const seek = async function (T) {
+  const s = SCENES.find(x => T < x.t1) || SCENES[SCENES.length - 1];
+  const t = T - s.t0;
+  for (const x of SCENES) { const on = x === s; x.group.visible = on; x.el.style.display = on ? 'block' : 'none'; x.refEl.style.display = on && x.refEl.textContent ? 'block' : 'none'; }
+  s.update(t);
+  // Camera: an eased dolly through the scene's keys.
+  const look = path(s.cam.map(([k, , l]) => [k, l]), t).clone();
+  // zoom pulls the camera back along its own line of sight, so a scene keeps its angle.
+  const pos = path(s.cam.map(([k, p]) => [k, p]), t).clone().sub(look).multiplyScalar(s.zoom || 1).add(look);
+  camera.position.copy(pos); camera.lookAt(look); camera.updateMatrixWorld();
+  // Focus on the hero: its depth along the view axis, so the rest falls off softly.
+  const hero = s.hero(t), fwd = camera.getWorldDirection(new THREE.Vector3());
+  bokeh.uniforms.focus.value = hero.clone().sub(camera.position).dot(fwd);
+  // Text: each element fades and lifts in at its own time.
+  for (const el of s.el.querySelectorAll('[data-t]')) {
+    const u = ease(prog(t, +el.dataset.t, +el.dataset.t + 0.5));
+    el.style.opacity = u; el.style.transform = `translateY(${(1 - u) * 14}px)`;
+  }
+  s.refEl.style.opacity = ease(prog(t, 1.0, 1.6));
+  // A short dip to the background colour at each cut, and in and out at the ends.
+  let f = Math.max(1 - T / 0.6, (T - (TOTAL - 0.9)) / 0.9, 0);
+  for (const x of SCENES.slice(1)) f = Math.max(f, 1 - Math.abs(T - x.t0) / 0.32);
+  fade.style.opacity = clamp(f);
+  composer.render();
+};
+
+await document.fonts.load('600 64px Fredoka');
+await document.fonts.load('500 64px Fredoka');
+await document.fonts.load('700 30px Nunito');
+build();
+TOTAL = SCENES[SCENES.length - 1].t1;
+window.TOTAL = TOTAL;
+// Published only now, because render.mjs starts as soon as seek exists.
+window.seek = seek;
+
+const q = new URLSearchParams(location.search);
+const fit = () => { if (q.has('play') || q.has('fit')) stage.style.transform = `scale(${Math.min(innerWidth / W, innerHeight / H)})`; };
+fit(); addEventListener('resize', fit);
+if (q.has('play')) {
+  const t0 = performance.now();
+  const tick = () => { seek(((performance.now() - t0) / 1000) % TOTAL); requestAnimationFrame(tick); };
+  tick();
+} else seek(+q.get('t') || 0);
+</script>
+</body>
+</html>
