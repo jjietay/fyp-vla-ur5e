@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- canvas width, height in CSS px, then the scale to the report PNG (2528 x 795) -->
+<meta name="canvas" content="2000 629 1.264">
+<title>Figure 9: Schedule</title>
+<link rel="stylesheet" href="common.css">
+<style>
+#canvas { width: 2000px; height: 629px; padding: 38px 48px 0 48px; }
+#chart { display: grid; grid-template-columns: 630px var(--cols); }
+.h { font-weight: 700; font-size: 17px; text-align: center; padding-bottom: 8px; border-bottom: 2px solid #1d1f23; white-space: nowrap; }
+.h.first { text-align: left; }
+.row { font-size: 20px; height: 47.5px; display: flex; align-items: center; border-bottom: 1px solid #e4e4e4; padding-left: 3px; }
+.cell { height: 47.5px; border-bottom: 1px solid #e4e4e4; display: flex; align-items: center; padding: 0 1.5px; }
+.cell span { display: block; width: 100%; height: 24px; border-radius: 5px; }
+.legend { display: flex; gap: 38px; margin-top: 16px; font-size: 20px; }
+.legend i { display: inline-block; width: 22px; height: 20px; margin-right: 10px; vertical-align: -3px; }
+</style>
+</head>
+<body>
+<div id="canvas">
+  <div id="chart"></div>
+  <div class="legend">
+    <span><i style="background:#ec6a37"></i>Architecture A</span>
+    <span><i style="background:#2f7ad8"></i>Architecture B</span>
+    <span><i style="background:#1eae7b"></i>Scored trials</span>
+    <span><i style="background:#6247d6"></i>Deliverables</span>
+  </div>
+</div>
+<script>
+// Columns and their relative widths. Edit a row's bars by column name.
+const cols = [["S1 W11",86],["S1 W12",86],["S1 W13",86],["Dec",86],["Early Jan",112],
+  ["W1",47],["W2",47],["W3",47],["W4",47],["W5",47],["W6",47],["W7",47],["Rec.",55],
+  ["W8",54],["W9",54],["W10",54],["W11",54],["W12",54],["W13",54],["May",56]];
+const A = "#ec6a37", B = "#2f7ad8", T = "#1eae7b", D = "#6247d6";
+const rows = [
+  ["Write and submit D2 (10 Nov)", D, ["S1 W11","S1 W12","S1 W13"]],
+  ["A on Tiers 1 to 3, then freeze A (T3)", A, ["Dec"]],
+  ["Demonstrations, Tiers 0, 1 and 3 (T4)", B, ["Early Jan","W1","W2"]],
+  ["Fine-tune SmolVLA, inference, envelope (T5)", B, ["W1","W2","W3"]],
+  ["Scored trials, both architectures (T6)", T, ["W4","W5","W6"]],
+  ["Buffer week, freeze results (T6)", T, ["W7"]],
+  ["Draft final report, D3 (25 Mar)", D, ["Rec.","W8","W9","W10"]],
+  ["Final report D4 (9 Apr)", D, ["W11","W12"]],
+  ["Demonstration D5", D, ["W13"]],
+  ["Oral D6 and DR-NTU D7", D, ["May"]],
+];
+const chart = document.getElementById("chart");
+chart.style.setProperty("--cols", cols.map(c => c[1] + "fr").join(" "));
+const add = (cls, html) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; chart.appendChild(d); };
+add("h first", "Work");
+cols.forEach(c => add("h", c[0]));
+rows.forEach(([label, colour, on]) => {
+  add("row", label);
+  cols.forEach(c => add("cell", on.includes(c[0]) ? `<span style="background:${colour}"></span>` : ""));
+});
+</script>
+</body>
+</html>

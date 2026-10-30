@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- canvas width, height in CSS px, then the scale to the report PNG (3639 x 2348) -->
+<meta name="canvas" content="2000 1290 1.8195">
+<title>Figure 1: Full system</title>
+<link rel="stylesheet" href="common.css">
+<style>
+#canvas { width: 2000px; height: 1290px; }
+.stack { position: absolute; border: 2px solid #7b5fc7; border-radius: 10px; background: #ebe5f7; }
+.bar { position: absolute; border-radius: 3px; }
+.leg { position: absolute; font-size: 15.5px; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+.big { position: absolute; font-weight: 700; font-size: 21px; color: #6b6e75; text-align: center; letter-spacing: 0.5px; }
+</style>
+</head>
+<body>
+<div id="canvas">
+
+<!-- (a) Shared speech front end -->
+<div class="panel p-grey" style="left:48px;top:48px;width:1875px;height:142px">
+  <h2 style="font-size:24px">(a) Shared speech front end</h2>
+</div>
+<div class="note l" style="left:70px;top:101px;color:#3d4048">push-to-talk, the same raw<br>instruction goes to A and B</div>
+<div class="note emoji" style="left:480px;top:84px;font-size:44px">🎙️</div>
+<div class="note" style="left:452px;top:143px;width:100px;font-weight:700;font-size:14.5px">user speaks</div>
+<svg style="position:absolute;left:540px;top:85px" width="140" height="44" viewBox="0 0 140 44">
+  <path d="M0 22 L8 22 L12 14 L16 30 L20 8 L24 36 L28 4 L32 40 L36 6 L40 38 L44 10 L48 34 L52 4 L56 40 L60 8 L64 36 L68 12 L72 32 L76 16 L80 28 L84 18 L88 26 L92 20 L96 24 L100 22 H134"
+        fill="none" stroke="#2f8f74" stroke-width="2"/>
+  <path d="M130 17 L138 22 L130 27 z" fill="#2f8f74"/>
+</svg>
+<div class="trap" style="left:707px;top:67px;width:186px;height:80px">
+  <svg viewBox="0 0 186 80" preserveAspectRatio="none"><polygon points="1,1 185,11 185,69 1,79" fill="#dff2ec" stroke="#2f8f74" stroke-width="2"/></svg>
+  <div class="lbl"><div><b>faster-whisper</b>large-v3 <span class="emoji">❄️</span></div></div>
+</div>
+<div class="box pill" style="left:925px;top:80px;width:438px;height:53px;font-style:italic;font-size:17.5px">"place that orange into that red container"</div>
+
+<div class="box dash" style="left:1412px;top:70px;width:490px;height:98px;border-color:#555"></div>
+<div class="leg" style="left:1432px;top:84px"><span class="emoji">❄️</span> pretrained, used as it is</div>
+<div class="leg" style="left:1432px;top:111px"><span class="emoji">🔥</span> trained on our demonstrations</div>
+<div class="leg" style="left:1432px;top:138px"><span style="display:inline-block;width:22px;height:15px;border:1.5px solid #3b3d42;border-radius:3px;background:#f4f4f2"></span> shared by A and B</div>
+<div class="leg" style="left:1742px;top:84px">A asks the user</div>
+<div class="leg" style="left:1742px;top:111px">data flow</div>
+<div class="leg" style="left:1742px;top:138px">new observation</div>
+
+<!-- (b) Architecture A -->
+<div class="panel p-peach" style="left:48px;top:213px;width:933px;height:739px">
+  <h2 style="font-size:24px">(b) Architecture A, modular</h2>
+</div>
+<div class="box c-ask" style="left:70px;top:279px;width:229px;height:118px">
+  <span class="t">Clarify</span>ask_user: a spoken<br>question and answer
+</div>
+<div class="box c-plan top" style="left:330px;top:269px;width:374px;height:166px">
+  <span class="t" style="font-size:21px">Planning</span>
+</div>
+<div class="stack" style="left:358px;top:312px;width:72px;height:82px"></div>
+<div class="stack" style="left:353px;top:317px;width:72px;height:82px"></div>
+<div class="box" style="left:348px;top:322px;width:72px;height:82px;border-color:#7b5fc7;background:#ebe5f7;border-radius:10px"><b style="font-size:16px">LLM</b></div>
+<div class="note l" style="left:449px;top:316px;color:#1d1f23;font-size:16.5px;line-height:1.5">
+  <b>LLM agent: Claude<br>Sonnet 5.5</b> <span class="emoji">❄️</span><br><b>in:</b> state, results<br><b>out:</b> one tool call
+</div>
+<div class="box pill" style="left:739px;top:288px;width:221px;height:54px"><b style="font-size:17px">Done: tell the user</b></div>
+
+<div class="big" style="left:417px;top:525px;width:200px">ONE TOOL CALL<br>PER TURN</div>
+<div class="note small" style="left:367px;top:580px;width:300px;font-size:14.5px;color:#6b6e75">first call: perceive, at most 12 turns</div>
+<div class="note" style="left:150px;top:497px;width:120px;font-size:15px">state with<br>object IDs</div>
+<div class="note" style="left:786px;top:497px;width:120px;font-size:15px">one tool call,<br>validated first</div>
+
+<div class="box top" style="left:58px;top:617px;width:535px;height:219px;border-color:#4a7bd0">
+  <span class="t" style="font-size:20px">Perceive</span>
+</div>
+<img class="img" src="assets/colour.jpg" style="left:80px;top:683px;width:78px;height:44px">
+<img class="img" src="assets/depth.jpg" style="left:80px;top:770px;width:78px;height:46px">
+<div class="trap" style="left:184px;top:670px;width:97px;height:72px">
+  <svg viewBox="0 0 97 72" preserveAspectRatio="none"><polygon points="1,1 96,10 96,62 1,71" fill="#e3ecfa" stroke="#4a7bd0" stroke-width="2"/></svg>
+  <div class="lbl" style="font-size:15px"><div><b style="font-size:16px">OWLv2 <span class="emoji">❄️</span></b>boxes</div></div>
+</div>
+<div class="trap" style="left:306px;top:670px;width:85px;height:72px">
+  <svg viewBox="0 0 85 72" preserveAspectRatio="none"><polygon points="1,1 84,10 84,62 1,71" fill="#e3ecfa" stroke="#4a7bd0" stroke-width="2"/></svg>
+  <div class="lbl" style="font-size:15px"><div><b style="font-size:16px">SAM <span class="emoji">❄️</span></b>masks</div></div>
+</div>
+<div class="box c-plan" style="left:428px;top:675px;width:131px;height:58px;font-size:14.5px;line-height:1.25">located<br>objects</div>
+<div class="box c-check" style="left:306px;top:770px;width:85px;height:48px;font-size:14px;line-height:1.2;padding:2px">mask ray<br>to 3D</div>
+<div class="box c-act" style="left:417px;top:769px;width:154px;height:50px;font-size:14.5px">camera to base</div>
+<div class="note small" style="left:212px;top:772px">depth</div>
+
+<div class="box c-act top" style="left:610px;top:617px;width:350px;height:219px">
+  <span class="t" style="font-size:20px">Act</span>
+</div>
+<svg style="position:absolute;left:630px;top:680px" width="84" height="100" viewBox="0 0 84 100">
+  <path d="M8 6 V54" stroke="#1d1f23" stroke-width="2" marker-end="url(#ah)"/>
+  <path d="M74 54 V8" stroke="#1d1f23" stroke-width="2" marker-end="url(#ah)"/>
+  <path d="M40 6 V22 M22 60 V22 H58 V60" stroke="#3b3d42" stroke-width="4" fill="none"/>
+  <circle cx="40" cy="76" r="13" fill="#e8552d"/>
+  <rect x="8" y="91" width="64" height="4" fill="#d7c3a8"/>
+</svg>
+<div class="note small" style="left:620px;top:788px;width:100px;font-size:14px;color:#3d4048">approach,<br>grasp, retreat</div>
+<div class="note l" style="left:734px;top:676px;color:#1d1f23;font-size:16px;line-height:1.45">one skill: pick, place,<br>pour, open_drawer, home<br>each pose meets<br>the envelope</div>
+<div class="note l" style="left:734px;top:784px;color:#1d1f23;font-size:16px;font-weight:700">verify: held if <span class="math" style="font-size:18px">d</span> &lt; 50 mm</div>
+<div class="note" style="left:267px;top:884px;width:500px">after each skill, one look, which also verifies a pick or place</div>
+
+<!-- (c) Architecture B -->
+<div class="panel p-blue" style="left:1004px;top:213px;width:919px;height:739px">
+  <h2 class="right" style="font-size:24px">(c) Architecture B, end-to-end, SmolVLA</h2>
+</div>
+<div class="sub" style="left:1025px;top:293px;width:877px;height:317px"></div>
+<div class="sub-label" style="left:1775px;top:306px">Encoder path</div>
+<div class="sub" style="left:1025px;top:627px;width:877px;height:303px"></div>
+<div class="sub-label" style="left:1733px;top:636px">Action expert path</div>
+
+<img class="img" src="assets/top.jpg" style="left:1043px;top:349px;width:137px;height:76px">
+<div class="tag" style="left:1048px;top:354px">top</div>
+<img class="img" src="assets/wrist.jpg" style="left:1043px;top:434px;width:137px;height:77px">
+<div class="tag" style="left:1048px;top:439px">wrist</div>
+<div class="box c-grey" style="left:1043px;top:525px;width:137px;height:52px"><div>state <span class="math" style="font-size:16px">s<sub>t</sub></span></div></div>
+<div class="box c-grey" style="left:1212px;top:303px;width:133px;height:48px"><b>Tokenizer</b></div>
+<div class="trap" style="left:1212px;top:362px;width:132px;height:142px">
+  <svg viewBox="0 0 132 142" preserveAspectRatio="none"><polygon points="1,1 131,22 131,121 1,141" fill="#e3ecfa" stroke="#4a7bd0" stroke-width="2"/></svg>
+  <div class="lbl" style="font-size:14.5px;line-height:1.3"><div><b style="font-size:15.5px;display:inline">SigLIP</b> <span class="emoji">❄️</span><br>vision<br>encoder<br>resized to 512</div></div>
+</div>
+<div class="box c-act" style="left:1212px;top:522px;width:133px;height:52px"><b style="font-size:17px">Linear <span class="emoji">🔥</span></b></div>
+
+<div class="box" style="left:1373px;top:303px;width:72px;height:267px"></div>
+<div class="bar" style="left:1394px;top:318px;width:30px;height:6px;background:#59a14f"></div>
+<div class="bar" style="left:1394px;top:330px;width:30px;height:6px;background:#59a14f"></div>
+<div class="bar" style="left:1394px;top:342px;width:30px;height:6px;background:#59a14f"></div>
+<div class="note" style="left:1399px;top:350px;font-weight:700;line-height:0.6">·<br>·<br>·</div>
+<div class="bar" style="left:1394px;top:382px;width:30px;height:9px;background:#4a7bd0"></div>
+<div class="bar" style="left:1394px;top:398px;width:30px;height:9px;background:#4a7bd0"></div>
+<div class="bar" style="left:1394px;top:414px;width:30px;height:9px;background:#4a7bd0"></div>
+<div class="bar" style="left:1394px;top:430px;width:30px;height:9px;background:#4a7bd0"></div>
+<div class="bar" style="left:1394px;top:446px;width:30px;height:9px;background:#4a7bd0"></div>
+<div class="bar" style="left:1394px;top:462px;width:30px;height:9px;background:#4a7bd0"></div>
+<div class="note" style="left:1399px;top:490px;font-weight:700;line-height:0.6">·<br>·<br>·</div>
+<div class="bar" style="left:1394px;top:543px;width:30px;height:11px;background:#e0884a"></div>
+<div class="note" style="left:1348px;top:579px;width:120px;font-size:15px">input tokens</div>
+
+<div class="stack" style="left:1492px;top:346px;width:165px;height:154px"></div>
+<div class="stack" style="left:1484px;top:354px;width:165px;height:154px"></div>
+<div class="box c-plan" style="left:1476px;top:362px;width:165px;height:154px">
+  <b>SmolLM2 <span class="emoji">❄️</span></b><div style="font-size:15.5px;margin-top:4px">first <span class="math" style="font-size:16.5px">L</span>/2<br>layers</div>
+</div>
+<div class="bar" style="left:1693px;top:393px;width:38px;height:13px;background:#8f72d6"></div>
+<div class="bar" style="left:1693px;top:415px;width:38px;height:13px;background:#8f72d6"></div>
+<div class="bar" style="left:1693px;top:437px;width:38px;height:13px;background:#8f72d6"></div>
+<div class="bar" style="left:1693px;top:459px;width:38px;height:13px;background:#8f72d6"></div>
+<div class="note" style="left:1672px;top:484px;width:80px;font-size:15px">features</div>
+
+<div class="box top" style="left:1768px;top:347px;width:114px;height:230px"><b style="font-size:16px">Size</b></div>
+<div class="bar" style="left:1788px;top:385px;width:28px;height:137px;background:#ebe5f7;border:1.5px solid #7b5fc7"></div>
+<div class="bar" style="left:1788px;top:527px;width:28px;height:37px;background:#fde6d3;border:1.5px solid #e0884a"></div>
+<div class="note l" style="left:1822px;top:436px;font-size:13.5px;font-weight:700">350M<br><span class="emoji">❄️</span></div>
+<div class="note l" style="left:1822px;top:528px;font-size:13.5px;font-weight:700">100M<br><span class="emoji">🔥</span></div>
+<div class="note math" style="left:1720px;top:541px;font-size:16px">K, V</div>
+
+<div class="box c-grey" style="left:1043px;top:661px;width:137px;height:47px"><div>step <span class="math" style="font-size:16px">τ</span></div></div>
+<div class="box c-grey" style="left:1043px;top:729px;width:137px;height:60px;font-size:15px;line-height:1.3">noise<br><span class="math" style="font-size:15.5px">ε ~ <span class="up">N(0,</span> I<span class="up">)</span></span></div>
+<div class="box c-ask" style="left:1043px;top:812px;width:198px;height:99px;font-size:15.5px;line-height:1.3">
+  <span class="t" style="font-size:16.5px;margin:0">No path back</span>B has no output<br>for a question
+</div>
+<div class="box c-act" style="left:1487px;top:667px;width:318px;height:145px"></div>
+<div class="note l" style="left:1500px;top:676px;color:#1d1f23;font-weight:700;font-size:17px">Flow matching <span class="emoji">🔥</span></div>
+<div class="box c-perc" style="left:1503px;top:713px;width:148px;height:84px"><b style="font-size:16.5px">Self-<br><span style="font-weight:400">attention</span></b></div>
+<div class="box c-act" style="left:1658px;top:713px;width:132px;height:84px"><b style="font-size:16.5px">Cross-<br><span style="font-weight:400">attention</span></b></div>
+<div class="note" style="left:1270px;top:822px;width:140px;font-size:14.5px">10 steps, <span class="math" style="font-size:15px">τ</span>: 1 → 0</div>
+<div class="box c-check" style="left:1445px;top:850px;width:297px;height:48px"><span class="math" style="font-size:17px">A<sup>τ−δ</sup> = A<sup>τ</sup> − δ v<sub>θ</sub><span class="up">(</span>A<sup>τ</sup>, o<sub>t</sub><span class="up">)</span></span></div>
+<div class="note math" style="left:1655px;top:823px;font-size:14px">v<sub>θ</sub></div>
+<div class="bar" style="left:1795px;top:860px;width:11px;height:28px;background:#e0884a"></div>
+<div class="bar" style="left:1810px;top:860px;width:11px;height:28px;background:#e0884a"></div>
+<div class="note" style="left:1825px;top:862px;font-weight:700">···</div>
+<div class="bar" style="left:1848px;top:860px;width:11px;height:28px;background:#e0884a"></div>
+<div class="bar" style="left:1863px;top:860px;width:11px;height:28px;background:#e0884a"></div>
+
+<!-- (d) Shared safety and control -->
+<div class="panel p-grey" style="left:48px;top:976px;width:1875px;height:211px">
+  <h2 style="font-size:24px">(d) Shared safety and control</h2>
+</div>
+<img class="img" src="assets/robot.jpg" style="left:85px;top:1043px;width:107px;height:111px">
+<div class="box" style="left:272px;top:1036px;width:296px;height:123px">
+  <span class="t">UR5e + RG2 over RTDE</span>A: moveL per waypoint<br>B: servoL at 20 Hz
+</div>
+<div class="box" style="left:656px;top:1036px;width:484px;height:123px;line-height:1.6">
+  <span class="t" style="margin-bottom:2px">Envelope</span>
+  <div>ring sector: <span class="math" style="font-size:17px">r</span> ∈ [0.40, 0.70] m, <span class="math" style="font-size:17px">θ</span> ∈ [−80°, −25°]</div>
+  <div><span class="math" style="font-size:17px">z</span> ∈ [0.181, 0.380] m, every commanded pose</div>
+</div>
+<div class="box c-check" style="left:1620px;top:1036px;width:282px;height:123px">
+  <span class="t" style="margin:0">Clamp the step</span>at most 12.5 mm per step
+</div>
+<div class="note" style="left:860px;top:994px;font-size:14.5px">TCP poses</div>
+<div class="note" style="left:1640px;top:992px;font-size:14.5px">chunk <span class="math" style="font-size:15.5px">A<sub>t</sub></span> ∈ ℝ<sup>50×7</sup>, Δ pose</div>
+<div class="note blue" style="left:880px;top:1224px;width:300px">new observation every 50 ms</div>
+
+<svg class="wires" viewBox="0 0 2000 1290">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d1f23"/></marker>
+    <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d9545a"/></marker>
+    <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3a73c9"/></marker>
+  </defs>
+  <!-- legend arrows -->
+  <path class="ar" d="M1698 95 H1734"/>
+  <path class="a"  d="M1698 122 H1734"/>
+  <path class="ab" d="M1698 149 H1734"/>
+  <!-- (a) -->
+  <path class="a" d="M895 107 H921"/>
+  <path class="a" d="M963 134 V168 H517 V266"/>
+  <path class="a" d="M1278 134 V300"/>
+  <!-- (b) -->
+  <path class="a" d="M706 315 H735"/>
+  <path class="ar" d="M328 318 H303"/>
+  <path class="ar" d="M302 358 H327"/>
+  <path class="a" d="M247 603 C245 520 270 460 322 415"/>
+  <path class="a" d="M712 415 C760 460 790 530 787 605"/>
+  <path class="a" d="M633 843 C580 875 470 870 400 843"/>
+  <path class="a" d="M160 705 H181"/>
+  <path class="a" d="M283 705 H303"/>
+  <path class="a" d="M349 744 V767"/>
+  <path class="a" d="M160 793 H303"/>
+  <path class="a" d="M393 794 H414"/>
+  <path class="a" d="M494 767 V736"/>
+  <path class="a" d="M855 840 V1033"/>
+  <!-- (c) encoder -->
+  <path class="a" d="M1182 385 H1208"/>
+  <path class="a" d="M1182 473 H1208"/>
+  <path class="a" d="M1182 550 H1208"/>
+  <path class="a" d="M1346 327 H1370"/>
+  <path class="a" d="M1346 433 H1370"/>
+  <path class="a" d="M1346 548 H1370"/>
+  <path class="a" d="M1447 439 H1473"/>
+  <path class="a" d="M1660 430 H1690"/>
+  <path class="a" d="M1712 507 V664"/>
+  <!-- (c) action expert -->
+  <path class="a" d="M1182 683 H1484"/>
+  <path class="a" d="M1182 757 H1484"/>
+  <path class="a" d="M1444 875 H1407 V787 H1484"/>
+  <path class="a" d="M1646 815 V847"/>
+  <path class="a" d="M1743 874 H1790"/>
+  <path class="a" d="M1840 890 V1033"/>
+  <!-- (d) -->
+  <path class="a" d="M1618 1097 H1143"/>
+  <path class="a" d="M654 1097 H571"/>
+  <path class="a" d="M270 1097 H195"/>
+  <!-- observation loop for B -->
+  <path class="ab" d="M137 1156 V1213 H1950 V268 H1287 A9 9 0 0 0 1269 268 H1080 V346"/>
+</svg>
+</div>
+</body>
+</html>

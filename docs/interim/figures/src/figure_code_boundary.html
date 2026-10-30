@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- canvas width, height in CSS px, then the scale to the PNG (3600 x 2604).
+     Narrow canvas on purpose, so 20 px text prints at about 7 pt. -->
+<meta name="canvas" content="1300 940 2.77">
+<title>Figure: code boundary</title>
+<link rel="stylesheet" href="common.css">
+<style>
+#canvas { width: 1300px; height: 940px; }
+.col { position: absolute; top: 250px; width: 370px; height: 532px; border-radius: 16px; padding: 16px 16px; }
+.col h3, .top h3 { font-family: "JetBrains Mono", monospace; font-size: 24px; margin-bottom: 12px; }
+.item { background: #fff; border: 1.5px solid #9a9da3; border-radius: 9px; padding: 7px 12px; margin-bottom: 9px; font-size: 18.5px; line-height: 1.25; }
+.item code { display: block; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 18.5px; }
+.item span { color: #4a4d55; }
+.top { position: absolute; left: 40px; top: 24px; width: 1220px; height: 150px; border-radius: 16px; padding: 14px 18px; background: #fdf9ef; border: 2.5px dashed #d9a93a; }
+.top .row { display: flex; gap: 16px; }
+.top .item { flex: 1; }
+.rules { position: absolute; left: 40px; top: 806px; width: 1220px; height: 118px; border-radius: 16px; padding: 14px 20px; border: 2px solid #3b3d42; font-size: 19px; line-height: 1.45; }
+.rules b { font-size: 21px; }
+.rules code { font-family: "JetBrains Mono", monospace; font-size: 17.5px; }
+.lbl { position: absolute; font-family: "JetBrains Mono", monospace; font-size: 18px; color: #1d1f23; background: #fff; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="canvas">
+
+<div class="top">
+  <h3>evaluation/</h3>
+  <div class="row">
+    <div class="item"><code>suite.py</code><span>frozen on 11 Aug 2026: tiers, utterances, layouts, success rules</span></div>
+    <div class="item"><code>harness.py</code><span>runs each trial and logs its outcome, time and cost</span></div>
+  </div>
+</div>
+
+<div class="col p-peach" style="left:40px">
+  <h3>architecture_a/</h3>
+  <div class="item"><code>pipeline.py</code><span>the loop, and run()</span></div>
+  <div class="item"><code>planner.py, tools.py</code><span>Claude and the tool schemas</span></div>
+  <div class="item"><code>perception/</code><span>OWLv2, SAM, mask ray</span></div>
+  <div class="item"><code>skills.py</code><span>pick, place, pour, open_drawer, home</span></div>
+  <div class="item"><code>state.py, trace.py</code><span>the state, and the failure stages</span></div>
+  <div class="item"><code>calibration/</code><span>ball fit and the stored transform</span></div>
+</div>
+
+<div class="col p-grey" style="left:465px;border:2.5px solid #3b3d42">
+  <h3>shared/</h3>
+  <div class="item"><code>speech.py</code><span>faster-whisper, push-to-talk</span></div>
+  <div class="item"><code>hardware/ur5e_controller.py</code><span>RTDE and the RG2 gripper</span></div>
+  <div class="item"><code>hardware/safety.py</code><span>the envelope and speed ceiling</span></div>
+  <div class="item"><code>hardware/camera.py</code><span>the RealSense camera</span></div>
+  <div class="item"><code>helpers/config.py</code><span>one file for every tunable</span></div>
+  <div class="item"><code>helpers/</code><span>rotations, transforms, rate limit</span></div>
+</div>
+
+<div class="col p-blue" style="left:890px">
+  <h3>architecture_b/</h3>
+  <div class="item"><code>policy_action.py</code><span>SmolVLA action to a clamped step</span></div>
+  <div class="item"><code>demos/recorder.py</code><span>teleoperated demonstrations</span></div>
+  <div class="item"><code>demos/hdf5_store.py</code><span>the demonstration store</span></div>
+  <div class="item"><code>demos/lerobot_export.py</code><span>to the LeRobot dataset format</span></div>
+  <div class="item" style="border-style:dashed;background:transparent"><span>LeRobot policy server and robot client, used as they are</span></div>
+</div>
+
+<div class="lbl" style="left:216px;top:198px">run(instruction) → Outcome</div>
+<div class="lbl" style="left:810px;top:198px">run(instruction) → Outcome</div>
+
+<div class="rules">
+  <b>Import rules</b>, checked by <code>tests/unit/test_imports.py</code><br>
+  A and B import <code>shared/</code> (arrows). A never imports B, and B never imports A.<br>
+  <code>shared/</code> and <code>evaluation/</code> import neither. A module joins <code>shared/</code> only if both use it.
+</div>
+
+<svg class="wires" viewBox="0 0 1300 940">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1d1f23"/></marker></defs>
+  <path class="a" d="M200 176 V246"/>
+  <path class="a" d="M1100 176 V246"/>
+  <path class="a" d="M412 516 H460"/>
+  <path class="a" d="M888 516 H840"/>
+</svg>
+</div>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- canvas width, height in CSS px, then the scale to the PNG (3600 x 2880).
+     Narrow canvas on purpose, so 20 px text prints at about 7 pt. -->
+<meta name="canvas" content="1250 1000 2.88">
+<title>Figure: calibration procedure</title>
+<link rel="stylesheet" href="common.css">
+<style>
+#canvas { width: 1250px; height: 1000px; }
+.step { position: absolute; left: 30px; width: 1190px; height: 160px; border: 2px solid #3b3d42; border-radius: 14px;
+        background: #fff; display: flex; align-items: center; gap: 22px; padding: 0 20px; }
+.n { flex: none; width: 40px; height: 40px; border-radius: 50%; background: #1d1f23; color: #fff; font-weight: 700;
+     font-size: 21px; display: flex; align-items: center; justify-content: center; }
+.pic { flex: none; width: 190px; height: 128px; border-radius: 10px; background: #e3ecfa; display: flex; align-items: center; justify-content: center; }
+.txt { flex: 1; font-size: 19.5px; line-height: 1.35; }
+.txt b { display: block; font-size: 22px; margin-bottom: 3px; }
+.tags { flex: none; width: 300px; display: flex; flex-direction: column; gap: 8px; }
+.k { font-size: 18px; line-height: 1.3; padding: 7px 12px; border-radius: 8px; }
+.sees { background: #e3f3df; }
+.blind { background: #fde9ea; }
+</style>
+</head>
+<body>
+<div id="canvas">
+
+<div class="step" style="top:20px">
+  <div class="n">1</div>
+  <div class="pic"><svg width="170" height="110" viewBox="0 0 170 110">
+    <g fill="#4a7bd0"><circle cx="25" cy="25" r="5"/><circle cx="65" cy="25" r="5"/><circle cx="105" cy="25" r="5"/><circle cx="145" cy="25" r="5"/>
+      <circle cx="25" cy="60" r="5"/><circle cx="65" cy="60" r="5"/><circle cx="145" cy="60" r="5"/>
+      <circle cx="25" cy="95" r="5"/><circle cx="65" cy="95" r="5"/><circle cx="105" cy="95" r="5"/><circle cx="145" cy="95" r="5"/></g>
+    <path d="M105 20 V48 M93 48 H117 M93 48 V60 M117 48 V60" stroke="#3b3d42" stroke-width="4" fill="none"/>
+    <circle cx="105" cy="66" r="10" fill="#e8552d"/></svg></div>
+  <div class="txt"><b>Ball fit</b>The gripper holds a ball through 16 to 39 poses at two heights. OWLv2 finds the ball in each image, and a rigid fit (Kabsch) maps the camera points onto the TCP points.</div>
+  <div class="tags"><div class="k sees">Gives the camera-to-base transform</div><div class="k blind">Cannot see a shift that is the same at every pose</div></div>
+</div>
+
+<div class="step" style="top:200px">
+  <div class="n">2</div>
+  <div class="pic"><svg width="170" height="110" viewBox="0 0 170 110">
+    <path d="M15 62 L155 38" stroke="#d9545a" stroke-width="3" stroke-dasharray="7 5"/>
+    <path d="M15 82 H155" stroke="#59a14f" stroke-width="4"/>
+    <path d="M140 44 V76" stroke="#1d1f23" stroke-width="2" marker-end="url(#ah)"/></svg></div>
+  <div class="txt"><b>Levelling</b>The table plane in the depth image, a median of 15 frames, is moved onto the table height that the fingertips touched (red: as seen, green: as touched).</div>
+  <div class="tags"><div class="k sees">Fixes height and tilt</div><div class="k blind">Cannot see an error along the table</div></div>
+</div>
+
+<div class="step" style="top:380px">
+  <div class="n">3</div>
+  <div class="pic"><svg width="170" height="110" viewBox="0 0 170 110">
+    <path d="M105 40 L135 70 M135 40 L105 70" stroke="#c8434a" stroke-width="3.5"/>
+    <circle cx="50" cy="55" r="10" fill="none" stroke="#3b3d42" stroke-width="3"/>
+    <path d="M62 55 H110" stroke="#1d1f23" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ah)"/></svg></div>
+  <div class="txt"><b>Reach test</b>The arm hovers 2 cm above a reach-test cross that the camera located (circle: the TCP). I jog it over the cross, and the jog, read over RTDE, is the miss.</div>
+  <div class="tags"><div class="k sees">Sees the shift the fit hides</div></div>
+</div>
+
+<div class="step" style="top:560px">
+  <div class="n">4</div>
+  <div class="pic"><svg width="170" height="110" viewBox="0 0 170 110">
+    <path d="M30 85 A45 45 0 0 1 75 40" stroke="#e0884a" stroke-width="3.5" fill="none" marker-end="url(#ah)"/>
+    <path d="M100 70 H155" stroke="#e0884a" stroke-width="3.5" marker-end="url(#ah)"/></svg></div>
+  <div class="txt"><b>Reach correction</b>A yaw and a shift are fitted to the misses and written on top of the ball fit. The correction is empirical, so it must be tested again.</div>
+  <div class="tags"><div class="k sees">Removes the bias the reach test found</div></div>
+</div>
+
+<div class="step" style="top:740px">
+  <div class="n">5</div>
+  <div class="pic" style="background:#e3f3df"><svg width="170" height="110" viewBox="0 0 170 110">
+    <path d="M55 40 L85 70 M85 40 L55 70" stroke="#c8434a" stroke-width="3.5"/>
+    <circle cx="70" cy="55" r="10" fill="none" stroke="#3b3d42" stroke-width="3"/>
+    <path d="M105 60 L118 74 L145 42" stroke="#2f7a3a" stroke-width="5" fill="none"/></svg></div>
+  <div class="txt"><b>Second reach test</b>The same test at new crosses that the correction was not fitted to. A pass makes the calibration validated for the session.</div>
+  <div class="tags"><div class="k sees">Gives a validated calibration</div></div>
+</div>
+
+<div class="note" style="left:30px;top:930px;width:1190px;font-size:19.5px;white-space:normal">Any later calibration step makes the calibration unvalidated again, so no trial runs until step 5 passes.</div>
+
+<svg class="wires" viewBox="0 0 1250 1000">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1d1f23"/></marker></defs>
+  <path class="a" d="M70 182 V198"/>
+  <path class="a" d="M70 362 V378"/>
+  <path class="a" d="M70 542 V558"/>
+  <path class="a" d="M70 722 V738"/>
+</svg>
+</div>
+</body>
+</html>

@@ -4,11 +4,11 @@
 
 *Title updated by Prof Cheah, 31 Aug 2026, from "Development of a Large Language Model-Based Interface for Robotic Systems".*
 **Student:** Tay Juen Jie · **Supervisor:** A/P Cheah Chien Chern · **Lab:** Robotics I (S2-B6a-01)
-**Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026 · **Trimmed:** 16 Oct 2026, completed work and history removed (see git history) · **Re-baselined:** 17 Oct 2026, completion moved to Semester 2
+**Cycle:** FYP 2026 S1 (Aug 26 – May 27) · **Written:** 11 Aug 2026 · **Trimmed:** 16 Oct 2026, completed work and history removed (see git history) · **Re-baselined:** 17 Oct 2026, completion moved to Semester 2 · **Updated to match the interim report:** 30 Oct 2026
 
-**Research question:** a modular LLM pipeline (A) versus an end-to-end VLA (B), on the same UR5e, through the same controller interface — what does each buy and what does each cost?
+**Research question:** a modular LLM agent (A) versus an end-to-end VLA (B), on the same UR5e, through the same controller interface — what does each buy and what does each cost?
 
-**The NTU dates are the deadlines.** The plan to finish everything by Nov 2026 was dropped on 17 Oct 2026. Semester 1 has one goal: Architecture A runs smoothly on the simple tasks (Tier 0), and D2 reports it. Semester 1 exams take December. The demonstrations, Architecture B and the comparison run from early Jan in Semester 2. Results freeze at the end of Feb 2027, then the reports are written to the official dates.
+**The NTU dates are the deadlines.** The plan to finish everything by Nov 2026 was dropped on 17 Oct 2026. D2 reports A's first full pick and place and the plan for B. In December, A is built and tuned for Tiers 1 to 3, then frozen. The demonstrations and Architecture B run in January, and the scored trials of both architectures in February. Results freeze at the end of Feb 2027, then the reports are written to the official dates.
 
 ---
 
@@ -19,7 +19,7 @@ From `docs/guidelines/fyp_guidelines.pdf` and the schedule table. The "ready by"
 | ID | Deliverable | Submit on | Spec | Ready by |
 |----|-------------|-----------|------|----------|
 | **D1** | Project Plan/Strategy | **14 Sep 2026** (W6) | Objectives, background, proposed approach, weekly schedule in chart form | Submitted |
-| **D2** | Interim Report + Video | **10 Nov 2026** (W13) | 5–10 A4 pages; video 2–3 min; Turnitin first | 10 Nov 2026 — A on Tier 0: calibration error in mm, the 20-trial result, the failure-stage breakdown; video of A doing the task. B is a plan only |
+| **D2** | Interim Report + Video | **10 Nov 2026** (W13) | 5–10 A4 pages; video 2–3 min; Turnitin first | 10 Nov 2026 — calibration error in mm, A's first full pick and place with its trace, video of A doing the task. No trial is scored yet. B is a plan only |
 | **D3** | Draft Final Report | **25 Mar 2027** | To supervisor; Turnitin | 25 Mar 2027 (S2 W10) |
 | **D4** | Final Report | **09 Apr 2027** | 40–60 pages main body, TNR 12, 1.5 spacing, 35 mm left / 30 mm other margins | 9 Apr 2027 (S2 W12) |
 | **D5** | Project Demonstration | **12–16 Apr 2027** | Arranged with examiner; live demo | Demo-ready and rehearsed by early Apr 2027 (S2 W12) |
@@ -36,17 +36,17 @@ The 24-mark block is the largest single item and is explicitly about *design of 
 
 ---
 
-## 2 · Scope statement (for D1, reuse verbatim)
+## 2 · Scope statement
 
-> This project compares two architectures for **spoken** natural-language control of a UR5e manipulator, evaluated on the same physical cell, the same controller interface, the same speech front-end, and the same task suite. The user speaks a command — *"place that red cube into that metal tray"* — and the system executes it.
+> This project compares two architectures for **spoken** natural-language control of a UR5e manipulator, evaluated on the same physical cell, the same controller interface, the same speech front-end, and the same task suite. The user speaks a command — *"place that orange into that red container"* — and the system executes it.
 >
 > A shared automatic speech recognition front-end converts the spoken command to text and hands **the same transcript** to both architectures. It sits outside both, so speech quality cannot bias the comparison.
 >
-> **Architecture A (modular)** composes an open-vocabulary object detector, RGB-D depth back-projection, a hand-eye transform into the robot base frame, and a large language model that plans over a schema of scripted motion primitives. Nothing in it is trained; behaviour is changed by editing prompts, schemas and primitives.
+> **Architecture A (modular)** is a large language model agent that loops through planning, perceiving and acting, one tool call per turn. Its tools are an open-vocabulary object detector with RGB-D depth and a camera-to-base transform, and scripted skills. Nothing in it is trained; behaviour is changed by editing prompts, tool schemas and skills.
 >
 > **Architecture B (end-to-end)** fine-tunes SmolVLA, a compact vision-language-action model, on demonstrations recorded on the same UR5e. It maps camera images, robot state and a natural-language instruction directly to chunks of robot-hand (TCP) pose changes. Behaviour is changed only by collecting more data and retraining.
 >
-> The two are evaluated on a four-tier task suite spanning static pick-and-place, unambiguous liquid pouring, **ambiguous instructions that require clarifying the user's intent**, and **dynamic tasks whose world state changes mid-execution**. The contribution is a like-for-like characterisation of where each architecture succeeds, where each fails, how each fails, and what each costs in data, compute, money and engineering effort.
+> The two are evaluated on a five-tier task suite spanning static pick-and-place, unambiguous liquid pouring, **ambiguous instructions that require clarifying the user's intent**, **dynamic tasks whose world state changes mid-execution**, and generalisation to unseen objects and phrasings. The contribution is a like-for-like characterisation of where each architecture succeeds, where each fails, how each fails, and what each costs in data, compute, money and engineering effort.
 
 **Explicitly out of scope:** simulated results of any kind, mobile manipulation, multi-arm, learned grasp synthesis, training a VLA from scratch, training or fine-tuning any speech model (an off-the-shelf ASR system is used as-is), wake-word detection and always-on listening (push-to-talk, see §6.3).
 
@@ -54,17 +54,16 @@ The 24-mark block is the largest single item and is explicitly about *design of 
 
 ## 3 · Technical deliverables (T-series)
 
-Each has a **definition of done** — a binary condition, checkable, no judgement call.
+The objectives of the interim report (Table 1), with the same IDs. Each has a condition that can be checked. An unscored check is a set of practice attempts off the layout crosses, never logged as trials, that confirms an architecture works end to end before its scored trials start. The status of each is in §10.
 
-| ID | Deliverable | Definition of done |
-|----|-------------|--------------------|
-| **T1** | Physical cell, calibrated | Fixed RGB-D + wrist camera streaming; `T_base_cam` solved and saved to `config/calibration/`; validated residual RMS reported in mm against measured ground truth |
-| **T2** | Architecture A, end to end | One command line turns a spoken instruction into executed motion on the real arm, with per-stage logs; succeeds on Tier 0 at ≥70% over 20 trials |
-| **T3** | Demonstration dataset | ≥50 real UR5e episodes per trained task, exported to a LeRobot dataset that loads without error, with fps asserted against the configured record rate |
-| **T4** | Architecture B, trained and running | Fine-tuned SmolVLA checkpoint driving the arm through the same controller interface as T2, with a safety envelope on predicted actions; succeeds on Tier 0 at ≥50% over 20 trials |
-| **T5** | Evaluation harness | **DONE 11 Aug 2026.** `src/fyp/evaluation/`, suite frozen before either pipeline was tuned, per-trial CSV, four results tables, imports neither architecture |
-| **T6** | Comparison result | The T5 harness run to completion on both architectures across all attempted tiers, with the results tables and figures that go into D4 |
-| **T7** | Repo consolidation | README and docs match the tree; no dead references |
+| ID | Objective | Done when |
+|----|-----------|-----------|
+| **T1** | Calibrated cell | Camera-to-base transform from a ball fit, checked by a reach test, with the error in mm. **Done 21 Oct 2026** |
+| **T2** | Evaluation harness | Frozen suite, and a harness that imports neither architecture and logs the outcome, time and cost of each trial. **Done 11 Aug 2026** (`src/fyp/evaluation/`) |
+| **T3** | Architecture A on Tiers 0 to 3 | Pour and drawer skills and the perceive tool built, an unscored check passed on every tier, then A frozen |
+| **T4** | Demonstration dataset | At least 50 teleoperated demonstrations per tier for Tiers 0, 1 and 3, recorded off the layout crosses, that load in LeRobot |
+| **T5** | Architecture B trained | SmolVLA fine-tuned on the T4 dataset, running behind the envelope, with an unscored check passed on every tier |
+| **T6** | Comparison result | 20 scored trials per tier for each architecture through the harness, with no tuning or training between them. Per tier: success rate, failure stage of each failed A trial, time and cost |
 
 ---
 
@@ -73,7 +72,7 @@ Each has a **definition of done** — a binary condition, checkable, no judgemen
 Fix this **before** tuning either pipeline. Once you start tuning, any change to the task set is fitting the benchmark to whichever pipeline you happened to build first.
 
 ### Tier 0 — Static pick-and-place *(verification)*
-Spoken: `"Place that red cube into that metal tray."` Single unambiguous target, static scene, fixed tray. Deictic phrasing on purpose (§6.3).
+Spoken: `"Place that orange into that red container."` Single unambiguous target, static scene, fixed container. Deictic phrasing on purpose (§6.3).
 **Role:** proves both pipelines are wired correctly. Not a headline result. If a pipeline cannot do Tier 0, nothing above it is meaningful.
 
 ### Tier 1 — Constrained-motion manipulation *(pouring, unambiguous)*
@@ -111,7 +110,7 @@ OWLv2 matches one embedding per query, so it takes short noun phrases, never sen
 | H5 | A generalises to unseen objects far better than B for the same engineering effort | 4 |
 | H6 | A's failures are attributable to a specific stage; B's are not attributable at all | all |
 | H7 | A is robust to spoken phrasing that drifts from the training/prompt wording; B degrades as the transcript drifts from its training instruction strings | all, via §6.3 |
-| H8 | A grounds deictic reference ("*that* red cube") against detected scene context; B cannot | 0, 2 |
+| H8 | A grounds deictic reference ("*that* orange") against detected scene context; B cannot | 0, 2 |
 | H9 | A has a failure mode B cannot have: choosing the wrong noun phrase for the detector, before perception even runs | all |
 
 H6 is the one that most cleanly separates the architectures and it costs nothing extra to test — it falls straight out of A's per-stage logging (`architecture_a/trace.py`). H7 is nearly as cheap: run each tier's trials with a **held-out set of spoken paraphrases never used during recording**, and report success rate against phrasing distance.
@@ -126,7 +125,7 @@ H6 is the one that most cleanly separates the architectures and it costs nothing
 - **Spoken commands are scripted and shared.** Write the 20 utterances down in advance, half using training-set phrasings and half held-out paraphrases (H7). Speak the same utterance to both architectures. Do not improvise at the microphone — an unscripted phrasing that happens to favour one architecture is an uncontrolled variable.
 - **Record the transcript with every trial.** If ASR mis-transcribes, that trial's failure belongs to the speech front-end, not to A or B, and you can only tell them apart if you kept the text.
 - **Success:** defined per tier in one sentence each, in the harness source, not in your head. E.g. Tier 1 success = "liquid transferred into the glass, glass upright, bottle returned to table, no spill outside the tray."
-- **Per-trial record:** architecture, tier, trial index, layout ID, **spoken utterance + ASR transcript**, outcome, failure stage (shared: ASR; A only: detection / depth / transform / planning / execution), wall-clock duration, human interventions. Latency runs from the end of speech recognition to when the agent stops; the operator's typing and the user's spoken answers are recorded beside it and taken off the architecture's time. A's API calls, tokens and list-price cost, and B's chunk inference times, are columns too. Build effort, demonstrations and GPU-hours go in `docs/effort_log.md`.
+- **Per-trial record:** architecture, tier, trial index, layout ID, **spoken utterance + ASR transcript**, outcome, failure stage (A only: capture / grounding / detection / depth / transform / planning / clarify / execution; a speech error shows in the logged transcript), wall-clock duration, human interventions. Latency runs from the end of speech recognition to when the agent stops; the operator's typing and the user's spoken answers are recorded beside it and taken off the architecture's time. A's API calls, tokens and list-price cost, and B's chunk inference times, are columns too. Build effort, demonstrations and GPU-hours go in `docs/effort_log.md`.
 
 ### Metrics
 
@@ -168,8 +167,8 @@ Decided in `docs/adr/0002-fixed-rgbd-plus-wrist-rgb-square-on.md` (nothing may d
 Setup in `docs/adr/0003-local-faster-whisper-push-to-talk.md`. Rules for the comparison:
 
 - **ASR sits outside both architectures, and both get the same raw transcript.** Cleaning it for B inserts an LLM into B, and it is no longer end-to-end.
-- **Paraphrase the instructions at record time**, 5 to 10 per task across the episode set, from the first recording session. Split them into a record-time set and a held-out evaluation set. Retrofitting means re-recording, and without it H7 cannot be tested.
-- **Use deictic phrasings in the evaluation** ("*that* red cube"). A resolves them from detected scene context and B has only token statistics, so it tests H8 at no extra cost.
+- **Paraphrase the instructions at record time**, 5 to 10 training utterances per tier across the demonstrations, from the first recording session. Split them into a record-time set and a held-out evaluation set. Retrofitting means re-recording, and without it H7 cannot be tested.
+- **Use deictic phrasings in the evaluation** ("*that* orange"). A resolves them from detected scene context and B has only token statistics, so it tests H8 at no extra cost.
 - **Log ASR latency separately** from planning and execution latency in §5.
 - Spoken replies (TTS) for Tier 2 clarification are recommended, not required. If time is short, print the question.
 
@@ -197,19 +196,19 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 
 1. ~~First ball fit of `T_base_cam`~~ Done 13 Oct 2026 with `scripts/calibrate_ball.py`, per `docs/adr/0007-no-marker-ball-fit-each-session.md`. Five fits that day, fit RMS 11.4 to 16.3 mm, each followed by `level_to_table.py`. The fit in `T_base_cam.json` (14:49, 12 points, RMS 11.7 mm) was written after the last run, so no pick has used it. The fit residual is not the validation.
 2. ~~**Validate.**~~ First done 21 Oct 2026 (see §10): the reach test found a 2 to 3 cm bias the fit RMS could not show, which explains the missed grasps of 1 and 13 Oct. Use `--hover 0.02 --jog`; a rule held under the fingers cannot resolve a few millimetres. **A calibration you did not validate numerically is a calibration you do not have**, and every downstream failure will be blamed on it.
-3. Refit with a matte ball the fingers do not hide, and drop the empirical `reach_correction`. Before T2.
+3. Refit with a matte ball the fingers do not hide, and drop the empirical `reach_correction`. Before the scored trials (T6).
 
 ### W4 · Architecture A on hardware
 
 1. ~~**Get the first real grasp.**~~ Done 21 Oct 2026, with a full pick and place. The cause of the earlier misses was the calibration bias found by the reach test (W3.2).
-2. Run Tier 0 to the T2 threshold. This is what D2 reports.
-3. ~~Close the loop: re-detect before each grasp instead of trusting the plan-time position.~~ Written 26 Oct 2026, not yet run on hardware: code looks at the table after every skill, and a pick must aim at an object in the latest look (ADR 0015). Document the failure modes you hit; they are results.
+2. ~~Close the loop: re-detect before each grasp instead of trusting the plan-time position.~~ Done: code looks at the table after every skill, and a pick must aim at an object in the latest look (ADR 0015). It ran on the arm from speech to a full pick and place (interim report, Section 6.5 and Table 7). Document the failure modes you hit; they are results.
+3. In December: write the pour skill (Tier 1), finish the drawer skill (Tier 3), pass an unscored check on Tiers 0 to 3, then freeze A (T3).
 
 ### W5 · Demonstration capture *(critical path)*
 
 1. Teleop rig per §6.1.
 2. **Lock the dataset conventions and write down the reasons** — action space (TCP pose deltas, `docs/adr/0006-tcp-pose-delta-action-space.md`), observation set (2 RGB views + state vector), resolution, control rate, **and the per-episode instruction string drawn from the paraphrase sets (§6.3), not a single fixed template**. **The action space must match what Architecture A's primitives command, or the two architectures are not solving the same problem and the comparison is unfair.** This is the single most important paragraph in the methodology chapter.
-3. Record. **Budget: ~50 episodes per task minimum.** Community evidence says workspace *density* matters more than raw count — 50 episodes spread over a 30 cm region failed where 75 over 10 cm succeeded. **Constrain the workspace for the first fine-tune**, then widen it. At ~1.5–2 min per episode including reset, 250 episodes is 8–10 hours of lab time before retakes. Budget 15. Record in two or three dedicated multi-hour blocks, not scattered one-hour sessions.
+3. Record. **Budget: ~50 demonstrations per tier minimum** (Tiers 0, 1 and 3; none for Tier 2). Community evidence says workspace *density* matters more than raw count — 50 episodes spread over a 30 cm region failed where 75 over 10 cm succeeded. **Constrain the workspace for the first fine-tune**, then widen it. At ~1.5–2 min per episode including reset, 250 episodes is 8–10 hours of lab time before retakes. Budget 15. Record in two or three dedicated multi-hour blocks, not scattered one-hour sessions.
 4. Export to LeRobot; confirm the dataset loads and fps asserts.
 
 ### W6 · Architecture B training and inference
@@ -222,7 +221,7 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 
 ### W7 · Evaluation and write-up
 
-1. Run both architectures through the T5 harness across all attempted tiers. **Freeze results before writing** — do not tune anything after the numbers start going into the report.
+1. Run both architectures through the T2 harness across all attempted tiers. **Freeze results before writing** — do not tune anything after the numbers start going into the report.
 2. Figures: success rate by tier and architecture; A's failure-stage breakdown; Tier 2 choice distribution for B; cost table.
 3. D3 → D4 → demo rehearsal.
 
@@ -236,19 +235,18 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 
 ## 8 · Schedule
 
-### Semester 1, from W10 — make A work for D2
+### Semester 1, from W10 — A for D2, then A on Tiers 1 to 3
 
-Week 1 = 10 Aug 2026. The D1 schedule (9 Sep 2026) planned every result by Nov 2026. By W9 the recess and W8 milestones were missed, so it was re-baselined on 17 Oct 2026. The D1 copy in Google Docs keeps the old schedule; git history has the old table.
+Week 1 = 10 Aug 2026. The D1 schedule (9 Sep 2026) planned every result by Nov 2026. By W9 the recess and W8 milestones were missed, so it was re-baselined on 17 Oct 2026. The D1 copy in Google Docs keeps the old schedule; git history has the old table. The interim report's Figure 11 is the schedule from S1 W11 on; this section must match it.
 
-Nothing for B happens this semester. Every lab hour goes to A on Tier 0.
+Nothing for B happens this semester.
 
 | Week | Dates | Focus | Milestone |
 |------|-------|-------|-----------|
-| **W10** | 19–25 Oct | Reach test with `check_calibration.py` (W3.2). Find why no grasp succeeds (W4.1). SAM localisation and the ADR 0010 retry on the arm | **T1 — `T_base_cam` validated; first real pick** (reached 21 Oct) |
-| **W11** | 26 Oct–1 Nov | A picks and places reliably on Tier 0. 20-trial Tier 0 run through the harness, success judged at the bench | **T2 — A passes Tier 0** |
-| **W12** | 2–8 Nov | Write D2; record the D2 video of A | D2 draft to supervisor |
-| **W13** | 9–15 Nov | **Submit D2 interim + video, 10 Nov** | **D2 submitted** |
-| **Exams** | mid-Nov – Dec | Semester 1 exams. No FYP work | — |
+| **W10** | 19–25 Oct | Reach test with `check_calibration.py` (W3.2). Find why no grasp succeeds (W4.1). SAM localisation and the ADR 0010 retry on the arm | **T1 — calibration validated; first full pick and place** (21 Oct) |
+| **W11–W13** | 26 Oct–15 Nov | Write D2; record the D2 video of A. **Submit D2 interim + video, 10 Nov** | **D2 submitted** |
+| — | late Nov | Semester 1 exams. No FYP work | — |
+| **Dec** | Dec | A on Tiers 1 to 3: pour skill, drawer skill, an unscored check on every tier, then freeze A (W4.3) | **T3 — A frozen** |
 
 ### Semester 2
 
@@ -256,12 +254,10 @@ Everything for B is packed into Jan and Feb. Week 1 is about 11 Jan 2027 and rec
 
 | Week | Dates (approx.) | Focus | Milestone |
 |------|-----------------|-------|-----------|
-| **Vacation, after exams** | late Dec – 10 Jan | Back up `data/raw/` (A11). Confirm the jog device (A15). Lock the dataset conventions (W5.2); record and inspect 5 test episodes, then Tier 0 demonstrations in multi-hour blocks | ≥50 Tier 0 episodes |
-| **S2 W1–W2** | 11–24 Jan | First SmolVLA fine-tune (A4); inference loop, safety envelope, B agent for the harness (W6.1–W6.3). Record Tier 1 demonstrations; write A's `pour` primitive. Start the methods chapter | **T3 Tier 0–1** |
-| **S2 W3** | 25–31 Jan | B on the arm behind the envelope, 20-trial Tier 0 run | **T4 — B passes Tier 0** |
-| **S2 W4–W5** | 1–14 Feb | Tier 1 both architectures; Tier 2 runs (A asks, B guesses) | Tiers 1–2 done |
-| **S2 W6** | 15–21 Feb | Tier 3 demonstrations and runs. Tier 4 only if ahead | Tier 3 done |
-| **S2 W7** | 22–28 Feb | Full sweep, gaps filled, **freeze results** | **T6 done** |
+| **Early Jan – S2 W2** | early Jan – 24 Jan | Back up `data/raw/` (A11). Confirm the jog device (A15). Lock the dataset conventions (W5.2); record and inspect 5 test episodes, then about 50 demonstrations each for Tiers 0, 1 and 3, Tier 0 first, in multi-hour blocks | **T4 — demonstrations** |
+| **S2 W1–W3** | 11–31 Jan | First SmolVLA fine-tune (A4); inference loop, envelope, B agent for the harness (W6.1–W6.3); an unscored check on every tier. Start the methods chapter | **T5 — B trained** |
+| **S2 W4–W6** | 1–21 Feb | Scored trials, both architectures, 20 per tier, with no tuning or training between them | Scored trials done |
+| **S2 W7** | 22–28 Feb | Buffer week: fill gaps, **freeze results** | **T6 done** |
 | **Recess** | 1–7 Mar | Results and discussion chapters | — |
 | **S2 W8–W10** | 8–28 Mar | Finish the draft. **Submit D3, 25 Mar** | **D3 submitted** |
 | **S2 W11–W12** | 29 Mar–11 Apr | Act on feedback. **Submit D4, 9 Apr.** Rehearse the demo | **D4 submitted** |
@@ -288,6 +284,9 @@ If a block slips, drop from the bottom of the descope ladder in §9 (Tier 4 firs
 | **12 GB VRAM too tight for the SmolVLA fine-tune** | W6 stalls on the critical path | Run a short fine-tune at batch size 1 on the first real episodes (A4). If it does not fit: small batches with gradient accumulation, gradient checkpointing, an 8-bit optimiser, a frozen vision backbone |
 | GPU time insufficient | Training bottleneck | Confirm GPU access (A4); SmolVLA is 450M params and fine-tunes on a single consumer GPU, but budget the hours |
 | Report underruns 40 pages | Resubmission | The per-stage failure logs and cost tables generate content; start the methods chapter in Jan 2027, not after the results freeze |
+| Calibration drift | B sees a view it was not trained on | Ball fit and reach test each session. Record demonstrations across the small range of camera positions |
+| Fair comparison | An unequal setting biases the result | Shared modules, the frozen suite, a blind harness and a dated changelog |
+| Learned actions | A predicted chunk can move the arm unsafely | Speed ceiling and envelope on every action. Test the e-stop recovery before any scored trial |
 
 ### Descope ladder — drop from the bottom
 
@@ -308,19 +307,20 @@ Note the ordering: **Tier 2 is cheaper than Tier 3 and produces a more distincti
 
 ## 10 · Status and open actions
 
-### Status, 21 Oct 2026
+### Status, 30 Oct 2026
 
 This is the only status record in the repo. Update it here, not in `CLAUDE.md` or `README.md`.
 
-- **Runs on the real cell:** speech; `URController` motion and the RG2 gripper; the fixed camera, OWLv2 and SAM (`mask_ray`) on real frames; **Architecture A from speech to a full pick and place (21 Oct, first ever)**: two runs, the second correct end to end with the heavy red container; in the first the place was correct but the light pink container was knocked away by the drop, and A's camera check after the step reported it correctly as not done. The camera check after each pick and place ran on the arm. `test_orientation.py` passed on the arm (21 Oct).
-- **Calibration, 21 Oct:** the arm had been moved, so the envelope, the table height (now 0.176 m) and the camera were all redone. Camera moved to 0.74 m from the work area, about 45 deg down, beside it on the robot's left. Ball fit RMS 7.3 mm over 39 poses, then levelled (table offset -16.8 mm, tilt 2.1 deg). The reach test with keyboard jog (`check_calibration.py --jog`) then showed a common miss of 18 to 34 mm, mostly base +x, that the fit RMS could not see; the likely cause is the fingers hiding part of the orange in every fit pose. An **empirical** correction (yaw +3.3 deg and a shift, from 4 points) is in `T_base_cam.json` as the `reach_correction` step; 3 new points then needed no jog at the 2 mm step. Replace it with a fit on a matte ball before the 20-trial run.
+- **Objectives (report Table 1):** T1 done 21 Oct, reach error 2 to 7 mm after the reach correction. T2 done 11 Aug. T3 in progress: Tier 0 pick and place has run on the arm since 21 Oct. T4 in progress: recorder and exporter written. T5 in progress: robot side written. T6 not started.
+- **Runs on the real cell:** speech; `URController` motion and the RG2 gripper; the fixed camera, OWLv2 and SAM (`mask_ray`) on real frames; **Architecture A, the loop of one tool call per turn, from speech to a full pick and place**. The interim report (Section 6.5, Table 7) records the clean run: perceive, pick, place, home, done, 36.0 s, with the look after the pick and the place verifying each step and the operator judging all three steps correct. On 21 Oct, in an earlier run, the place was correct but the light pink container was knocked away by the drop, and A's check after the step reported it correctly as not done. `test_orientation.py` passed on the arm (21 Oct).
+- **Calibration, 21 Oct:** the arm had been moved, so the envelope, the table height (now 0.176 m) and the camera were all redone. Camera moved to 0.74 m from the work area, about 45 deg down, beside it on the robot's left. Ball fit RMS 7.3 mm over 39 poses, then levelled (table offset -16.8 mm, tilt 2.1 deg). The reach test with keyboard jog (`check_calibration.py --jog`) then showed a miss of 18 to 36 mm, mostly base +x, that the fit RMS could not see; the likely cause is the fingers hiding part of the orange in every fit pose. An **empirical** correction (yaw +3.3 deg and a shift, from 4 points) is in `T_base_cam.json` as the `reach_correction` step; 3 new points then needed less than one 2 mm jog step. Replace it with a fit on a matte ball before the scored trials.
 - **Envelope is now a ring sector** (ADR 0011): radius 0.40 to 0.70 m, bearing -80 to -25 deg, z 0.181 to 0.380 m. The -25 deg edge keeps the arm away from the camera, which stands inside the reach radius.
 - **Found and fixed on 21 Oct:** a held object reading above the z ceiling was refused as out of reach, so the instruction after a pick failed; a failed hardware test kept the RTDE registers taken (`close()` now disconnects); the reach test read keys typed during a move as answers.
-- **Rebuilt on 26 Oct, not yet run on hardware:** Architecture A as a loop of one tool call per turn, with `perceive` as a tool, a look after every skill and a state with stable object IDs (ADR 0015). A pick must now aim at an object in the latest look. On 30 Oct `max_per_query` became a count per phrase, and this design replaced the `look` tool of ADR 0013. T2 runs on this A. Branch `agentic-loop`; the A before it is tag `a-pipeline-final`.
-- **Written, not yet run on hardware:** the operator's y/n per step in the evaluation harness (`<arch>_tier<n>_steps.csv`); the 20-trial harness run itself; Architecture B's robot side. There is no Architecture B agent for the harness yet.
+- **Architecture A's design:** a loop of one tool call per turn, with `perceive` as a tool, a look after every skill and a state with stable object IDs (ADR 0015). A pick must aim at an object in the latest look. `max_per_query` is a count per phrase, and this design replaced the `look` tool of ADR 0013. It is on `main`; the A before it is tag `a-pipeline-final`.
+- **Written, not yet run on hardware:** the harness run of scored trials; Architecture B's robot side. There is no Architecture B agent for the harness yet.
 - **Open on A:** OWLv2 scores "pink tray" below the 0.3 threshold and "pink container" at 0.317 on the same box, and `evaluation/suite.py` says "tray"; nothing sets the release height of a place, which decides whether a light container stays put; the gripper missed one open in 20 cycles of the hardware test (-1.9 mm, 21 Oct).
-- **Checks without the arm:** `tests/unit` 331 passed, 1 skipped, in both venvs (21 Oct). Pyright from the integration-checks spec is not done.
-- **Not done:** a 20-trial Tier 0 run of A (T2); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
+- **Checks without the arm:** `tests/unit` 358 passed, 1 skipped (30 Oct). Pyright from the integration-checks spec is not done.
+- **Not done:** any scored trial (T6); the pour skill and the drawer `pull_axis` (T3); the e-stop recovery test; all demonstration capture. **There are zero demonstrations.**
 
 ### Open actions
 
@@ -330,11 +330,11 @@ Closed actions are in git history.
 |----|--------|-------|-----|
 | **A4** | Confirm GPU availability and hours for fine-tuning. The throwaway fine-tune that checks whether 12 GB is enough waits for the first real episode, because no episode data exists | JJ | before W6 |
 | **A7** | Agree the D5 demonstration date with the examiner. Arrange it months ahead, not in April 2027 | JJ | Jan 2027 |
-| **A16** | Tell Prof Cheah about the re-baseline: the comparison now finishes in Feb 2027, not Nov 2026; D2 reports A on Tier 0 only; no FYP work during Semester 1 exams | JJ | next update |
+| **A16** | Tell Prof Cheah about the re-baseline: the comparison now finishes in Feb 2027, not Nov 2026; D2 reports A's first pick and place and the plan for B; A on Tiers 1 to 3 in December | JJ | next update |
 | **A9** | Send Prof Cheah a short written progress update **every two weeks**. This was skipped through July. It is directly worth 8 marks | JJ | fortnightly |
 | **A10** | `ANTHROPIC_API_KEY` is in `.env` (gitignored) but nothing loads it: run `set -a; source .env; set +a` in each new terminal, see `docs/commands.md` | JJ | each session |
 | **A11** | Back up `data/raw/` outside the repo before recording starts. It is gitignored, and the demonstrations are 15 hours of lab time that git will not protect | JJ | before W5 |
-| **A17** | Decide the tray wording: OWLv2 misses "pink tray" and only just finds "pink container", and `evaluation/suite.py` is frozen. Options: a detector threshold for A, an object that scores well, or a dated `suite.py` CHANGELOG entry | JJ | before T2 |
+| **A17** | Decide the tray wording: OWLv2 misses "pink tray" and only just finds "pink container", and `evaluation/suite.py` is frozen. Options: a detector threshold for A, an object that scores well, or a dated `suite.py` CHANGELOG entry | JJ | before A is frozen (T3) |
 | **A19** | Measure the object footprints, choose the five crosses inside the envelope and the calibration grid, and put their base-frame positions in `suite.py` (ADR 0012). The cross-based layouts in code wait for this | JJ | before any scored trial or demonstration |
 | **A15** | Confirm the 3D jog device that will drive the demonstrations, see `docs/adr/0005-teleoperation-3d-jog-no-freedrive.md` | JJ | before W5 |
 
@@ -345,12 +345,12 @@ Closed actions are in git history.
 | Assessment item | Marks | What earns it here |
 |-----------------|-------|--------------------|
 | Project Plan/Strategy | 7 | D1, submitted |
-| Interim Report | 13 | D2 — calibration error in mm and A's Tier 0 numbers, so it reads as results for A and a concrete plan for B |
+| Interim Report | 13 | D2 — calibration error in mm and A's first full pick and place with its trace, so it reads as results for A and a concrete plan for B |
 | Report writing, structure, references | 11 | Cite SmolVLA, RTC, OXE, OWLv2 properly; §7-W8 is not optional reading |
 | Intro, theory, review, discussion, conclusion | 12 | The A-vs-B framing is inherently a comparative review; §4's hypotheses give the discussion its spine, and §9 gives you "limitations of current work" for free |
 | Demonstration + oral | 17 | D5 shows both architectures live on the same cell — Tier 2 side by side (A asks, B guesses) is the moment that lands. Book the date early (A7) and rehearse in S2 W11–W12 |
 | Initiative + regular supervisor updates | 8 | §10-A9, fortnightly. **This was skipped through July.** It is 8 marks for an email |
-| **Design, implementation, data, results, complexity** | **24** | §5's protocol is a designed experiment with stated hypotheses and controlled layouts; T3 is real data collection; §5's cost table shows understanding of tool *limitations*. This is the block to over-serve |
+| **Design, implementation, data, results, complexity** | **24** | §5's protocol is a designed experiment with stated hypotheses and controlled layouts; T4 is real data collection; §5's cost table shows understanding of tool *limitations*. This is the block to over-serve |
 | Ability, independence, extending ideas | 8 | The widened task suite beyond pick-and-place *is* the extension. Say so explicitly in the report |
 
 **One framing note for D4.** The official summary promises *"a user interface based on large language models… enabling more intuitive human–robot interaction."* Speech is the visible half of that promise and the comparison is the intellectual half. Lead the report with the interface — the user talks, the robot acts — then use the A-vs-B comparison to answer *what has to sit behind that interface for it to work.* That reads as a project with a thesis, rather than two pipelines benchmarked against each other.

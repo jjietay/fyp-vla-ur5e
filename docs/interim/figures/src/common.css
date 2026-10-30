@@ -1,0 +1,69 @@
+/* Shared look of the interim report figures. Each figure is a fixed canvas in
+   CSS px; render.sh screenshots it at a scale that gives the report's PNG size.
+   Boxes are absolutely placed (left/top/width/height in px), arrows are SVG
+   paths in the same coordinates, so moving a box means editing two numbers. */
+@font-face { font-family: "Inter"; src: local("Inter"); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #fff; }
+body { font-family: "Inter", sans-serif; color: #1d1f23; font-size: 16px; line-height: 1.35; }
+#canvas { position: relative; overflow: hidden; background: #fff; }
+
+/* Panels: the large tinted regions (a), (b), ... */
+.panel { position: absolute; border-radius: 22px; }
+.panel h2 { position: absolute; left: 22px; top: 14px; font-size: 26px; font-weight: 700; white-space: nowrap; }
+.panel h2.right { left: auto; right: 22px; }
+.p-grey   { background: #f4f4f2; }
+.p-peach  { background: #fdf5ee; }
+.p-blue   { background: #eef3fb; }
+.p-lilac  { background: #f6f1fa; }
+.p-sand   { background: #fdf9ef; border: 2.5px dashed #d9a93a; }
+.sub { position: absolute; border: 1.5px dashed #c9d3e3; border-radius: 10px; }
+.sub-label { position: absolute; font-weight: 700; font-size: 17px; white-space: nowrap; }
+
+/* Boxes */
+.box { position: absolute; font-size: 16.5px; display: flex; flex-direction: column; justify-content: center;
+       align-items: center; text-align: center; border: 2px solid #3b3d42; border-radius: 12px;
+       background: #fff; padding: 6px 10px; }
+.box.left { align-items: flex-start; text-align: left; }
+.box.top { justify-content: flex-start; padding-top: 12px; }
+.box b, .box .t { font-weight: 700; font-size: 18px; }
+.box .t { margin-bottom: 4px; }
+.pill { border-radius: 999px; }
+.dash { border-style: dashed; }
+
+/* Colour roles. Same role, same colour, in every figure. */
+.c-plan   { background: #ebe5f7; border-color: #7b5fc7; }  /* the LLM and SmolLM2 */
+.c-perc   { background: #e3ecfa; border-color: #4a7bd0; }  /* perception and encoders */
+.c-act    { background: #fde6d3; border-color: #e0884a; }  /* skills, trained parts */
+.c-check  { background: #e3f3df; border-color: #59a14f; }  /* checks, clamps, maths */
+.c-warn   { background: #fff6d6; border-color: #d9b440; }  /* validation */
+.c-ask    { background: #fde9ea; border-color: #d9545a; border-style: dashed; }
+.c-grey   { background: #f4f4f2; border-color: #3b3d42; }
+.c-teal   { background: #dff2ec; border-color: #2f8f74; }
+
+/* Trapezoid encoder blocks (OWLv2, SAM, SigLIP, whisper) drawn in SVG behind a label. */
+.trap { position: absolute; }
+.trap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.trap .lbl { position: absolute; inset: 0; display: flex; justify-content: center;
+             align-items: center; text-align: center; font-size: 16.5px; }
+.trap .lbl b { display: block; font-size: 18px; }
+
+.note { position: absolute; font-size: 16px; color: #3d4048; text-align: center; white-space: nowrap; }
+.note.l { text-align: left; }
+.note.red { color: #c8434a; }
+.note.blue { color: #3a73c9; }
+.small { font-size: 13.5px; }
+.img { position: absolute; border: 1.5px solid #555; object-fit: cover; }
+.tag { position: absolute; background: #fff; border-radius: 4px; font-size: 13px; font-weight: 600; padding: 1px 6px; }
+.math { font-family: "Liberation Serif", "Noto Serif", serif; font-style: italic; font-size: 19px; }
+.math .up, .math sub, .math sup.up { font-style: normal; }
+.math sub { font-family: "Inter", sans-serif; font-size: 0.62em; }
+.emoji { font-family: "Noto Color Emoji"; font-style: normal; font-size: 0.85em; }
+
+/* Arrows. One SVG over the whole canvas. */
+svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.a  { fill: none; stroke: #1d1f23; stroke-width: 2.2; marker-end: url(#ah); }
+.a0 { fill: none; stroke: #1d1f23; stroke-width: 2.2; }
+.ar { fill: none; stroke: #d9545a; stroke-width: 2.2; stroke-dasharray: 8 6; marker-end: url(#ahr); }
+.ab { fill: none; stroke: #3a73c9; stroke-width: 2.4; marker-end: url(#ahb); }
+.ab0 { fill: none; stroke: #3a73c9; stroke-width: 2.4; }

@@ -66,7 +66,7 @@ _Avoid_: out of workspace, unreachable
 ## Architecture A
 
 **Query**:
-One short noun phrase the detector looks for, such as "orange" or "box". Grounding gives the first queries, and the planner adds more with look.
+One short noun phrase the detector looks for, such as "orange" or "box". The planner chooses the queries in each perceive call.
 _Avoid_: noun phrase, detector vocabulary, prompt
 
 **Grounding**:
@@ -94,7 +94,7 @@ Moving a located object whose centre reads a little below the table up to the ta
 _Avoid_: clamp, z correction
 
 **Skill**:
-A scripted motion Architecture A can perform: pick, place, pour or open_drawer.
+A scripted motion Architecture A can perform: pick, place, pour, open_drawer or home.
 _Avoid_: primitive, action
 
 **Tool**:

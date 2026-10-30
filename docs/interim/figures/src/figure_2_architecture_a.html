@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- canvas width, height in CSS px, then the scale to the report PNG (3318 x 2186) -->
+<meta name="canvas" content="2000 1318 1.659">
+<title>Figure 2: Architecture A</title>
+<link rel="stylesheet" href="common.css">
+<style>
+#canvas { width: 2000px; height: 1318px; }
+.q { position: absolute; top: 120px; width: 64px; height: 36px; border: 2px solid #59a14f; background: #e3f3df;
+     border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+.tok { position: absolute; top: 248px; width: 20px; height: 32px; background: #4a7bd0; border-radius: 4px; }
+.trace li { list-style: none; display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #d8d8d8; font-size: 16px; }
+.trace li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #7b5fc7; }
+.stack { position: absolute; border: 2px solid #7b5fc7; border-radius: 12px; background: #ebe5f7; }
+</style>
+</head>
+<body>
+<div id="canvas">
+
+<!-- (a) Perceive -->
+<div class="panel p-blue" style="left:48px;top:47px;width:1904px;height:503px">
+  <h2>(a) Perceive: from pixels to points in the base frame</h2>
+</div>
+<div class="q" style="left:352px"><span class="math">q<sub>1</sub></span></div>
+<div class="q" style="left:427px"><span class="math">q<sub>2</sub></span></div>
+<div class="note" style="left:499px;top:124px;font-weight:700">···</div>
+<div class="q" style="left:530px"><span class="math">q<sub>k</sub></span></div>
+<div class="note l" style="left:612px;top:128px">queries from the planner's perceive call, <span class="math">k</span> ≤ 8</div>
+
+<img class="img" src="assets/colour.jpg" style="left:72px;top:160px;width:241px;height:136px">
+<div class="note" style="left:72px;top:303px;width:241px">colour, 1280 × 720</div>
+<img class="img" src="assets/depth.jpg" style="left:72px;top:347px;width:241px;height:134px">
+<div class="note" style="left:72px;top:488px;width:241px">depth, median of 5 frames</div>
+
+<div class="trap" style="left:361px;top:180px;width:205px;height:169px">
+  <svg viewBox="0 0 205 169" preserveAspectRatio="none"><polygon points="1,1 204,28 204,141 1,168" fill="#e3ecfa" stroke="#4a7bd0" stroke-width="2"/></svg>
+  <div class="lbl"><div><b>OWLv2 <span class="emoji">❄️</span></b>base-patch16<br>ensemble</div></div>
+</div>
+<div class="tok" style="left:593px"></div><div class="tok" style="left:619px"></div>
+<div class="note" style="left:642px;top:250px;font-weight:700">···</div>
+<div class="tok" style="left:668px"></div><div class="tok" style="left:694px"></div>
+<div class="note" style="left:582px;top:296px;width:160px">boxes, score ≥ 0.3<br>then NMS</div>
+
+<div class="trap" style="left:761px;top:180px;width:181px;height:169px">
+  <svg viewBox="0 0 181 169" preserveAspectRatio="none"><polygon points="1,1 180,28 180,141 1,168" fill="#e3ecfa" stroke="#4a7bd0" stroke-width="2"/></svg>
+  <div class="lbl"><div><b>SAM <span class="emoji">❄️</span></b>vit-base<br>box prompt</div></div>
+</div>
+<div class="note math" style="left:958px;top:232px">M<sub>i</sub></div>
+
+<div class="box top" style="left:1000px;top:166px;width:316px;height:241px">
+  <span class="t">Mask ray</span>
+  <div>ray through the mask centre</div>
+  <div class="math" style="margin:8px 0">p<sub>cam</sub> = λ K<sup>−1</sup> <span class="up">[</span>u, v, <span class="up">1]</span><sup>⊤</sup></div>
+  <div><span class="math">λ</span> set by the object centre<br>height from its own depth</div>
+</div>
+<div class="box c-act" style="left:1347px;top:166px;width:275px;height:241px">
+  <span class="t">Camera to base</span>
+  <div class="math" style="margin:10px 0 14px">p<sub>base</sub> = T<sub>base←cam</sub> p<sub>cam</sub></div>
+  <div>ball fit, then the<br>reach correction</div>
+</div>
+<div class="box c-check" style="left:1653px;top:166px;width:276px;height:241px">
+  <span class="t">Envelope check</span>
+  <div>sector and floor<br>of the envelope.<br>Out of reach: name<br>only, no position</div>
+</div>
+<div class="box left" style="left:1000px;top:433px;width:929px;height:102px;padding-left:22px">
+  <span class="t">Located objects</span>
+  <div>one entry per object in reach: name, base-frame point (<span class="math">x, y, z</span>) in m, score</div>
+</div>
+
+<!-- (b) The loop -->
+<div class="panel p-lilac" style="left:48px;top:577px;width:1904px;height:693px">
+  <h2>(b) Plan, perceive and act, one tool call per turn</h2>
+</div>
+<div class="box pill" style="left:72px;top:653px;width:313px;height:67px">instruction from the<br>speech front end</div>
+
+<div class="stack" style="left:95px;top:763px;width:446px;height:212px"></div>
+<div class="stack" style="left:90px;top:768px;width:446px;height:212px"></div>
+<div class="box c-plan top" style="left:85px;top:773px;width:446px;height:212px;padding-top:14px">
+  <span class="t" style="font-size:21px">Planning</span>
+  <div style="font-weight:700;font-size:17px;margin-bottom:8px">LLM agent: Claude Sonnet 5.5 <span class="emoji">❄️</span></div>
+  <div>system prompt and tool schemas<br>+ every earlier result<br>+ "State now" after each call<br>→ one tool call</div>
+</div>
+
+<div class="trap" style="left:597px;top:816px;width:259px;height:121px">
+  <svg viewBox="0 0 259 121" preserveAspectRatio="none"><polygon points="30,1 229,1 258,60 229,120 30,120 1,60" fill="#fff6d6" stroke="#d9b440" stroke-width="2"/></svg>
+  <div class="lbl"><div><b>validate_call</b>schema, envelope,<br>target in view</div></div>
+</div>
+<div class="note red" style="left:597px;top:948px;width:259px">refused: the reason goes back<br>to the LLM, which tries again</div>
+<div class="box pill" style="left:597px;top:1033px;width:259px;height:61px"><b>Done: tell the user</b></div>
+
+<div class="box c-ask" style="left:72px;top:1051px;width:277px;height:127px">
+  <span class="t">ask_user</span>spoken question<br>and spoken answer
+</div>
+<svg style="position:absolute;left:100px;top:1176px" width="60" height="34"><path d="M10 1 L4 30 L40 1" fill="#fde9ea" stroke="#d9545a" stroke-width="2" stroke-dasharray="6 4"/></svg>
+
+<div class="box c-perc" style="left:1103px;top:671px;width:277px;height:97px">
+  <span class="t">perceive</span>queries and a count each<br>first call, then for new words
+</div>
+<div class="box c-act left top" style="left:1103px;top:804px;width:277px;height:169px;padding-left:100px">
+  <span class="t" style="align-self:center;margin-left:-90px">Skill, e.g. pick</span>
+  <div style="font-size:14.5px">approach +0.12 m<br>descend, close RG2<br>retreat +0.15 m<br>each pose meets<br>the envelope</div>
+  <svg style="position:absolute;left:14px;top:48px" width="80" height="110" viewBox="0 0 80 110">
+    <path d="M8 10 V60" stroke="#1d1f23" stroke-width="2" marker-end="url(#ah)"/>
+    <path d="M70 60 V12" stroke="#1d1f23" stroke-width="2" marker-end="url(#ah)"/>
+    <path d="M38 8 V24 M22 64 V24 H54 V64" stroke="#3b3d42" stroke-width="4" fill="none"/>
+    <circle cx="38" cy="84" r="13" fill="#e8552d"/>
+    <rect x="6" y="98" width="62" height="4" fill="#d7c3a8"/>
+  </svg>
+</div>
+<div class="trap" style="left:1079px;top:1015px;width:326px;height:192px">
+  <svg viewBox="0 0 326 192" preserveAspectRatio="none"><polygon points="163,1 325,96 163,191 1,96" fill="#e3f3df" stroke="#59a14f" stroke-width="2"/></svg>
+  <div class="lbl" style="font-size:15px"><div><b>Look and verify</b>one capture with (a),<br>latest queries;<br>held if <span class="math">d</span> &lt; 50 mm</div></div>
+</div>
+
+<div class="box left top" style="left:1441px;top:750px;width:241px;height:200px;border-color:#7b5fc7;padding-left:18px;font-size:15.5px">
+  <span class="t" style="align-self:center">State, kept in code</span>
+  in gripper: an ID<br>in view: ID, name, xyz<br>not in view: ID only,<br>no position<br>out of reach: name only<br>IDs kept by position
+</div>
+
+<div class="box top" style="left:1737px;top:641px;width:192px;height:604px;padding:14px 22px">
+  <span class="t">Per-stage trace</span>
+  <div class="small" style="color:#3d4048">pass or fail,<br>duration and data</div>
+  <ul class="trace" style="width:100%;margin-top:18px">
+    <li>capture</li><li>grounding</li><li>detection</li><li>depth</li>
+    <li>transform</li><li>planning</li><li>clarify</li><li>execution</li>
+  </ul>
+  <div class="small" style="margin-top:30px;color:#3d4048">grounding: the<br>words in perceive</div>
+  <div class="small" style="margin-top:22px;color:#3d4048">a failed run names<br>the stage it failed at</div>
+  <div class="small" style="margin-top:42px;color:#3d4048"><span class="emoji">❄️</span> pretrained</div>
+</div>
+
+<div class="note" style="left:976px;top:686px">perceive</div>
+<div class="note" style="left:976px;top:853px">a skill</div>
+<div class="note l" style="left:1256px;top:601px">located objects, from (a)</div>
+<div class="note" style="left:604px;top:1218px;width:600px">result: OK or FAILED with the reason, plus the state</div>
+
+<svg class="wires" viewBox="0 0 2000 1318">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d1f23"/></marker>
+    <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d9545a"/></marker>
+  </defs>
+  <!-- (a) -->
+  <path class="a" d="M408 157 V178"/>
+  <path class="a" d="M315 228 H358"/>
+  <path class="a" d="M568 265 H590"/>
+  <path class="a" d="M722 265 H758"/>
+  <path class="a" d="M944 265 H997"/>
+  <path class="a" d="M315 385 H997"/>
+  <text x="656" y="376" font-size="15" text-anchor="middle" fill="#3d4048" font-family="Inter">depth</text>
+  <path class="a" d="M1318 286 H1344"/>
+  <path class="a" d="M1624 286 H1650"/>
+  <path class="a" d="M1791 409 V430"/>
+  <!-- (b) -->
+  <path class="a" d="M1241 537 V668"/>
+  <path class="a" d="M229 721 V769"/>
+  <path class="a" d="M541 852 H593"/>
+  <path class="ar" d="M595 912 H547"/>
+  <path class="a" d="M541 970 L592 1031"/>
+  <path class="ar" d="M199 990 V1048"/>
+  <path class="ar" d="M271 1048 V993"/>
+  <path class="a0" d="M857 876 H964 V713"/>
+  <path class="a" d="M964 713 H1100"/>
+  <path class="a" d="M964 876 H1100"/>
+  <path class="a" d="M1381 713 H1561 V747"/>
+  <path class="a" d="M1241 975 V1012"/>
+  <path class="a" d="M1406 1111 H1561 V953"/>
+  <path class="a" d="M1683 843 H1705 V1241 H422 V990"/>
+</svg>
+</div>
+</body>
+</html>
