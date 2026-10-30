@@ -36,8 +36,8 @@ class Stage(str, Enum):
     Ordered as the pipeline executes.
     """
     CAPTURE = "capture"        # camera gave no frame, or a corrupt one
-    GROUNDING = "grounding"    # instruction -> detector vocabulary. A-only failure mode:
-                               # B never names anything, so it cannot fail here
+    GROUNDING = "grounding"    # the planner's perceive queries, the detector vocabulary.
+                               # A-only failure mode: B never names anything (ADR 0015)
     DETECTION = "detection"    # detector found nothing, or nothing above threshold
     DEPTH = "depth"            # detection had no valid depth to sample
     TRANSFORM = "transform"    # camera to base frame conversion, or out of workspace
@@ -106,6 +106,17 @@ class Trace:
         """
         self._write({"type": "verdict", "step": step, "a_ok": a_ok,
                      "operator_ok": operator_ok, "wait_s": round(wait_s, 3)})
+
+    def look(self, queries: list[str], found: dict, out_of_reach: list[str]) -> None:
+        """
+        It takes one perceive call's queries, the scores each found (an empty list
+        for nothing) and the names out of reach, and gives you them written to disk.
+
+        A query that found nothing is visible at once in this record, which is
+        what keeps a wrong noun phrase (H9) apart from a detector miss.
+        """
+        self._write({"type": "look", "queries": queries, "found": found,
+                     "out_of_reach": out_of_reach})
 
     @contextmanager
     def stage(self, stage: Stage, message: str = ""):

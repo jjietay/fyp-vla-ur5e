@@ -40,7 +40,8 @@ src/fyp/
 │   ├── calibration/  hand_eye - A only, B never forms a 3D point
 │   ├── skills.py     pick / place / pour / open_drawer
 │   ├── tools.py      the schemas the LLM sees
-│   ├── planner.py    LLM planning, plan validation, ask_user, look, query grounding
+│   ├── planner.py    LLM planning, one call per turn, plan validation
+│   ├── state.py      the state the planner reads, with stable object IDs
 │   ├── pipeline.py   the orchestrator
 │   └── trace.py      per-stage failure log
 ├── architecture_b/   end-to-end SmolVLA, nothing hand-authored

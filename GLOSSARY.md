@@ -70,8 +70,12 @@ One short noun phrase the detector looks for, such as "orange" or "box". Groundi
 _Avoid_: noun phrase, detector vocabulary, prompt
 
 **Grounding**:
-Turning an instruction into queries. Only Architecture A does it, so only A can fail there.
+The planner's choice of queries in each `perceive` call. Only Architecture A does it, so only A can fail there.
 _Avoid_: query extraction, parsing
+
+**State**:
+What the planner is shown after each call: the object in the gripper, the objects in view with IDs and base-frame positions, the objects no longer in view (no position), and the objects out of reach.
+_Avoid_: scene, world model
 
 **Located object**:
 A detected object with a base-frame point.
@@ -94,20 +98,20 @@ A scripted motion Architecture A can perform: pick, place, pour or open_drawer.
 _Avoid_: primitive, action
 
 **Tool**:
-Something the planner can call: each skill, plus ask_user and look, which are tools but not skills.
+Something the planner can call: each skill, plus perceive and ask_user, which are tools but not skills.
 _Avoid_: function, command
 
-**Re-perceive**:
-Capturing and locating again after a tool runs, so the next planning turn sees the located objects as they are now.
-_Avoid_: new observation (B's camera input is its observation), fresh scene, rescan
+**Perceive**:
+The tool the planner calls with queries of its own, always first and again whenever it needs other objects, such as one named in a clarification. Each query has a count, 1 unless the planner raises it. A query it does not find is reported to the planner, not counted as a failed detection.
+_Avoid_: search, rescan, re-ground
 
 **Verify**:
-After a pick or place, Architecture A captures again and measures the object's distance from the TCP. A pick verifies when the object is within `verify.tolerance_mm` of the TCP, a place when it is not. Not seeing the object leaves the step unverified, which is not a failure.
+After a pick or place, Architecture A uses the look to measure the object's distance from the TCP. A pick verifies when the object is within `verify.tolerance_mm` of the TCP, a place when it is not. Not seeing the object leaves the step unverified, which is not a failure.
 _Avoid_: automatic check, pick check, place check, camera check
 
 **Look**:
-The tool the planner calls with queries of its own, for an object it needs that is not among the located objects, such as one named in a clarification. Its queries join the run's queries, and a query it does not find is reported to the planner, not counted as a failed detection.
-_Avoid_: search, rescan, re-ground
+The one capture code makes after every skill, with the queries and counts of the latest perceive, so the next planning turn sees the table as it is now. After a pick or place it is also the verify. The planner never calls it.
+_Avoid_: re-perceive, new observation (B's camera input is its observation), fresh scene, rescan
 
 **Calibration**:
 The current camera-to-base transform, T_base_cam. Only Architecture A forms a 3D point, so only A has one.

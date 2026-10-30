@@ -91,14 +91,14 @@ Spoken: `"Place that red cube into that metal tray."` Single unambiguous target,
 ### Tier 3 — Dynamic, state-dependent task *(the drawer)*
 `"Put the snack in the drawer."` The drawer starts closed. The robot opens it. **The human closes it again mid-task.** The robot must notice and re-open before placing.
 
-**Why it matters:** this is the tier where the prediction flips. Architecture A must *detect* the state change and re-plan — which is exactly what the open-loop plan-then-execute pattern is bad at, and why re-detection before each grasp (§7-W4) is necessary work. Architecture B is a closed-loop visuomotor policy at 20 Hz; if the training demonstrations included re-closures, reactive recovery is the thing it is naturally good at.
+**Why it matters:** this is the tier where the prediction flips. Architecture A must *detect* the state change and re-plan. It looks at the table after every skill (ADR 0015), so it sees a change between skills but not during one, and every look adds latency. Architecture B is a closed-loop visuomotor policy at 20 Hz; if the training demonstrations included re-closures, reactive recovery is the thing it is naturally good at.
 
 ### Tier 4 — Generalisation *(unseen objects and phrasings)*
 Objects and instruction phrasings never seen in the demonstrations or the prompt examples. A's open-vocabulary detector should transfer; B should degrade.
 
 ### Why Architecture A needs a language model in front of its detector
 
-OWLv2 matches one embedding per query, so it takes short noun phrases, never sentences. `planner.py::extract_queries` converts the command first, and that step is failure mode H9, which B does not have. Reasoning in `docs/adr/0004-owlv2-takes-noun-phrases.md`.
+OWLv2 matches one embedding per query, so it takes short noun phrases, never sentences. The planner chooses the noun phrases in each `perceive` call (ADR 0015), and that step is failure mode H9, which B does not have. Reasoning in `docs/adr/0004-owlv2-takes-noun-phrases.md`.
 
 ### Hypotheses to state up front
 
@@ -107,7 +107,7 @@ OWLv2 matches one embedding per query, so it takes short noun phrases, never sen
 | H1 | Both architectures reach comparable success on static, well-specified tasks | 0 |
 | H2 | B produces smoother, more successful contact-rich and constrained motion than hand-authored primitives | 1 |
 | H3 | A resolves ambiguous instructions; B cannot, and instead collapses to its training prior | 2 |
-| H4 | B recovers from mid-task world-state changes without explicit state estimation; open-loop A does not, and closing A's loop costs latency | 3 |
+| H4 | B recovers from mid-task world-state changes without explicit state estimation; A recovers only through the look after each skill, so it misses a change during a skill, and each look costs latency | 3 |
 | H5 | A generalises to unseen objects far better than B for the same engineering effort | 4 |
 | H6 | A's failures are attributable to a specific stage; B's are not attributable at all | all |
 | H7 | A is robust to spoken phrasing that drifts from the training/prompt wording; B degrades as the transcript drifts from its training instruction strings | all, via §6.3 |
@@ -203,7 +203,7 @@ Ordered by dependency, not by week. §8 places them in time. W1, W2 and W2b are 
 
 1. ~~**Get the first real grasp.**~~ Done 21 Oct 2026, with a full pick and place. The cause of the earlier misses was the calibration bias found by the reach test (W3.2).
 2. Run Tier 0 to the T2 threshold. This is what D2 reports.
-3. Close the loop: re-detect before each grasp instead of trusting the plan-time position. Required for Tier 3, not for Tier 0, so it waits for Semester 2. Document the failure modes you hit; they are results.
+3. ~~Close the loop: re-detect before each grasp instead of trusting the plan-time position.~~ Written 26 Oct 2026, not yet run on hardware: code looks at the table after every skill, and a pick must aim at an object in the latest look (ADR 0015). Document the failure modes you hit; they are results.
 
 ### W5 · Demonstration capture *(critical path)*
 
@@ -260,7 +260,7 @@ Everything for B is packed into Jan and Feb. Week 1 is about 11 Jan 2027 and rec
 | **S2 W1–W2** | 11–24 Jan | First SmolVLA fine-tune (A4); inference loop, safety envelope, B agent for the harness (W6.1–W6.3). Record Tier 1 demonstrations; write A's `pour` primitive. Start the methods chapter | **T3 Tier 0–1** |
 | **S2 W3** | 25–31 Jan | B on the arm behind the envelope, 20-trial Tier 0 run | **T4 — B passes Tier 0** |
 | **S2 W4–W5** | 1–14 Feb | Tier 1 both architectures; Tier 2 runs (A asks, B guesses) | Tiers 1–2 done |
-| **S2 W6** | 15–21 Feb | Tier 3 demonstrations and runs, with re-detection in A (W4.3). Tier 4 only if ahead | Tier 3 done |
+| **S2 W6** | 15–21 Feb | Tier 3 demonstrations and runs. Tier 4 only if ahead | Tier 3 done |
 | **S2 W7** | 22–28 Feb | Full sweep, gaps filled, **freeze results** | **T6 done** |
 | **Recess** | 1–7 Mar | Results and discussion chapters | — |
 | **S2 W8–W10** | 8–28 Mar | Finish the draft. **Submit D3, 25 Mar** | **D3 submitted** |
@@ -316,10 +316,11 @@ This is the only status record in the repo. Update it here, not in `CLAUDE.md` o
 - **Calibration, 21 Oct:** the arm had been moved, so the envelope, the table height (now 0.176 m) and the camera were all redone. Camera moved to 0.74 m from the work area, about 45 deg down, beside it on the robot's left. Ball fit RMS 7.3 mm over 39 poses, then levelled (table offset -16.8 mm, tilt 2.1 deg). The reach test with keyboard jog (`check_calibration.py --jog`) then showed a common miss of 18 to 34 mm, mostly base +x, that the fit RMS could not see; the likely cause is the fingers hiding part of the orange in every fit pose. An **empirical** correction (yaw +3.3 deg and a shift, from 4 points) is in `T_base_cam.json` as the `reach_correction` step; 3 new points then needed no jog at the 2 mm step. Replace it with a fit on a matte ball before the 20-trial run.
 - **Envelope is now a ring sector** (ADR 0011): radius 0.40 to 0.70 m, bearing -80 to -25 deg, z 0.181 to 0.380 m. The -25 deg edge keeps the arm away from the camera, which stands inside the reach radius.
 - **Found and fixed on 21 Oct:** a held object reading above the z ceiling was refused as out of reach, so the instruction after a pick failed; a failed hardware test kept the RTDE registers taken (`close()` now disconnects); the reach test read keys typed during a move as answers.
+- **Rebuilt on 26 Oct, not yet run on hardware:** Architecture A as a loop of one tool call per turn, with `perceive` as a tool, a look after every skill and a state with stable object IDs (ADR 0015). A pick must now aim at an object in the latest look. On 30 Oct `max_per_query` became a count per phrase, and this design replaced the `look` tool of ADR 0013. T2 runs on this A. Branch `agentic-loop`; the A before it is tag `a-pipeline-final`.
 - **Written, not yet run on hardware:** the operator's y/n per step in the evaluation harness (`<arch>_tier<n>_steps.csv`); the 20-trial harness run itself; Architecture B's robot side. There is no Architecture B agent for the harness yet.
 - **Open on A:** OWLv2 scores "pink tray" below the 0.3 threshold and "pink container" at 0.317 on the same box, and `evaluation/suite.py` says "tray"; nothing sets the release height of a place, which decides whether a light container stays put; the gripper missed one open in 20 cycles of the hardware test (-1.9 mm, 21 Oct).
 - **Checks without the arm:** `tests/unit` 331 passed, 1 skipped, in both venvs (21 Oct). Pyright from the integration-checks spec is not done.
-- **Not done:** a 20-trial Tier 0 run of A (T2); re-detection before each grasp (W4.3); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
+- **Not done:** a 20-trial Tier 0 run of A (T2); the drawer `pull_axis`; the e-stop recovery test; all demonstration capture. **There are zero episodes.**
 
 ### Open actions
 

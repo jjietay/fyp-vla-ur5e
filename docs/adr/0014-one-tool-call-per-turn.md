@@ -4,6 +4,8 @@ status: accepted
 
 # The planner makes one tool call per turn
 
+*30 Oct 2026:* `max_turns` is now 12 (ADR 0015), which gives room for Tier 3's recovery. The first call is always `perceive`, so a pick and place now takes four turns: perceive, pick, place, done.
+
 Decided 29 Oct 2026. The loop of plan, perceive and act only works if each call's result and a fresh look at the table reach the planner before it chooses the next one. A reply with a pick and a place planned the place before the pick's result existed, which was problem 2 of the 7 Oct review, yet the code still accepted several calls per reply. Each request now sets `tool_choice: {"type": "auto", "disable_parallel_tool_use": true}`, which on Sonnet 5.5 means at most one call, and `_read` refuses any reply that still holds more than one, so the model is told to send one and tries again inside the turn limit.
 
 ## Consequences

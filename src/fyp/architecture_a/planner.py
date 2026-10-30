@@ -1,13 +1,18 @@
 """planner.py
 
-It takes an instruction and a list of objects the camera found, and gives you the
-tool calls that carry it out, one per turn.
+It takes an instruction and gives you, one turn at a time, the next thing
+Architecture A should do: look, run one skill, ask the user, or stop.
 
-The model never sees pixels and never emits a pose. It sees a table of object
-names with base-frame coordinates, and it selects tools by name with arguments
-drawn from that table. That restriction is deliberate: it means a wrong plan is
-always readable as a wrong *decision*, not as an inscrutable numeric output, and
-that readability is what Architecture A is being measured on.
+The model never sees pixels and never emits a pose. It chooses what the
+detector looks for, reads a state of object IDs with base-frame coordinates, and
+selects one tool per turn with arguments drawn from that state. That restriction
+is deliberate: a wrong plan is always readable as a wrong *decision*, not as an
+inscrutable numeric output, and that readability is what Architecture A is
+being measured on.
+
+One call per turn (ADR 0015). The model sees the result of each skill, and the
+fresh state after it, before it chooses the next. A reply that chains pick and
+place would run the place before anyone knew whether the pick worked.
 
 Every tool call is validated before it is allowed anywhere near the controller.
 An LLM will occasionally invent a coordinate, invent a skill, or place an object
@@ -21,30 +26,43 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from fyp.architecture_a.tools import MOTION_TOOLS, TOOL_NAMES, TOOLS
+from fyp.architecture_a.state import WorldState
+from fyp.architecture_a.tools import TOOL_NAMES, TOOLS
 from fyp.shared.hardware.safety import SafetyViolation, WorkspaceEnvelope
 from fyp.shared.helpers.config import get_config
 
 SYSTEM_PROMPT = """You control a UR5e robot arm with a parallel gripper on a table.
 
-You are given the objects a camera has detected, with their positions in the \
-robot's base frame in metres. Carry out the user's instruction by calling the \
-tools available to you.
+Carry out the user's instruction by calling the tools available to you, one \
+call per turn. Before each call, write one short line saying what you intend \
+and why.
 
 Rules:
-- Only act on positions taken from the detected objects list. Never invent \
-coordinates, never estimate a position for something that was not detected.
-- If you need an object that is not in the list, call look with its name first. If \
-it is still not found, say so instead of substituting a similar one.
-- Objects under "Seen but out of reach" were detected but are too far for the arm. \
-They have no position and must not be used. If the task needs one, do not move \
-anything: tell the user it is out of reach and should be moved closer to the arm.
+- Your first call must be perceive. You see nothing until you look.
+- Every result comes with "State now": the object in the gripper, the objects \
+in view with an id and a position in the robot's base frame in metres, the \
+objects no longer in view, and the objects seen but out of reach.
+- Only act on positions taken from "objects" in the latest state. Never invent \
+coordinates. Objects under "not_in_view" and "out_of_reach" have no position \
+and must not be used. Call perceive again if what you need is not in view.
+- Refer to objects by their id when you write or ask. Two objects with the same \
+name are different objects. The skills take positions: copy the xyz of the \
+object you mean from the latest state.
+- perceive keeps only the best match for each name unless you give that name \
+a higher count in max_per_query. Raise it only for a name that several objects \
+may share, for example {{"bottle": 2}}.
+- If the instruction names an object you cannot find, say so instead of \
+substituting a similar one. Try perceive with other words first if the words \
+you chose may be the reason.
+- If an object the task needs is out of reach, do not move anything: tell the \
+user it is out of reach and should be moved closer to the arm.
 - The gripper holds one object at a time. Always place what you are holding \
 before picking something else.
 - If the instruction does not determine which object to act on, call ask_user. \
-Do not guess and do not pick the first plausible candidate.
-- Call one tool per reply. You see its result and the table as it is now before \
-you choose the next.
+Do not guess and do not pick the first plausible candidate. After the answer, \
+call perceive with the user's words if they name something you have not looked for.
+- A result that starts with FAILED means the step did not work. Decide from the \
+reason and the state whether to try again or to stop.
 - Work in the order the task requires. If something must be open before you can \
 put an object inside it, open it first.
 - When the task is complete, stop calling tools and reply with one short sentence \
@@ -54,49 +72,6 @@ Workspace limits: {workspace}
 """
 
 
-GROUNDING_PROMPT = """You turn a spoken robot command into a short list of things to \
-look for with an open-vocabulary object detector.
-
-Rules:
-- Return the physical objects the command refers to, as short noun phrases.
-- KEEP any distinguishing word the user actually said. "the red cube" becomes \
-"red cube", not "cube", because there may be cubes of other colours on the table.
-- Do NOT invent distinguishing words the user did not say. "the cube" stays "cube".
-- Include the destination as well as the thing being moved. "put the snack in the \
-drawer" needs both "snack" and "drawer handle", because the robot has to grasp the \
-handle, not the drawer.
-- If the command names no specific object, return the plausible object CATEGORIES \
-the task implies. "pour me a drink" has no named object, so return things a drink \
-could come from and go into: "bottle", "glass", "cup".
-- Lower case, no articles, no verbs, no quantities.
-- At most {max_queries} entries.
-- Always answer by calling look_for exactly once. Never answer in plain text.
-
-You are choosing what the robot looks at. Too narrow and it will not find the \
-object; too broad and the detector returns clutter."""
-
-GROUNDING_TOOL = {
-    "name": "look_for",
-    "description": "Report the objects the detector should search the scene for.",
-    # strict, because Sonnet 5.5 refuses a forced tool_choice. A strict tool still
-    # guarantees that IF the model calls it, the input matches this schema, and the
-    # prompt rule above is what makes it call it. additionalProperties is required
-    # by strict mode.
-    "strict": True,
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "queries": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Short noun phrases, lower case.",
-            },
-        },
-        "required": ["queries"],
-        "additionalProperties": False,
-    },
-}
-
 # Sonnet 5.5 (adopted 1 Oct 2026, when Sonnet 4.5 was deprecated) thinks by default
 # and rejects thinking "disabled". "between_tools" is the lowest setting it accepts,
 # and it keeps the planner as it was designed: no up-front thinking, so latency and
@@ -105,9 +80,15 @@ GROUNDING_TOOL = {
 # these fields passes them on rather than rejecting them.
 MODEL_OPTIONS = {"thinking": {"type": "between_tools"}, "output_config": {"effort": "high"}}
 
+# The asked-for API setting: at most one tool_use per reply. `_read` refuses a
+# reply with more anyway, so a model or SDK that ignores this cannot chain steps.
+TOOL_CHOICE = {"type": "auto", "disable_parallel_tool_use": True}
 
-class GroundingFailed(Exception):
-    """Raised when an instruction could not be turned into detector queries."""
+# The argument of each skill that must land on an object in view. A pick aimed at
+# a position no look has just confirmed is a pick at empty table, or at where a
+# person moved something from. `place` and pour's target stay free inside the
+# envelope, since putting something down on open table is a valid instruction.
+TARGET_ARGS = {"pick": "xyz", "pour": "source_xyz", "open_drawer": "handle_xyz"}
 
 
 USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens",
@@ -147,71 +128,6 @@ def api_cost_usd(usage: dict, prices: dict) -> float:
     return sum(usage.get(k, 0) * float(prices.get(v, 0.0)) for k, v in per.items()) / 1e6
 
 
-def clean_queries(raw) -> list[str]:
-    """
-    It takes the phrases a model gave and gives you them as detector queries:
-    lower case, single-spaced, without edge punctuation, empty ones and repeats
-    dropped.
-
-    Grounding and the look tool both use it, so "Orange Juice Bottle." from either
-    reaches the detector as the same "orange juice bottle".
-    """
-    queries: list[str] = []
-    for item in raw:
-        text = " ".join(str(item).lower().split()).strip(" .,;:'\"")
-        if text and text not in queries:
-            queries.append(text)
-    return queries
-
-
-def extract_queries(instruction: str, client, model: str,
-                    max_queries: int = 8, max_tokens: int = 512,
-                    usage: dict | None = None) -> list[str]:
-    """
-    It takes an instruction and gives you the object names to hand the detector.
-
-    This exists so Architecture A receives exactly what Architecture B receives:
-    the instruction string, and nothing else. Before it, the object vocabulary was
-    supplied by a human on the command line, which was information B never got and
-    which quietly weakened the generalisation result.
-
-    It is the same model as the planner, doing the first part of planning. No new
-    component is introduced, and none should be: swapping in a cheaper model here
-    would make the comparison harder to describe honestly.
-
-    Failure raises rather than falling back to a default vocabulary. A silent
-    fallback would restore the very advantage this removes, and would do it
-    invisibly, on exactly the trials where the model struggled.
-
-    Pass the planner's `usage` so this call is counted with the rest of the run.
-    It is part of A's cost per command, and leaving it out understates it.
-    """
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=GROUNDING_PROMPT.format(max_queries=max_queries),
-        tools=[GROUNDING_TOOL],
-        tool_choice={"type": "auto"},   # "tool" and "any" are a 400 on Sonnet 5.5
-        messages=[{"role": "user", "content": instruction}],
-        extra_body=MODEL_OPTIONS,
-    )
-    if usage is not None:
-        add_usage(usage, response)
-
-    raw: list = []
-    for block in response.content:
-        if getattr(block, "type", None) == "tool_use" and block.name == "look_for":
-            raw = list(block.input.get("queries", []))
-            break
-
-    queries = clean_queries(raw)
-    if not queries:
-        raise GroundingFailed(
-            f"no detector queries could be derived from {instruction!r}. "
-            "The instruction may not refer to any physical object.")
-    return queries[:max_queries]
-
-
 class PlanRejected(Exception):
     """Raised when a proposed tool call fails validation and must not be dispatched."""
 
@@ -227,34 +143,38 @@ class Step:
 @dataclass
 class PlannerReply:
     """
-    What the planner produced this turn: steps to run, a question to ask, names
-    to look for, a final message meaning it considers the task done, or `gave_up`
-    meaning the turn limit ran out first.
+    What the planner produced this turn: one step to run (a look or a skill), a
+    question to ask, a final message meaning it considers the task done, or
+    `gave_up` meaning the turn limit ran out first. `text` is the model's line of
+    intent, or its final message.
 
     Every reply here is already validated. A rejected call never becomes a
     reply: the planner sends it back to the model, or raises PlanRejected when
     the turn limit leaves no room for another try.
     """
-    steps: list[Step] = field(default_factory=list)
+    step: Step | None = None
     question: str | None = None
     options: list[str] = field(default_factory=list)
     question_id: str = ""
-    look: list[str] | None = None
-    look_id: str = ""
-    final_text: str = ""
+    text: str = ""
     gave_up: bool = False
 
     @property
     def is_done(self) -> bool:
-        return (not self.steps and self.question is None and self.look is None
-                and not self.gave_up)
+        return self.step is None and self.question is None and not self.gave_up
 
 
-def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
-                  object_names: set[str] | None = None) -> dict:
+def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope, *,
+                  max_queries: int = 8, max_per_query: int = 4,
+                  state: WorldState | None = None) -> dict:
     """
     It takes a proposed tool call and gives you the arguments back, or raises
     PlanRejected explaining exactly what was wrong.
+
+    `perceive` comes back with its queries normalised (lower case, single
+    spaces, no repeats) and `max_per_query` as a count for every query, 1 where
+    the model gave none. With a `state`, the target of a pick, a pour or a drawer
+    pull must be an object in view.
 
     This runs before dispatch, every time, with no fast path. The checks are
     cheap and the thing they protect is expensive.
@@ -267,14 +187,13 @@ def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
             raise PlanRejected("ask_user called with an empty question")
         return args
 
-    if tool == "look":
-        raw = args.get("queries")
-        if not isinstance(raw, list):
-            raise PlanRejected(f"look.queries must be a list of noun phrases, got {raw!r}")
-        queries = clean_queries(raw)
-        if not queries:
-            raise PlanRejected("look called with no noun phrase to look for")
-        return {"queries": queries}
+    if tool == "perceive":
+        unknown = set(args) - {"queries", "max_per_query"}
+        if unknown:
+            raise PlanRejected(f"perceive got unexpected arguments {sorted(unknown)}")
+        queries = _queries(args, max_queries)
+        return {"queries": queries,
+                "max_per_query": _counts(args.get("max_per_query", {}), queries, max_per_query)}
 
     schema = next(t for t in TOOLS if t["name"] == tool)["input_schema"]
     allowed = set(schema.get("properties", {}))
@@ -301,43 +220,96 @@ def validate_call(tool: str, args: dict, envelope: WorkspaceEnvelope,
         elif spec.get("type") == "string" and "enum" in spec and value not in spec["enum"]:
             raise PlanRejected(f"{tool}.{key} must be one of {spec['enum']}, got {value!r}")
 
+    key = TARGET_ARGS.get(tool)
+    if state is not None and key is not None and state.target(args[key]) is None:
+        raise PlanRejected(
+            f"{tool}.{key} {list(args[key])} is not within "
+            f"{state.tolerance * 1000:.0f} mm of any object in view. Use a position from "
+            "'objects' in the latest state, or call perceive if the object is not in view")
+
     return args
 
 
-def _scene_text(objects: list[dict], unreachable: list[str]) -> str:
-    """It takes the objects on the table and the names out of reach, and gives you
-    the scene as the planner reads it after a step or a look."""
-    text = f"\nScene now:\n{json.dumps(objects, indent=2)}"
-    if unreachable:
-        text += f"\nSeen but out of reach: {unreachable}"
-    return text
+def _queries(args: dict, max_queries: int) -> list[str]:
+    """It takes perceive's arguments and gives you the cleaned query list, or
+    raises PlanRejected."""
+    raw = args.get("queries")
+    if not isinstance(raw, list):
+        raise PlanRejected(f"perceive.queries must be a list of noun phrases, got {raw!r}")
+    queries: list[str] = []
+    for item in raw:
+        text = " ".join(str(item).lower().split()).strip(" .,;:'\"")
+        if text and text not in queries:
+            queries.append(text)
+    if not queries:
+        raise PlanRejected("perceive needs at least one noun phrase")
+    # Refused, not cut: a silent cut drops the words the model ranked last, and
+    # those can be the destination.
+    if len(queries) > max_queries:
+        raise PlanRejected(f"perceive got {len(queries)} queries; at most {max_queries}. "
+                           "More slow OWLv2 and add false detections")
+    return queries
+
+
+def _counts(raw, queries: list[str], cap: int) -> dict[str, int]:
+    """
+    It takes perceive's `max_per_query` and the cleaned queries and gives you a
+    count for every query, or raises PlanRejected.
+
+    Per phrase, not one number for the call: "two bottles and a cup" wants two
+    bottle boxes and one cup box, and a shared 2 would let a false second cup in.
+    """
+    if not isinstance(raw, dict):
+        raise PlanRejected("perceive.max_per_query must map a phrase to a count, "
+                           f'for example {{"bottle": 2}}; got {raw!r}')
+    counts = dict.fromkeys(queries, 1)
+    for phrase, k in raw.items():
+        name = " ".join(str(phrase).lower().split()).strip(" .,;:'\"")
+        if name not in counts:
+            raise PlanRejected(f"perceive.max_per_query names {phrase!r}, which is not "
+                               f"one of the queries {queries}")
+        # bool is an int in Python, and True would quietly mean 1.
+        if isinstance(k, bool) or not isinstance(k, int) or not 1 <= k <= cap:
+            raise PlanRejected(f"perceive.max_per_query[{phrase!r}] must be a whole number "
+                               f"from 1 to {cap}, got {k!r}")
+        counts[name] = k
+    return counts
 
 
 class Planner:
     """
-    It takes the detected objects and gives you the next tool call.
+    It takes the run's state and gives you the next validated step, one turn at
+    a time.
 
-    Stateful across a run, because clarification requires it: the question, the
-    user's answer, and the results of skills already executed all have to stay in
-    context or the model re-plans from scratch and repeats itself.
+    Stateful across a run, because clarification and recovery require it: the
+    question, the user's answer, and every result so far stay in the
+    conversation. That conversation is the run's only memory. It is bounded by
+    `max_turns`, so it stays small (ADR 0015) and is never summarised.
     """
 
     def __init__(self, cfg: dict | None = None, envelope: WorkspaceEnvelope | None = None,
-                 client=None):
+                 client=None, state: WorldState | None = None):
         cfg = cfg or get_config()
-        p = cfg["architecture_a"]["planner"]
+        a = cfg["architecture_a"]
+        p = a["planner"]
         self.model = p["model"]
         self.max_tokens = int(p["max_tokens"])
         self.max_turns = int(p["max_turns"])
+        self.max_queries = int(a["grounding"]["max_queries"])
+        self.max_per_query = int(a["detector"]["max_per_query"])
         self.env = envelope or WorkspaceEnvelope(cfg)
+        # None skips the in-view check, for tests of the loop alone. The pipeline
+        # always passes the run's state.
+        self.state = state
         self.messages: list[dict] = []
         self.usage = new_usage()
-        # Per million tokens. None leaves the cost uncomputed rather than guessed.
+        # None leaves the cost out rather than reporting 0, which would read as free.
         self.prices = p.get("price_usd_per_mtok")
         self._client = client
         # Model calls made for the current instruction. Retries after a rejection
         # count too, so the limit bounds the whole exchange, not only good replies.
-        self._turns = 0
+        self.turns = 0
+        self._perceived = False
 
     @property
     def client(self):
@@ -350,101 +322,43 @@ class Planner:
             self._client = anthropic.Anthropic()   # reads ANTHROPIC_API_KEY
         return self._client
 
-    def start(self, instruction: str, objects: list[dict],
-              out_of_reach: list[dict] | None = None) -> PlannerReply:
+    def start(self, instruction: str) -> PlannerReply:
         """
-        It takes the instruction, the object table and the objects seen but out of
-        reach, and gives you the first reply.
+        It takes the instruction and gives you the first reply.
 
-        Out-of-reach objects carry a name and a reason, never a position, so they
-        can be explained to the user but cannot be acted on.
+        The instruction is all the model gets, exactly as Architecture B gets it.
+        It has seen nothing yet, so its first call is a look.
         """
-        unreachable = ""
-        if out_of_reach:
-            unreachable = ("Seen but out of reach (no position, cannot be used):\n"
-                           + json.dumps(out_of_reach, indent=2) + "\n\n")
-        self.messages = [{
-            "role": "user",
-            "content": (
-                f"Detected objects:\n{json.dumps(objects, indent=2)}\n\n"
-                f"{unreachable}"
-                f"Instruction: {instruction}"
-            ),
-        }]
-        self._turns = 0
+        self.messages = [{"role": "user", "content": f"Instruction: {instruction}"}]
+        self.turns = 0
+        self._perceived = False
         return self._turn()
 
-    def report_results(self, results: list[tuple[str, str]],
-                       scene: tuple[list[dict], list[str]] | None = None,
-                       scene_error: str | None = None) -> PlannerReply:
+    def report(self, tool_use_id: str, text: str, state: dict | None = None) -> PlannerReply:
         """
-        It takes (tool_use_id, outcome text) pairs, optionally the scene as it is
-        now, and gives you the planner's next reply.
+        It takes the result of the step just run, and the state after it, and
+        gives you the next reply.
 
         Feeding real outcomes back is what lets the model recover. A skill that
         reports "controller refused pose z=-0.02 below min 0.005" gives it enough
         to retry sensibly; a bare "failed" does not.
 
-        `scene` is (objects on the table as {name, confidence, xyz}, names out of
-        reach). Positions, not names: 13 Oct 2026, a pick lifted nothing, the
-        scene said only "orange", and the model could not tell "held" from
-        "still on the table where it was". It goes INTO
-        the last result, not after it as a new one: a second result with the same
-        id is refused outright (found on the first real run, 1 Oct 2026).
-        `scene_error` says why the scene could not be read, since losing it
-        mid-task is informative but not fatal.
+        The state goes INTO the result, not after it as a second one: a second
+        result with the same id is refused outright (found on the first real run,
+        1 Oct 2026).
         """
-        results = list(results)
-
-        if results and (scene is not None or scene_error):
-            tid, text = results[-1]
-            if scene_error:
-                text += f"\nRe-perception failed: {scene_error}"
-            else:
-                text += _scene_text(*scene)
-            results[-1] = (tid, text)
-
+        if state is not None:
+            text += f"\nState now:\n{json.dumps(state, indent=2)}"
         self.messages.append({
             "role": "user",
-            "content": [{"type": "tool_result", "tool_use_id": tid, "content": text}
-                        for tid, text in results],
+            "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": text}],
         })
         return self._turn()
 
     def answer_question(self, question_id: str, answer: str) -> PlannerReply:
-        """
-        It takes the user's answer and gives you the re-planned next step.
-        """
-        content = [{"type": "tool_result", "tool_use_id": question_id, "content": answer}]
-        self.messages.append({"role": "user", "content": content})
-        return self._turn()
-
-    def report_look(self, look_id: str, queries: list[str],
-                    scene: tuple[list[dict], list[str]] | None = None,
-                    scene_error: str | None = None) -> PlannerReply:
-        """
-        It takes the names the planner asked to look for and the scene that look
-        found, and gives you the planner's next reply.
-
-        Each name is said to be found or not found, in words. A name missing from
-        a JSON table is easy for the model to read past, and then it acts on a
-        drink that was never seen.
-        """
-        if scene_error:
-            text = f"FAILED: could not look: {scene_error}"
-        else:
-            objects, unreachable = scene
-            seen = {o["name"] for o in objects} | set(unreachable)
-            found = [q for q in queries if q in seen]
-            missing = [q for q in queries if q not in seen]
-            text = f"OK: looked for {', '.join(queries)}."
-            if found:
-                text += f" Found: {', '.join(found)}."
-            if missing:
-                text += f" Not found: {', '.join(missing)}."
-            text += _scene_text(objects, unreachable)
-        content = [{"type": "tool_result", "tool_use_id": look_id, "content": text}]
-        self.messages.append({"role": "user", "content": content})
+        """It takes the user's answer and gives you the next reply."""
+        self.messages.append({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": question_id, "content": answer}]})
         return self._turn()
 
     def _turn(self) -> PlannerReply:
@@ -463,28 +377,30 @@ class Planner:
         """
         last_rejection = ""
         while True:
-            if self._turns >= self.max_turns:
+            if self.turns >= self.max_turns:
                 if last_rejection:
                     raise PlanRejected(last_rejection)
                 return PlannerReply(gave_up=True)
-            self._turns += 1
+            self.turns += 1
 
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=SYSTEM_PROMPT.format(workspace=self.env.describe()),
                 tools=TOOLS,
-                # At most one call per reply (ADR 0014). `_read` refuses more, in case
-                # a reply ever carries two anyway.
-                tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+                tool_choice=TOOL_CHOICE,
                 messages=self.messages,
                 extra_body=MODEL_OPTIONS,
             )
             add_usage(self.usage, response)
+            # Appended whole and never edited: Sonnet 5.5 refuses thinking blocks
+            # from a history that was changed after they were written.
             self.messages.append({"role": "assistant", "content": response.content})
 
             reply, rejected = self._read(response.content)
             if not rejected:
+                if reply.step is not None and reply.step.tool == "perceive":
+                    self._perceived = True
                 return reply
             last_rejection = next(iter(rejected.values()))
             self._send_rejection(response.content, rejected)
@@ -493,48 +409,42 @@ class Planner:
         """
         It takes the model's content blocks and gives you the reply and a
         {tool_use_id: reason} map of the calls that failed validation.
-
-        A reply with more than one call is refused whole (ADR 0014). Running the
-        first alone is no better: the model chose it as part of a plan it can no
-        longer follow once the result changes the table.
         """
         reply = PlannerReply()
         calls = [b for b in content if b.type == "tool_use"]
+        reply.text = "".join(b.text for b in content if b.type == "text")
         if len(calls) > 1:
-            why = (f"{len(calls)} tool calls in one reply. Call one tool per turn; you "
-                   "will see its result and the table before choosing the next")
-            return reply, {b.id: why for b in calls}
-        rejected: dict[str, str] = {}
-        for block in content:
-            if block.type == "text":
-                reply.final_text += block.text
-            elif block.type == "tool_use":
-                try:
-                    args = validate_call(block.name, dict(block.input), self.env)
-                except PlanRejected as e:
-                    rejected[block.id] = str(e)
-                    continue
-                if block.name == "ask_user":
-                    reply.question = args["question"]
-                    reply.options = list(args.get("options", []))
-                    reply.question_id = block.id
-                elif block.name == "look":
-                    reply.look = args["queries"]
-                    reply.look_id = block.id
-                elif block.name in MOTION_TOOLS:
-                    reply.steps.append(Step(tool=block.name, args=args, tool_use_id=block.id))
-        return reply, rejected
+            reason = (f"one tool call per turn, and this reply has {len(calls)}. "
+                      "Send only the next call; you will see its result first")
+            return reply, {b.id: reason for b in calls}
+        if not calls:
+            return reply, {}
+
+        block = calls[0]
+        if not self._perceived and block.name != "perceive":
+            return reply, {block.id: "the first call must be perceive: nothing has been "
+                                     "seen yet, so there is nothing to act on"}
+        try:
+            args = validate_call(block.name, dict(block.input), self.env,
+                                 max_queries=self.max_queries,
+                                 max_per_query=self.max_per_query, state=self.state)
+        except PlanRejected as e:
+            return reply, {block.id: str(e)}
+        if block.name == "ask_user":
+            reply.question = args["question"]
+            reply.options = list(args.get("options", []))
+            reply.question_id = block.id
+        else:
+            reply.step = Step(tool=block.name, args=args, tool_use_id=block.id)
+        return reply, {}
 
     def _send_rejection(self, content, rejected: dict[str, str]) -> None:
         """
         It takes the rejected reply and gives you the error results appended to
-        the conversation.
-
-        Every call in a rejected reply is in `rejected`, with its reason, because
-        every tool_use needs exactly one result or the next request is a 400.
+        the conversation, one per tool_use, because the API wants exactly one.
         """
-        results = [{"type": "tool_result", "tool_use_id": block.id,
-                    "content": f"REJECTED: {rejected[block.id]}. Correct this and try again.",
+        results = [{"type": "tool_result", "tool_use_id": b.id,
+                    "content": f"REJECTED: {rejected[b.id]}. Correct this and try again.",
                     "is_error": True}
-                   for block in content if block.type == "tool_use"]
+                   for b in content if b.type == "tool_use"]
         self.messages.append({"role": "user", "content": results})

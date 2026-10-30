@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR 0015
 ---
 
 # The planner can look for objects by name with a look tool, and those queries stay for the rest of the run
+
+*30 Oct 2026:* superseded by ADR 0015. `perceive` is now a tool the planner calls first and may call again with new words, so a separate `look` tool on top of a fixed grounding step is no longer needed.
 
 Decided 29 Oct 2026. Grounding chose the queries once, from the instruction, and every later re-perception reused them. After "pour me a drink" and the answer "orange juice", the detector was never asked for the bottle, so the clarification in Tier 2 could not be acted on (problem 1 of the 7 Oct review, Section 4.1 of the interim report). The planner now has a `look(queries)` tool. Its queries join the run's queries, so later re-perception and verify search for them too, and the result says in words which were found. A look perceives non-strictly: a query it does not find is an answer for the planner, not a failed detection stage blamed on the trial.
 

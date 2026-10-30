@@ -171,7 +171,7 @@ class Skills:
         It takes the target of a missed grasp and gives you the fingers open and
         the arm above it, plus a note when that did not work.
 
-        Backing off before reporting matters because the pipeline re-perceives the
+        Backing off before reporting matters because the pipeline looks at the
         scene straight after a failure. Left at the grasp pose, the gripper sits
         between the fixed camera and the object it just missed, the object is not
         seen, and the planner re-plans against a scene with the target missing.
