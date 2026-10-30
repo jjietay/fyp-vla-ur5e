@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture A, explained</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f7f5; --panel:#ffffff; --ink:#1d1f23; --muted:#5d6470; --line:#e2e3e0;
+  --accent:#2f6fde; --accent-soft:#e8effc; --ok:#1f8a4c; --ok-soft:#e5f4ea;
+  --warn:#b46a00; --warn-soft:#fbf0de; --bad:#c0392b; --bad-soft:#fbe7e4;
+  --code-bg:#f1f2ef; --code-ink:#2a2d33;
+  --b1:#2f6fde; --b2:#8a5cd6; --b3:#1f8a4c; --b4:#b46a00; --b5:#c0392b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171a; --panel:#1c1f23; --ink:#e7e8ea; --muted:#9aa1ab; --line:#2c3036;
+    --accent:#6c9cf0; --accent-soft:#1f2a3d; --ok:#4cc27e; --ok-soft:#18291f;
+    --warn:#e0a24a; --warn-soft:#2e2414; --bad:#ec7a6c; --bad-soft:#33201d;
+    --code-bg:#22262b; --code-ink:#dfe2e6;
+    --b1:#6c9cf0; --b2:#b08ff0; --b3:#4cc27e; --b4:#e0a24a; --b5:#ec7a6c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171a; --panel:#1c1f23; --ink:#e7e8ea; --muted:#9aa1ab; --line:#2c3036;
+  --accent:#6c9cf0; --accent-soft:#1f2a3d; --ok:#4cc27e; --ok-soft:#18291f;
+  --warn:#e0a24a; --warn-soft:#2e2414; --bad:#ec7a6c; --bad-soft:#33201d;
+  --code-bg:#22262b; --code-ink:#dfe2e6;
+  --b1:#6c9cf0; --b2:#b08ff0; --b3:#4cc27e; --b4:#e0a24a; --b5:#ec7a6c;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.62 Inter,system-ui,sans-serif}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.86em}
+code{background:var(--code-bg);color:var(--code-ink);padding:.1em .35em;border-radius:4px}
+pre{background:var(--code-bg);color:var(--code-ink);padding:14px 16px;border-radius:8px;overflow-x:auto;line-height:1.5;margin:12px 0}
+pre code{background:none;padding:0}
+a{color:var(--accent)}
+.layout{display:grid;grid-template-columns:250px minmax(0,1fr);max-width:1240px;margin:0 auto}
+nav{position:sticky;top:0;height:100vh;overflow-y:auto;padding:28px 18px;border-right:1px solid var(--line)}
+nav .brand{font-weight:700;margin-bottom:4px}
+nav .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+nav a{display:block;color:var(--muted);text-decoration:none;font-size:14px;padding:4px 8px;border-radius:6px}
+nav a:hover{background:var(--accent-soft);color:var(--ink)}
+main{padding:36px 44px 80px;min-width:0}
+h1{font-size:34px;line-height:1.2;margin:0 0 8px}
+h2{font-size:24px;margin:56px 0 12px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:18px;margin:28px 0 8px}
+.lede{font-size:18px;color:var(--muted);max-width:760px}
+p,li{max-width:800px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.grid .card{margin:0}
+.card h4{margin:0 0 6px;font-size:15px}
+.card p{margin:0;font-size:14.5px;color:var(--muted)}
+.note{border-left:4px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.bad{border-left-color:var(--bad);background:var(--bad-soft)}
+.good{border-left-color:var(--ok);background:var(--ok-soft)}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14.5px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:block;overflow-x:auto}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--code-bg);font-weight:600}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.msg{border:1px solid var(--line);border-radius:10px;margin:10px 0;background:var(--panel);overflow:hidden}
+.msg .hd{display:flex;gap:10px;align-items:center;padding:8px 14px;background:var(--code-bg);font-size:13px;font-weight:600}
+.msg .hd .idx{color:var(--muted);font-weight:500}
+.msg pre{margin:0;border-radius:0;background:transparent}
+.role-user .hd{border-left:4px solid var(--b1)}
+.role-assistant .hd{border-left:4px solid var(--b2)}
+.role-system .hd{border-left:4px solid var(--b4)}
+svg text{font-family:Inter,system-ui,sans-serif}
+.diagram{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:16px 0;overflow-x:auto}
+.toggle{position:fixed;top:14px;right:16px;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin:12px 0}
+summary{cursor:pointer;font-weight:600}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;padding-left:40px;margin:12px 0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+  nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:16px}
+  nav a{display:inline-block}
+  main{padding:24px 16px 60px}
+  h1{font-size:27px}
+}
+</style>
+</head>
+<body>
+<button class="toggle" id="t" type="button">Theme</button>
+<div class="layout">
+<nav>
+  <div class="brand">Architecture A</div>
+  <div class="sub">One-call-per-turn loop · branch <code>agentic-loop-a</code> · 26 Oct 2026</div>
+  <a href="#overview">1. Overview</a>
+  <a href="#lifecycle">2. One run, start to end</a>
+  <a href="#llm">3. The LLM call</a>
+  <a href="#prompt">4. The system prompt</a>
+  <a href="#tools">5. The tools</a>
+  <a href="#context">6. The context, message by message</a>
+  <a href="#memory">7. Memory: what is kept where</a>
+  <a href="#state">8. The state and object IDs</a>
+  <a href="#validation">9. Validation and rejection</a>
+  <a href="#perception">10. Perception</a>
+  <a href="#skills">11. Skills and the check after each</a>
+  <a href="#safety">12. Safety layers</a>
+  <a href="#trace">13. Trace and data on disk</a>
+  <a href="#fairness">14. Fairness with B</a>
+  <a href="#failures">15. Failure modes</a>
+  <a href="#config">16. Config values</a>
+  <a href="#limits">17. Not yet verified</a>
+  <a href="#files">18. File map</a>
+</nav>
+<main>
+
+<h1>Architecture A: how it works now</h1>
+<p class="lede">Architecture A is a modular pipeline with nothing trained. A language model (Claude Sonnet 5.5) plans. An open-vocabulary detector (OWLv2) and a segmenter (SAM) see. Hand-written skills move the UR5e. On 26 Oct 2026 it became a loop: the planner makes <b>one tool call per turn</b>, <b>perception is one of its tools</b>, and code <b>looks at the table after every skill</b>.</p>
+
+<div class="note warn"><b>Status.</b> This design has 350 passing unit tests and an end-to-end test with fakes. It has <b>not run on the arm yet</b>. The last A that ran on the arm is tag <code>a-pipeline-final</code> (commit <code>4fe00b2</code>). Section 17 lists what the bench must still confirm.</div>
+
+<!-- ================================================================ 1 -->
+<h2 id="overview">1. Overview</h2>
+
+<p>A spoken command becomes a transcript. The transcript goes to <code>ArchitectureA.run(instruction)</code>, which returns an <code>Outcome</code>. Inside <code>run</code>, the planner and the code take turns:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 920 390" width="100%" role="img" aria-label="Architecture A loop diagram">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+    </marker>
+  </defs>
+  <!-- speech -->
+  <rect x="10" y="150" width="130" height="62" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+  <text x="75" y="176" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">Speech (shared)</text>
+  <text x="75" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">faster-whisper</text>
+  <line x1="140" y1="181" x2="196" y2="181" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="168" y="172" text-anchor="middle" font-size="11" fill="var(--muted)">text</text>
+  <!-- planner -->
+  <rect x="200" y="130" width="190" height="102" rx="10" fill="var(--accent-soft)" stroke="var(--b2)" stroke-width="1.5"/>
+  <text x="295" y="160" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ink)">Planner (LLM)</text>
+  <text x="295" y="180" text-anchor="middle" font-size="12" fill="var(--muted)">Sonnet 5.5</text>
+  <text x="295" y="198" text-anchor="middle" font-size="12" fill="var(--muted)">one call per turn</text>
+  <text x="295" y="216" text-anchor="middle" font-size="12" fill="var(--muted)">max 12 calls</text>
+  <!-- validate -->
+  <rect x="440" y="150" width="140" height="62" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+  <text x="510" y="176" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">validate_call</text>
+  <text x="510" y="196" text-anchor="middle" font-size="12" fill="var(--muted)">refuse → back to LLM</text>
+  <line x1="390" y1="181" x2="436" y2="181" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <!-- three branches -->
+  <rect x="640" y="20" width="270" height="78" rx="10" fill="var(--panel)" stroke="var(--b3)" stroke-width="1.5"/>
+  <text x="775" y="46" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">perceive(queries, k)</text>
+  <text x="775" y="66" text-anchor="middle" font-size="12" fill="var(--muted)">capture → OWLv2 → SAM → 3D</text>
+  <text x="775" y="84" text-anchor="middle" font-size="12" fill="var(--muted)">→ base frame → reach split</text>
+  <rect x="640" y="142" width="270" height="78" rx="10" fill="var(--panel)" stroke="var(--b4)" stroke-width="1.5"/>
+  <text x="775" y="168" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">skill (pick, place, …)</text>
+  <text x="775" y="188" text-anchor="middle" font-size="12" fill="var(--muted)">envelope → controller (RTDE)</text>
+  <text x="775" y="206" text-anchor="middle" font-size="12" fill="var(--muted)">then a look + check, in code</text>
+  <rect x="640" y="264" width="270" height="62" rx="10" fill="var(--panel)" stroke="var(--b1)" stroke-width="1.5"/>
+  <text x="775" y="290" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">ask_user(question)</text>
+  <text x="775" y="308" text-anchor="middle" font-size="12" fill="var(--muted)">spoken answer</text>
+  <line x1="580" y1="170" x2="636" y2="66" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="580" y1="181" x2="636" y2="181" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="580" y1="192" x2="636" y2="292" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <!-- state -->
+  <rect x="380" y="300" width="200" height="72" rx="10" fill="var(--ok-soft)" stroke="var(--b3)" stroke-width="1.5"/>
+  <text x="480" y="326" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)">WorldState</text>
+  <text x="480" y="344" text-anchor="middle" font-size="12" fill="var(--muted)">held · IDs · not in view</text>
+  <text x="480" y="361" text-anchor="middle" font-size="12" fill="var(--muted)">kept by code</text>
+  <path d="M640 80 C 560 120, 560 260, 560 300" fill="none" stroke="var(--b3)" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+  <path d="M640 210 C 610 250, 600 290, 582 318" fill="none" stroke="var(--b3)" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+  <!-- result back -->
+  <path d="M380 336 C 300 336, 295 290, 295 236" fill="none" stroke="var(--b2)" stroke-width="1.6" marker-end="url(#ar)"/>
+  <text x="250" y="300" text-anchor="middle" font-size="12" fill="var(--muted)">OK:/FAILED: +</text>
+  <text x="250" y="316" text-anchor="middle" font-size="12" fill="var(--muted)">"State now"</text>
+  <!-- outcome -->
+  <line x1="295" y1="130" x2="295" y2="70" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="215" y="20" width="160" height="48" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+  <text x="295" y="41" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">Outcome</text>
+  <text x="295" y="58" text-anchor="middle" font-size="11" fill="var(--muted)">no call = done</text>
+</svg>
+</div>
+
+<div class="grid">
+  <div class="card"><h4>Who decides</h4><p>The LLM decides <i>what</i> to do next and <i>which words</i> to look for. It never sees pixels and never writes a pose.</p></div>
+  <div class="card"><h4>Who checks</h4><p>Code checks every call before it runs (<code>validate_call</code>), and the camera checks every pick and place after it runs.</p></div>
+  <div class="card"><h4>Who remembers</h4><p>The chat history holds the run's story. <code>WorldState</code> holds the facts about objects. Nothing carries over to the next instruction.</p></div>
+  <div class="card"><h4>Who records</h4><p><code>Trace</code> writes one JSONL file per run, with one event per stage. That file is the evidence for H6 (A's failures can be traced to a stage).</p></div>
+</div>
+
+<h3>What changed on 26 Oct 2026</h3>
+<table>
+<tr><th>Before (tag <code>a-pipeline-final</code>)</th><th>Now (branch <code>agentic-loop-a</code>)</th></tr>
+<tr><td>A separate LLM call (<code>extract_queries</code>) turned the instruction into detector words once, and the result was cached.</td><td>The planner calls <code>perceive(queries)</code> itself, as often as it needs. A clarification answer can become new words.</td></tr>
+<tr><td>Perception ran before the planner, and the planner got "Detected objects" in its first message.</td><td>The first message is only the instruction. The first call must be <code>perceive</code>.</td></tr>
+<tr><td>One reply could hold several calls (pick and place together).</td><td>One call per reply, set at the API and enforced in code.</td></tr>
+<tr><td>Two captures after each step: one for the check, one to re-perceive ("Scene now").</td><td>One capture after each skill. It is the check and the new state together.</td></tr>
+<tr><td>Objects had names only. With two objects of one name, the check could measure the wrong one.</td><td>Objects have IDs (<code>orange_1</code>) that stay the same between looks, matched by position.</td></tr>
+<tr><td><code>_held</code>: one string with the name of the object in the gripper.</td><td><code>WorldState</code>: held ID, objects in view, objects not in view (no position), out of reach.</td></tr>
+<tr><td>OWLv2 always kept the best box per query.</td><td>The planner chooses <code>max_per_query</code> (1 to 4).</td></tr>
+<tr><td><code>max_turns</code> 6.</td><td><code>max_turns</code> 12.</td></tr>
+<tr><td><code>queries=</code> debug bypass, <code>--queries</code>, <code>--no-reperceive</code>.</td><td>Removed.</td></tr>
+</table>
+
+<!-- ================================================================ 2 -->
+<h2 id="lifecycle">2. One run, start to end</h2>
+<p>This is what happens for one spoken instruction, in the order the code does it. File and function names are given, so you can follow each step in the source.</p>
+
+<ol class="steps">
+<li><b>Startup, once per session</b> (<code>scripts/run_architecture_a.py</code>). It loads faster-whisper <code>large-v3</code> on CUDA in <code>float16</code> first, because a missing PortAudio or a slow model load should fail before the arm is connected. Then it connects <code>URController</code> (RTDE to <code>10.149.230.1:30004</code>), starts the RG2 gripper and opens the RealSense. It builds <code>ArchitectureA</code> one time. That constructor checks that the tool schemas match the <code>Skills</code> method signatures, reads <code>T_base_cam</code> from <code>config/calibration/T_base_cam.json</code>, and makes the <code>Perception</code> object. OWLv2 loads on the first detection and stays loaded for the whole process.</li>
+<li><b>Speech.</b> You press Enter, speak, press Enter. <code>SpeechToText.hear()</code> gives the transcript exactly as heard: no cleanup, no lowercasing. The same string would go to B.</li>
+<li><b>Pre-run images.</b> The script saves <code>&lt;run_id&gt;_colour.png</code> and <code>&lt;run_id&gt;_depth.png</code> to <code>logs/traces/</code>. This is outside the run, so it is not counted in A's time.</li>
+<li><b>New run objects.</b> <code>run()</code> makes a new <code>Trace</code> (new run_id, new JSONL file), a new <code>WorldState</code> and a new <code>Planner</code>. Nothing from an earlier instruction survives in them.</li>
+<li><b>First planner call.</b> <code>planner.start(instruction)</code> sends <code>"Instruction: &lt;transcript&gt;"</code> as the only message. The model writes a line of intent and calls <code>perceive</code>.</li>
+<li><b>Validate.</b> <code>_read</code> checks that the reply has at most one call, that the first call is <code>perceive</code>, and runs <code>validate_call</code>. A refused call goes back to the model as an error and the model is asked again (section 9).</li>
+<li><b>Perceive.</b> <code>ArchitectureA.perceive</code> writes a GROUNDING event with the planner's words, captures a frame (depth as a median of 5 frames), runs detection, SAM, the 3D localiser and the base-frame transform, and splits the result into "in reach" and "out of reach". <code>WorldState.update</code> matches the new objects to the known IDs. The result text plus "State now" goes back to the planner.</li>
+<li><b>Act.</b> The planner calls one skill, for example <code>pick(xyz)</code>. <code>validate_call</code> checks the envelope and that the xyz is within 50 mm of an object in view. <code>ArchitectureA.act</code> runs the skill, waits 0.3 s, captures one frame, checks the result with the camera (pick and place), and updates the state. The result (<code>OK:</code> or <code>FAILED:</code>) plus "State now" goes back.</li>
+<li><b>Operator verdict</b> (optional, <code>judge</code>). After each skill, the bench operator types y/n. The answer goes into the trace and <code>Outcome.judged</code> only. The planner never sees it.</li>
+<li><b>Ask</b> (if needed). If the planner calls <code>ask_user</code>, the question is printed, you answer by voice, and the transcript goes back as the tool result.</li>
+<li><b>Done.</b> A reply with no tool call ends the run with <code>ok=True</code> and the model's sentence as the summary. If 12 model calls are used up, the run ends as "gave up", or as "plan rejected" if the last call was refused.</li>
+<li><b>Finish.</b> <code>trace.finish</code> writes <code>run_end</code> with the total time and the first failed stage. The script prints the summary, the queries used, the calls run, the tokens and the trace path.</li>
+</ol>
+
+<!-- ================================================================ 3 -->
+<h2 id="llm">3. The LLM call</h2>
+<p>Every planner turn is one call to the Anthropic Messages API, made in <code>Planner._turn</code> (<code>planner.py</code>). The request has these parts:</p>
+
+<pre><code>client.messages.create(
+    model="claude-sonnet-5-5",                 # config: architecture_a.planner.model
+    max_tokens=2048,                           # config: architecture_a.planner.max_tokens
+    system=SYSTEM_PROMPT.format(workspace=env.describe()),
+    tools=TOOLS,                               # 7 tools, tools.py
+    tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+    messages=self.messages,                    # the whole run so far, append-only
+    extra_body={"thinking": {"type": "between_tools"},
+                "output_config": {"effort": "high"}},
+)</code></pre>
+
+<table>
+<tr><th>Setting</th><th>Value</th><th>Why</th></tr>
+<tr><td><code>model</code></td><td><code>claude-sonnet-5-5</code></td><td>Adopted 1 Oct 2026, when Sonnet 4.5 was deprecated. Grounding uses the same model, so no extra component enters A.</td></tr>
+<tr><td><code>thinking</code></td><td><code>between_tools</code></td><td>Sonnet 5.5 refuses <code>disabled</code>. <code>between_tools</code> is the lowest setting: no long reasoning before each answer, so the latency and the token counts stay comparable between runs.</td></tr>
+<tr><td><code>effort</code></td><td><code>high</code></td><td><code>between_tools</code> is refused above <code>high</code>, so these two settings go together.</td></tr>
+<tr><td><code>tool_choice</code></td><td><code>auto</code> + <code>disable_parallel_tool_use</code></td><td><code>auto</code> because forced <code>tool</code>/<code>any</code> is a 400 on Sonnet 5.5. <code>disable_parallel_tool_use</code> limits the model to one tool call per reply.</td></tr>
+<tr><td><code>max_tokens</code></td><td>2048</td><td>Caps one reply. A reply is one intent line and one call, so this is far more than needed.</td></tr>
+<tr><td>Turn limit</td><td><code>max_turns: 12</code></td><td>Counts every model call in the run, rejected calls too. It is a safety property: it stops a model that keeps trying a failing grasp.</td></tr>
+<tr><td><code>extra_body</code></td><td>thinking, output_config</td><td>Sent this way so that an older SDK forwards the fields and does not reject them. The lerobot venv has <code>anthropic</code> 1.11.0.</td></tr>
+</table>
+
+<div class="note">The API is <b>stateless</b>. The model remembers nothing between calls. Each call sends the full system prompt, all 7 tool definitions and the whole message list again. Everything the model "knows" in turn 5 is in that request.</div>
+
+<p><b>Token use.</b> <code>Planner.usage</code> adds <code>input_tokens</code> and <code>output_tokens</code> from every response, including rejected ones, and counts the calls. It goes onto <code>Outcome.usage</code> and is printed after each run. Prompt caching is not switched on.</p>
+
+<!-- ================================================================ 4 -->
+<h2 id="prompt">4. The system prompt (in-context instructions)</h2>
+<p>A uses <b>zero-shot prompting</b>. There are no worked examples in the prompt. All of the model's behaviour comes from three places in the context:</p>
+<div class="grid">
+  <div class="card"><h4>1. System prompt</h4><p>Rules for the whole run: perceive first, act only on positions in the state, ask rather than guess, one object in the gripper.</p></div>
+  <div class="card"><h4>2. Tool descriptions</h4><p>What each tool does and when to use it. The noun-phrase rules of ADR 0004 are in the <code>perceive</code> description.</p></div>
+  <div class="card"><h4>3. Tool results</h4><p>The facts of this run: OK/FAILED with the reason, and "State now" after every call.</p></div>
+</div>
+
+<p>This is the full system prompt, as the model receives it (the last line is filled in from the envelope in <code>config.yaml</code>):</p>
+<pre><code>You control a UR5e robot arm with a parallel gripper on a table.
+
+Carry out the user's instruction by calling the tools available to you, one call per turn. Before each call, write one short line saying what you intend and why.
+
+Rules:
+- Your first call must be perceive. You see nothing until you look.
+- Every result comes with "State now": the object in the gripper, the objects in view with an id and a position in the robot's base frame in metres, the objects no longer in view, and the objects seen but out of reach.
+- Only act on positions taken from "objects" in the latest state. Never invent coordinates. Objects under "not_in_view" and "out_of_reach" have no position and must not be used. Call perceive again if what you need is not in view.
+- Refer to objects by their id when you write or ask. Two objects with the same name are different objects. The skills take positions: copy the xyz of the object you mean from the latest state.
+- perceive keeps only the best match for each name unless you raise max_per_query. Raise it when several objects may share a name.
+- If the instruction names an object you cannot find, say so instead of substituting a similar one. Try perceive with other words first if the words you chose may be the reason.
+- If an object the task needs is out of reach, do not move anything: tell the user it is out of reach and should be moved closer to the arm.
+- The gripper holds one object at a time. Always place what you are holding before picking something else.
+- If the instruction does not determine which object to act on, call ask_user. Do not guess and do not pick the first plausible candidate. After the answer, call perceive with the user's words if they name something you have not looked for.
+- A result that starts with FAILED means the step did not work. Decide from the reason and the state whether to try again or to stop.
+- Work in the order the task requires. If something must be open before you can put an object inside it, open it first.
+- When the task is complete, stop calling tools and reply with one short sentence describing what you did.
+
+Workspace limits: x[0.030,0.710] y[-0.700,0.030] z[0.181,0.380] radius[0.400,0.700] angle[-80,-25] deg, metres, base frame</code></pre>
+
+<h3>Why each rule is there</h3>
+<table>
+<tr><th>Rule</th><th>Reason</th></tr>
+<tr><td>One short line of intent before each call</td><td>The line is stored in the trace as <code>intent</code>, so a trace reads as "thought, call, result". It is free text, so it is evidence, not a control.</td></tr>
+<tr><td>First call must be perceive</td><td>Grounding, then perception, then action, in that order. Code also enforces it (section 9).</td></tr>
+<tr><td>Only positions from "objects"</td><td>LLMs sometimes invent coordinates. Code enforces this for pick, pour source and drawer handle.</td></tr>
+<tr><td>Out-of-reach and not-in-view have no position</td><td>13 Oct 2026: a box was filtered before the planner, and the planner told the user that it saw no box. The planner must know about such objects, but it must not be able to act on them.</td></tr>
+<tr><td>Call ask_user, do not guess</td><td>This is the Tier 2 experiment (H3). B has no way to ask a question.</td></tr>
+<tr><td>Perceive again after the answer</td><td>The problem from the spec: "orange juice" matched neither <code>bottle</code> detection. Now the planner can look for "orange juice bottle".</td></tr>
+<tr><td>FAILED means it did not work</td><td>Code checks each pick and place, and a check failure is reported as FAILED with the measured distances.</td></tr>
+</table>
+
+<!-- ================================================================ 5 -->
+<h2 id="tools">5. The tools</h2>
+<p>Seven tools are in <code>tools.py</code>. Five are motion skills, carried out by <code>Skills</code>. <code>perceive</code> and <code>ask_user</code> are handled by the pipeline itself (<code>NON_MOTION_TOOLS</code>). At startup, <code>validate_schemas_against_skills</code> checks that every schema argument exists in the matching method signature. A mismatch stops A before it moves.</p>
+
+<table>
+<tr><th>Tool</th><th>Arguments (required in bold)</th><th>Who runs it</th><th>Check after</th></tr>
+<tr><td><code>perceive</code></td><td><b>queries</b>: list of noun phrases (1 to 8)<br>max_per_query: integer 1 to 4, default 1</td><td>pipeline → Perception</td><td>it <i>is</i> the look</td></tr>
+<tr><td><code>pick</code></td><td><b>xyz</b>, approach_height</td><td>Skills.pick</td><td>camera: object at the gripper?</td></tr>
+<tr><td><code>place</code></td><td><b>xyz</b>, approach_height, release_clearance</td><td>Skills.place</td><td>camera: object away from the gripper?</td></tr>
+<tr><td><code>pour</code></td><td><b>source_xyz</b>, <b>target_xyz</b>, tilt_rad, hold_s</td><td>Skills.pour</td><td>look only, "no check exists"</td></tr>
+<tr><td><code>open_drawer</code></td><td><b>handle_xyz</b>, pull_distance, pull_axis (±x/±y)</td><td>Skills.open_drawer</td><td>look only. <span class="pill warn">pull_axis is a placeholder</span></td></tr>
+<tr><td><code>home</code></td><td>none</td><td>Skills.home (joint move)</td><td>look only</td></tr>
+<tr><td><code>ask_user</code></td><td><b>question</b>, options</td><td>pipeline → <code>ask</code> callback (speech)</td><td>none</td></tr>
+</table>
+
+<h3>The perceive description, in full</h3>
+<p>This text is where grounding now happens. The model reads it on every call.</p>
+<pre><code>Look at the table for the objects you name, and get back the state: what is in the gripper, each object in view with an id and a base-frame position, what is no longer in view, and what is seen but out of reach. Your first call must be this one. Call it again whenever you need different objects, for example after the user answers a question. Name objects as short noun phrases, lower case, no articles or verbs. Keep every distinguishing word the user said ('red cube', not 'cube') and add none they did not say. Include the destination as well as the object to move, and name a drawer by its handle ('drawer handle'). If the user names no specific object, name the categories the task implies ('a drink': 'bottle', 'glass', 'cup').
+
+max_per_query: How many objects each phrase may find. Default 1, the best match only, which is right when there is one of each thing. Raise it when several objects may share a name and you need to see them all, for example two bottles. Each extra one is also a chance of a false detection, so keep it small.</code></pre>
+
+<div class="note">Why noun phrases: OWLv2 turns each query into one CLIP text embedding and compares it with image patches. A whole sentence matches no region, and nothing in OWLv2 splits a sentence into its objects (ADR 0004).</div>
+
+<!-- ================================================================ 6 -->
+<h2 id="context">6. The context, message by message</h2>
+<p><code>Planner.messages</code> is a Python list. Each call to the API sends the whole list. Code only <b>appends</b> to it and never edits an earlier entry: Sonnet 5.5 refuses thinking blocks from a history that was changed after they were written. Below is the full list for a Tier 0 run, "put the orange in the red container". The numbers are examples of the shape, not measurements.</p>
+
+<div class="msg role-system"><div class="hd"><span class="idx">sent each call</span> system + tools</div><pre>SYSTEM_PROMPT (section 4) and the 7 tool definitions (section 5)</pre></div>
+
+<div class="msg role-user"><div class="hd"><span class="idx">[0]</span> user · from planner.start</div><pre>Instruction: put the orange in the red container</pre></div>
+
+<div class="msg role-assistant"><div class="hd"><span class="idx">[1]</span> assistant · model call 1</div><pre>text:     I need to find the orange and the red container first.
+tool_use: perceive {"queries": ["orange", "red container"]}   id=toolu_01</pre></div>
+
+<div class="msg role-user"><div class="hd"><span class="idx">[2]</span> user · from planner.report, after ArchitectureA.perceive</div><pre>tool_result toolu_01:
+OK: looked for ['orange', 'red container']
+State now:
+{
+  "in_gripper": null,
+  "objects": [
+    {"id": "orange_1", "name": "orange", "confidence": 0.71, "xyz": [0.4512, -0.3507, 0.2032]},
+    {"id": "red_container_1", "name": "red container", "confidence": 0.46, "xyz": [0.3205, -0.4811, 0.2214]}
+  ],
+  "not_in_view": [],
+  "out_of_reach": []
+}</pre></div>
+
+<div class="msg role-assistant"><div class="hd"><span class="idx">[3]</span> assistant · model call 2</div><pre>text:     Pick up orange_1.
+tool_use: pick {"xyz": [0.4512, -0.3507, 0.2032]}   id=toolu_02</pre></div>
+
+<div class="msg role-user"><div class="hd"><span class="idx">[4]</span> user · after ArchitectureA.act (pick, look, check)</div><pre>tool_result toolu_02:
+OK: picked at [0.451, -0.351, 0.181], holding 61 mm; verified: orange_1 is at the gripper, 22 mm from the TCP
+State now:
+{
+  "in_gripper": "orange_1",
+  "objects": [
+    {"id": "red_container_1", "name": "red container", "confidence": 0.45, "xyz": [0.3207, -0.4809, 0.2216]}
+  ],
+  "not_in_view": [],
+  "out_of_reach": []
+}</pre></div>
+
+<div class="msg role-assistant"><div class="hd"><span class="idx">[5]</span> assistant · model call 3</div><pre>text:     Place orange_1 in red_container_1, released a little higher because it is a container.
+tool_use: place {"xyz": [0.3207, -0.4809, 0.2216], "release_clearance": 0.05}   id=toolu_03</pre></div>
+
+<div class="msg role-user"><div class="hd"><span class="idx">[6]</span> user</div><pre>tool_result toolu_03:
+OK: placed at [0.321, -0.481, 0.272]; verified: orange_1 released, seen at [0.322, -0.479, 0.205], 140 mm from the TCP (limit 50 mm)
+State now:
+{ "in_gripper": null,
+  "objects": [ {"id": "orange_1", ...}, {"id": "red_container_1", ...} ], ... }</pre></div>
+
+<div class="msg role-assistant"><div class="hd"><span class="idx">[7]</span> assistant · model call 4</div><pre>text:     Return the arm home.
+tool_use: home {}   id=toolu_04</pre></div>
+
+<div class="msg role-user"><div class="hd"><span class="idx">[8]</span> user</div><pre>tool_result toolu_04:
+OK: at home; unverified: no check exists for home
+State now: { ... }</pre></div>
+
+<div class="msg role-assistant"><div class="hd"><span class="idx">[9]</span> assistant · model call 5, no tool call → done</div><pre>text: I put the orange in the red container and returned the arm home.</pre></div>
+
+<h3>What to notice</h3>
+<ul>
+<li><b>The state is inside the tool result</b>, not in a separate message. A second result with the same <code>tool_use_id</code> is refused by the API (found on 1 Oct 2026).</li>
+<li><b>Only the newest state matters</b>, but older states stay in the history. The prompt says to act on the latest one. They are not summarised. A run is bounded by 12 calls, and one state of a few objects is a few hundred tokens, so a full run stays at a few thousand tokens of history.</li>
+<li><b>Assistant content is appended whole</b> (<code>response.content</code>): text blocks, tool_use blocks and any thinking blocks. That keeps the history valid for the next call.</li>
+<li><b>The pick copies xyz from the state.</b> The model never computes a position. Code then checks that this xyz is an object in view.</li>
+</ul>
+
+<h3>Other shapes the context can take</h3>
+<details><summary>A refused call (ADR 0010)</summary>
+<pre>[3] assistant: tool_use pick {"xyz": [0.45, -0.35, 0.10]}   id=toolu_02
+[4] user:      tool_result toolu_02, is_error=true:
+               REJECTED: pick.xyz z=0.100 is below min 0.181 .... Correct this and try again.
+[5] assistant: tool_use pick {"xyz": [0.4512, -0.3507, 0.2032]}   id=toolu_03</pre>
+<p>Each refused call costs one of the 12 turns. Nothing moved.</p></details>
+
+<details><summary>Two calls in one reply</summary>
+<pre>[3] assistant: tool_use pick {...} id=a ; tool_use place {...} id=b
+[4] user:      tool_result a, is_error: REJECTED: one tool call per turn, and this reply has 2. Send only the next call; you will see its result first. ...
+               tool_result b, is_error: (same)</pre>
+<p>The API flag should prevent this. The check in <code>_read</code> is a backstop if the model or an SDK ignores the flag.</p></details>
+
+<details><summary>Tier 2: ask, then look again with the user's words</summary>
+<pre>[1] assistant: perceive {"queries": ["bottle", "glass", "cup"], "max_per_query": 2}
+[2] user:      OK: looked for [...], up to 2 each; found bottle x2, glass x1
+               State now: objects bottle_1 [0.41,-0.33,..], bottle_2 [0.52,-0.21,..], glass_1 ...
+[3] assistant: ask_user {"question": "Which drink would you like, orange juice or water?",
+                          "options": ["orange juice", "water"]}
+[4] user:      tool_result: "orange juice please"            ← the spoken answer
+[5] assistant: perceive {"queries": ["orange juice bottle", "glass"]}
+[6] user:      State now: bottle_2 now named "orange juice bottle" (same ID, same place);
+               bottle_1: not_in_view, why "not looked for"
+[7] assistant: pour {"source_xyz": <bottle_2 xyz>, "target_xyz": <glass_1 xyz>}</pre>
+<p>The ID <code>bottle_2</code> stays the same because matching is by position (section 8).</p></details>
+
+<details><summary>A look that finds nothing</summary>
+<pre>[2] user: tool_result: FAILED: nothing detected above 0.3 for queries ['pink tray']
+          State now: { "objects": [], ... }
+[3] assistant: perceive {"queries": ["pink container"]}</pre>
+<p>Before 26 Oct, this ended the run. Now the planner can try other words. The DETECTION stage still records the failure in the trace.</p></details>
+
+<!-- ================================================================ 7 -->
+<h2 id="memory">7. Memory: what is kept where</h2>
+<p>"Memory" means four different things in A. This table lists each one, how long it lives and who can read it.</p>
+
+<table>
+<tr><th>What</th><th>Where in code</th><th>Lifetime</th><th>Read by the LLM?</th></tr>
+<tr><td><b>Conversation</b> (short-term memory)</td><td><code>Planner.messages</code>, a list of dicts</td><td>One instruction. A new <code>Planner</code> each <code>run()</code>.</td><td>Yes, all of it, on every call</td></tr>
+<tr><td><b>World state</b> (structured facts)</td><td><code>WorldState</code> in <code>state.py</code></td><td>One instruction. A new one each <code>run()</code>.</td><td>Only as the JSON "State now" in each result</td></tr>
+<tr><td><b>Turn counters</b></td><td><code>Planner.turns</code>, <code>_perceived</code>, <code>usage</code></td><td>One instruction</td><td>No</td></tr>
+<tr><td><b>Latest look settings</b></td><td><code>ArchitectureA._queries</code>, <code>_per_query</code></td><td>Reset at each <code>run()</code>, changed by each perceive</td><td>No. Used by the look after each skill.</td></tr>
+<tr><td><b>Loaded models</b></td><td>OWLv2 in <code>detector._load</code> (cached), SAM, faster-whisper</td><td>The whole process</td><td>No</td></tr>
+<tr><td><b>Calibration</b></td><td><code>config/calibration/T_base_cam.json</code> via <code>CalibrationStore</code></td><td>Until refit. Old files are kept as <code>T_base_cam.&lt;time&gt;.json</code>.</td><td>No. Used to turn camera points into base frame.</td></tr>
+<tr><td><b>Trace</b></td><td><code>logs/traces/&lt;run_id&gt;.jsonl</code></td><td>On disk, permanent</td><td>No. Written for you and the report.</td></tr>
+<tr><td><b>Evaluation records</b></td><td><code>data/evaluation/A_tier&lt;n&gt;.csv</code>, <code>..._steps.csv</code></td><td>On disk. <code>data/</code> has no backup.</td><td>No</td></tr>
+<tr><td><b>Speech log</b></td><td><code>logs/speech/</code> (transcripts, audio)</td><td>On disk</td><td>No</td></tr>
+<tr><td><b>Config</b></td><td><code>config/config.yaml</code></td><td>Git-tracked</td><td>Only the workspace line in the prompt</td></tr>
+</table>
+
+<div class="note good"><b>No long-term memory for the planner.</b> A does not learn between instructions. It has no retrieval, no summary and no vector store. Each instruction starts cold, the same as B gets a new episode. For the FYP this is a good property: every trial is independent, so 20 trials are 20 samples.</div>
+
+<div class="note"><b>Why two kinds of per-run memory.</b> The conversation is the story: what the model intended, what each step said, what the user answered. It is free text, so code cannot check it. The <code>WorldState</code> is the facts: which ID is where, what is held. Code keeps it, so it is always correct by construction, and <code>validate_call</code> can check a pick against it. The model reads the facts, but it cannot write them.</div>
+
+<!-- ================================================================ 8 -->
+<h2 id="state">8. The state and object IDs (<code>state.py</code>)</h2>
+
+<h3>Data structures</h3>
+<pre><code>@dataclass
+class Tracked:              # one object A knows about
+    id: str                 # "orange_1", "red_container_1"
+    name: str               # latest query that found it
+    confidence: float       # OWLv2 score from the latest sighting
+    xyz: list[float]        # base frame, metres. Kept for matching, NOT shown when out of view
+    last_seen: int          # planner turn of the latest sighting
+    visible: bool           # seen in the latest look?
+    looked_for: bool        # did the latest look search for its name?
+
+class WorldState:
+    tolerance: float        # verify.tolerance_mm / 1000 = 0.05 m
+    objects: dict[str, Tracked]
+    held: str | None        # ID in the gripper
+    out_of_reach: list[dict]   # {name, confidence, reason}, no position
+    _count: dict[str, int]  # next number for each base name</code></pre>
+
+<h3>What the planner sees (<code>render()</code>)</h3>
+<pre><code>{
+  "in_gripper": "orange_1",                         // ID only, no xyz
+  "objects": [                                      // in view, can be acted on
+    {"id": "red_container_1", "name": "red container", "confidence": 0.45, "xyz": [0.3207, -0.4809, 0.2216]}
+  ],
+  "not_in_view": [                                  // no xyz, ever
+    {"id": "bottle_1", "name": "bottle", "last_seen_turn": 1, "why": "not looked for"}
+  ],
+  "out_of_reach": [                                 // no xyz, ever
+    {"name": "white box", "confidence": 0.44, "reason": "position radius=0.849 is above max 0.700"}
+  ]
+}</code></pre>
+
+<h3>How <code>update()</code> matches a new look to known IDs</h3>
+<ol class="steps">
+<li><b>Remove the held object from the new rows.</b> If something is held and the TCP position is known, the detection nearest the TCP within 50 mm is the held object, whatever query found it. It stays "in gripper". Without this, a look for "fruit" while holding <code>orange_1</code> would offer <code>fruit_1</code> at the gripper for a pick.</li>
+<li><b>Make every (new row, known object) pair within 50 mm</b>, using all known objects except the held one, visible or not.</li>
+<li><b>Sort the pairs by distance</b>, closest first. At equal distance, a pair with the same name comes first.</li>
+<li><b>Assign greedily, one to one.</b> Take each pair in order unless its row or its ID is already used. Two bottles side by side cannot claim the same old ID.</li>
+<li><b>Matched:</b> the known object takes the new name, confidence and xyz, and becomes visible with <code>last_seen</code> = this turn.</li>
+<li><b>Known but not matched:</b> visible = false. <code>why</code> is "not looked for" if this look did not search for its name, otherwise "not seen".</li>
+<li><b>New rows not matched:</b> each gets a new ID, the base name with spaces as underscores plus the next number: <code>orange juice bottle</code> → <code>orange_juice_bottle_1</code>.</li>
+<li><b>Out of reach</b> is replaced with this look's list.</li>
+</ol>
+
+<div class="note"><b>Why position and not name.</b> After the user says "orange juice", the planner looks for "orange juice bottle". The bottle that answers is at the same place as <code>bottle_2</code>. A match by name would make a new ID, and the link between "the bottle I saw" and "the bottle the user means" would be lost.</div>
+
+<div class="note warn"><b>Why no position for objects out of view.</b> A stale position is a position the planner can act on. In Tier 3 a person moves things during the task. The xyz is still stored inside <code>Tracked</code>, so an object that comes back to the same place gets its old ID again. But it is never rendered, and <code>target()</code> ignores it.</div>
+
+<h3>Gripper changes</h3>
+<table>
+<tr><th>Event</th><th>Method</th><th>Effect</th></tr>
+<tr><td>Pick verified at the gripper, or not seen but the finger width said held</td><td><code>grab(id)</code></td><td><code>held = id</code>. The object leaves "objects".</td></tr>
+<tr><td>Place verified released</td><td><code>release(at=landed_xyz)</code></td><td>The object goes back to "objects" at the point where the camera saw it land, with the same ID.</td></tr>
+<tr><td>Place not seen</td><td><code>release(None)</code></td><td>Gripper empty. The object goes to "not_in_view".</td></tr>
+<tr><td>Pick failed check, or place still at gripper</td><td>none</td><td>The state stays as the camera shows it.</td></tr>
+</table>
+
+<h3>Reading methods</h3>
+<ul>
+<li><code>target(xyz)</code>: the visible, not-held object nearest xyz within 50 mm, or None. <code>validate_call</code> uses it, and <code>act</code> uses it to name the object a pick aims at <i>before</i> the arm moves.</li>
+<li><code>visible_xyz()</code>: the positions a pick may aim at.</li>
+</ul>
+
+<!-- ================================================================ 9 -->
+<h2 id="validation">9. Validation and rejection</h2>
+<p>Every reply from the model goes through <code>Planner._read</code> and then <code>validate_call</code>. No call reaches the arm without passing all of these checks.</p>
+
+<table>
+<tr><th>#</th><th>Check</th><th>Where</th><th>Refusal text (start)</th></tr>
+<tr><td>1</td><td>At most one tool_use in the reply</td><td><code>_read</code></td><td>one tool call per turn, and this reply has N</td></tr>
+<tr><td>2</td><td>First call of the run is <code>perceive</code></td><td><code>_read</code></td><td>the first call must be perceive</td></tr>
+<tr><td>3</td><td>Tool name exists</td><td><code>validate_call</code></td><td>unknown tool</td></tr>
+<tr><td>4</td><td><code>ask_user</code> has a question that is not empty</td><td><code>validate_call</code></td><td>ask_user called with an empty question</td></tr>
+<tr><td>5</td><td><code>perceive</code>: only known arguments; 1 to 8 queries after cleanup (lower case, single spaces, no repeats); <code>max_per_query</code> an integer 1 to 4, and not a bool</td><td><code>validate_call</code>, <code>_queries</code></td><td>perceive got N queries; at most 8 / max_per_query must be a whole number</td></tr>
+<tr><td>6</td><td>No unknown arguments, all required ones present</td><td><code>validate_call</code></td><td>got unexpected arguments / missing required argument</td></tr>
+<tr><td>7</td><td>Each xyz is 3 numbers and inside the envelope</td><td><code>validate_call</code> → <code>WorkspaceEnvelope.check_point</code></td><td>the envelope's own reason, e.g. "below min"</td></tr>
+<tr><td>8</td><td>Numbers are numbers; enums are in their list</td><td><code>validate_call</code></td><td>must be a number / must be one of</td></tr>
+<tr><td>9</td><td><code>pick.xyz</code>, <code>pour.source_xyz</code>, <code>open_drawer.handle_xyz</code> within 50 mm of an object in view</td><td><code>validate_call</code> with <code>state</code></td><td>is not within 50 mm of any object in view</td></tr>
+</table>
+
+<p><b>What happens on a refusal (ADR 0010).</b> The whole reply is refused. Every tool_use in it gets a <code>tool_result</code> with <code>is_error: true</code> and <code>REJECTED: &lt;reason&gt;. Correct this and try again.</code> Then the model is asked again. The refusal counts as a turn. If the turn limit is reached while the last reply was refused, the run raises <code>PlanRejected</code> and ends as <code>plan rejected: &lt;reason&gt;</code> in the PLANNING stage. That is different from <code>gave up after 12 planning turns</code>, which means calls were accepted but the task was not finished.</p>
+
+<p><b>Why <code>place</code> and the pour target are free.</b> Putting something down on open table ("put it on the left") is a valid instruction. Only the targets that must be an object are tied to the state.</p>
+
+<!-- ================================================================ 10 -->
+<h2 id="perception">10. Perception (<code>perception/</code>)</h2>
+<p>One look is <code>Perception.see(frame, queries, trace, strict, per_query)</code> in <code>scene.py</code>. Every script that measures something also uses it, so a number from a script is the same number the pipeline acts on.</p>
+
+<ol class="steps">
+<li><b>Capture</b> (CAPTURE stage). RealSense D435, fixed on its tape marks, about 0.74 m from the work area, about 45° down. Depth is the per-pixel median of 5 frames while the arm is at rest (noise only, not bias).</li>
+<li><b>Detect</b> (DETECTION stage). OWLv2 <code>google/owlv2-base-patch16-ensemble</code> gets the colour frame and the planner's queries. It is loaded once per process, because loading it in each call cost 10.7 s per detection.</li>
+<li><b>Filter</b> (<code>filters.apply_filters</code>). Score ≥ 0.3. Then NMS at IoU 0.5 across all queries, so two queries that box the same object keep only the better box. Then <code>top_k_per_query</code> keeps the k best boxes for each query, where k is the planner's <code>max_per_query</code>. The counts (raw, over threshold, after NMS, final) go into the trace.</li>
+<li><b>Localise</b> (DEPTH stage), method <code>mask_ray</code>. SAM (<code>facebook/sam-vit-base</code>) makes a mask from each box. The mask outline is eroded by 3 px, where the table blends in. Depth gives only the object's <i>height</i>: the 95th and 5th percentile of the mask's base-frame z. The ray through the mask centre is cut at the object's centre height above the known table (<code>table_z</code> 0.176 m). If fewer than 30 depth points remain, the height comes from the mask's pixel size.</li>
+<li><b>Transform</b> (TRANSFORM stage). Camera point to base frame with <code>T_base_cam</code>. A centre a little below the floor (up to 40 mm) is lifted to the floor, because that is the centre push going through an open box's floor. Objects with no valid depth are dropped, never sent with a null position.</li>
+<li><b>Reach split.</b> <code>in_reach</code>: inside the horizontal ring sector and not under the floor. The z ceiling is not applied here, because a held orange reads above it. <code>out_of_reach</code>: name, confidence and the envelope's reason, no position.</li>
+</ol>
+
+<p><b>Strict and not strict.</b> When the planner calls <code>perceive</code>, <code>see</code> runs in strict mode with the trace. A stage that finds nothing raises inside its own trace stage, so the trace blames that stage. The pipeline catches the error and returns <code>FAILED: ...</code> to the planner, and the planner can try again. The look after a skill runs without a trace and not strict. An object hidden by the gripper is expected there, and it must not be counted as a detection failure.</p>
+
+<p><b>Calibration</b> (ADR 0007, no markers). <code>T_base_cam</code> is fitted each session with a ball (an orange) in the gripper on a grid of poses (<code>calibrate_ball.py</code>). Then <code>level_to_table.py</code> corrects height and tilt against the table. A reach test (<code>check_calibration.py</code>) is the only thing that can mark it validated. On 21 Oct: RMS 7.3 mm over 39 poses, plus an empirical <code>reach_correction</code> step.</p>
+
+<!-- ================================================================ 11 -->
+<h2 id="skills">11. Skills and the check after each (<code>skills.py</code>, <code>pipeline.act</code>)</h2>
+
+<h3>The skills</h3>
+<table>
+<tr><th>Skill</th><th>What it does</th></tr>
+<tr><td><code>pick(xyz)</code></td><td>Computes the grasp point 28 mm below the centre (<code>grasp_depth_offset</code>), but never under the floor. Checks all three poses (above at +0.12 m, grasp, retreat at +0.15 m or the ceiling) against the envelope <i>before</i> the first motion. Opens, moves above, moves down, closes and reads the width. Under 5 mm means nothing is held. Lifts, then closes again: if the fingers now close under 5 mm, the object dropped during the lift (13 Oct: five picks reported a hold and lifted nothing).</td></tr>
+<tr><td><code>place(xyz)</code></td><td>Drop point = xyz + <code>release_clearance</code> (default 0.01 m). Checks all poses first (13 Oct: a retreat found out of bounds after the gripper opened). Moves above, moves down, opens, retreats.</td></tr>
+<tr><td><code>pour</code></td><td>Picks the source, moves above the target, tilts in 12 steps up to <code>tilt_rad</code> (default 1.9), holds, returns it. Not used in Tier 0.</td></tr>
+<tr><td><code>open_drawer</code></td><td>Grasps the handle and pulls. <span class="pill warn">pull_axis is a placeholder and WILL misbehave</span></td></tr>
+<tr><td><code>home</code></td><td>Joint move to <code>robot.home_q</code>, after <code>check_joint_move</code> refuses any joint step over 30°.</td></tr>
+</table>
+<p>Poses use the UR format <code>[x, y, z, rx, ry, rz]</code> in base frame. The tool points down with a fixed rotation vector (<code>down_rotvec</code>). Skills use only the shared controller API: <code>move_to_pose</code>, <code>move_joints</code>, <code>gripper_toggle</code>, <code>get_state</code>.</p>
+
+<h3>The look and check after every skill</h3>
+<p>Inside the EXECUTION stage, <code>act</code> does this:</p>
+<ol class="steps">
+<li>For a pick, find the target ID with <code>state.target(xyz)</code> <i>before</i> the arm moves, while the object is still where the planner saw it.</li>
+<li>Run the skill.</li>
+<li>Wait <code>settle_s</code> (0.3 s), capture one frame, run <code>see</code> with the latest queries and <code>max_per_query</code>, and read the TCP from RTDE.</li>
+<li>If the skill reported OK and it is a pick or place, run <code>_check</code> (table below). For other skills that reported OK, add "unverified: no check exists for &lt;tool&gt;".</li>
+<li>Update the state from this look, with the TCP so the held object is recognised.</li>
+<li>If the look itself failed: believe the finger width (held after pick, empty after place), mark everything out of view, and add "the look after the step failed".</li>
+</ol>
+
+<table>
+<tr><th>Skill</th><th>Camera sees</th><th>Result</th><th>State</th></tr>
+<tr><td>pick</td><td>target's name within 50 mm of the TCP</td><td><span class="pill ok">OK</span> verified: orange_1 is at the gripper, N mm from the TCP</td><td>grab</td></tr>
+<tr><td>pick</td><td>target's name, but further than 50 mm from the TCP</td><td><span class="pill bad">FAILED</span> orange_1 is not at the gripper after the pick: seen at … The width said held: …</td><td>not held; object stays on the table</td></tr>
+<tr><td>pick</td><td>nothing of that name</td><td><span class="pill warn">OK</span> unverified: orange_1 not seen after the pick</td><td>grab (the gripper can hide it)</td></tr>
+<tr><td>place</td><td>held object's name, nearest one more than 50 mm from the TCP</td><td><span class="pill ok">OK</span> verified: orange_1 released, seen at …</td><td>release at the point nearest the drop</td></tr>
+<tr><td>place</td><td>held object's name within 50 mm of the TCP</td><td><span class="pill bad">FAILED</span> orange_1 is still at the gripper after the place</td><td>still held</td></tr>
+<tr><td>place</td><td>nothing of that name</td><td><span class="pill warn">OK</span> unverified: orange_1 not seen after the place</td><td>release, not in view</td></tr>
+</table>
+<p>The check uses the <b>raw</b> located points (<code>Seen.located</code>), not <code>in_reach</code>, because a held object can be above the z ceiling. The 50 mm limit covers the 12–34 mm calibration error and the centre sitting about 2 cm above the fingertips.</p>
+
+<div class="note"><b>Operator verdict.</b> After the EXECUTION stage closes (so the wait is not counted as A's time), <code>judge</code> asks the operator "pick {'xyz': [...]}". The question shows only the step, not A's own verdict, so the two verdicts stay independent. The answer goes into a <code>verdict</code> record in the trace and into <code>Outcome.judged</code>. It never reaches the planner: an operator who says "that pick failed" would be a perfect sensor that B does not have.</div>
+
+<!-- ================================================================ 12 -->
+<h2 id="safety">12. Safety layers</h2>
+<table>
+<tr><th>Layer</th><th>What it stops</th></tr>
+<tr><td>System prompt rules</td><td>The model is told not to invent coordinates. This is advice only.</td></tr>
+<tr><td><code>validate_call</code></td><td>Unknown tools and arguments, positions outside the envelope, picks at nothing, more than one call, act before look.</td></tr>
+<tr><td>Skill pre-check</td><td>Every waypoint of a skill is checked before the first motion, so a path that cannot finish never starts.</td></tr>
+<tr><td><code>WorkspaceEnvelope</code> (ADR 0011)</td><td>Ring sector: radius 0.40–0.70 m, bearing −80° to −25° (the −25° edge keeps the arm away from the camera tripod), z 0.181–0.380 m, plus a box backstop x 0.03–0.71, y −0.70–0.03.</td></tr>
+<tr><td><code>check_joint_move</code></td><td>Any joint turning more than 30° in one joint move. UR joints turn ±360°, and the wrong equivalent angle spins the wrist a full turn.</td></tr>
+<tr><td>Turn limit</td><td>At most 12 model calls per instruction.</td></tr>
+<tr><td>Speed</td><td>0.10 m/s in descent and transport.</td></tr>
+</table>
+
+<!-- ================================================================ 13 -->
+<h2 id="trace">13. Trace and data on disk</h2>
+<p>One file per run: <code>logs/traces/&lt;run_id&gt;.jsonl</code>, with run_id like <code>20261026T110205Z-4db0b3</code>. It is JSON Lines: one JSON object per line, written as each thing happens. A crash in the middle still leaves a readable file, and the harness can join hundreds of runs without parsing each one whole.</p>
+
+<h3>Record types</h3>
+<table>
+<tr><th><code>type</code></th><th>Written by</th><th>Fields</th></tr>
+<tr><td><code>run_start</code></td><td><code>Trace.__init__</code></td><td>run_id, instruction, utc</td></tr>
+<tr><td><code>event</code></td><td><code>trace.stage(...)</code> / <code>trace.record</code></td><td>stage, ok, message, duration_s, data</td></tr>
+<tr><td><code>look</code></td><td><code>trace.look</code>, each perceive</td><td>queries, found {query: [scores]}, out_of_reach. An empty list = that query found nothing (H9).</td></tr>
+<tr><td><code>verdict</code></td><td><code>trace.verdict</code></td><td>step, a_ok, operator_ok, wait_s. Not an event, so an operator "no" never becomes A's failed stage.</td></tr>
+<tr><td><code>run_end</code></td><td><code>trace.finish</code></td><td>ok, summary, failed_stage, total_s</td></tr>
+</table>
+
+<h3>Stages (the failure taxonomy)</h3>
+<p>The <code>Stage</code> enum is the failure table in the report, so a change to it is deliberate. It did not change on 26 Oct.</p>
+<table>
+<tr><th>Stage</th><th>Now records</th><th>Key data</th></tr>
+<tr><td><code>grounding</code></td><td>The planner's choice of words in each perceive. A-only failure mode: B never names anything.</td><td>queries, max_per_query</td></tr>
+<tr><td><code>capture</code></td><td>The camera frame</td><td>resolution</td></tr>
+<tr><td><code>detection</code></td><td>OWLv2 + filters</td><td>counts, found, per_query</td></tr>
+<tr><td><code>depth</code></td><td>Localiser</td><td>method, heights, valid, dropped</td></tr>
+<tr><td><code>transform</code></td><td>Base frame, floor lift, reach split</td><td>objects, lifted_to_floor, out_of_reach, out_of_reach_reason</td></tr>
+<tr><td><code>planning</code></td><td>Each model call</td><td>intent (the model's line), call {tool, args}</td></tr>
+<tr><td><code>clarify</code></td><td>Each question</td><td>answer</td></tr>
+<tr><td><code>execution</code></td><td>Each skill, its look and its check</td><td>waypoints, verify {object, xyz, tcp, distance_mm, at_gripper}, state, look_error</td></tr>
+</table>
+<p><code>failed_stage</code> is the <b>first</b> event with <code>ok: false</code>. A run that recovered from a failed pick still has <code>execution</code> as its failed stage. The harness counts failed stages only for trials the operator scored as failures.</p>
+
+<h3>Example trace (shortened)</h3>
+<pre><code>{"type":"run_start","run_id":"20261026T110205Z-4db0b3","instruction":"put the orange in the red container",...}
+{"type":"event","stage":"planning","ok":true,"duration_s":1.42,"data":{"intent":"I need to find the orange and the red container first.","call":{"tool":"perceive","args":{"queries":["orange","red container"],"max_per_query":1}}}}
+{"type":"event","stage":"grounding","ok":true,"message":"planner chose ['orange', 'red container']","data":{"queries":[...],"max_per_query":1}}
+{"type":"event","stage":"capture","ok":true,"duration_s":0.21,"data":{"resolution":[1280,720]}}
+{"type":"event","stage":"detection","ok":true,"duration_s":0.38,"data":{"counts":{"raw":...},"found":["orange","red container"],"per_query":1}}
+{"type":"event","stage":"depth","ok":true,...}
+{"type":"event","stage":"transform","ok":true,...}
+{"type":"look","queries":["orange","red container"],"found":{"orange":[0.71],"red container":[0.46]},"out_of_reach":[]}
+{"type":"event","stage":"planning","ok":true,"data":{"intent":"Pick up orange_1.","call":{"tool":"pick","args":{"xyz":[...]}}}}
+{"type":"event","stage":"execution","ok":true,"message":"pick: picked at ...; verified: orange_1 is at the gripper, 22 mm from the TCP","data":{"waypoints":3,"verify":{...},"state":{...}}}
+{"type":"verdict","step":"pick {'xyz': [...]}","a_ok":true,"operator_ok":true,"wait_s":2.1}
+...
+{"type":"run_end","ok":true,"summary":"I put the orange in the red container ...","failed_stage":null,"total_s":48.3}</code></pre>
+
+<h3>The Outcome (what <code>run()</code> returns)</h3>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>ok</code></td><td>The planner stopped by itself. A's own word, not success. Success is the operator's y/N in the harness.</td></tr>
+<tr><td><code>summary</code></td><td>The model's last sentence, or "gave up …", "plan rejected: …", or an exception.</td></tr>
+<tr><td><code>run_id</code>, <code>failed_stage</code></td><td>Link to the trace; the first failed stage.</td></tr>
+<tr><td><code>queries</code></td><td>Every phrase used in the run, in order of first use.</td></tr>
+<tr><td><code>asked</code></td><td>Every question.</td></tr>
+<tr><td><code>executed</code></td><td>Every call that ran, perceive included.</td></tr>
+<tr><td><code>usage</code></td><td>input_tokens, output_tokens, calls.</td></tr>
+<tr><td><code>judged</code>, <code>operator_s</code></td><td>Operator verdicts per skill; seconds spent waiting for them (taken off the trial time).</td></tr>
+</table>
+<p>The harness reads <code>ok</code>, <code>failed_stage</code>, <code>asked</code>, <code>run_id</code>, <code>summary</code>, <code>operator_s</code> and <code>judged</code> through <code>getattr</code>, and it never imports <code>architecture_a</code>. A test enforces this.</p>
+
+<!-- ================================================================ 14 -->
+<h2 id="fairness">14. Fairness with Architecture B</h2>
+<table>
+<tr><th>Input</th><th>A gets</th><th>B gets</th></tr>
+<tr><td>Instruction</td><td>The raw transcript</td><td>The same raw transcript</td></tr>
+<tr><td>List of objects on the table</td><td>No. It must choose its own words.</td><td>No</td></tr>
+<tr><td>Camera</td><td>Fixed RGB-D</td><td>Fixed RGB + wrist RGB (ADR 0002)</td></tr>
+<tr><td>Operator verdicts</td><td>Never</td><td>Never</td></tr>
+<tr><td>Ask the user</td><td>Yes, <code>ask_user</code></td><td>No channel exists. This is a result, not a defect.</td></tr>
+<tr><td>Shared code</td><td colspan="2"><code>shared/</code> holds only what both use at runtime: speech, controller, camera, safety, config.</td></tr>
+</table>
+<p>The removed <code>queries=</code> bypass mattered for exactly this reason: it gave A a list of what is on the table, which B never gets.</p>
+
+<!-- ================================================================ 15 -->
+<h2 id="failures">15. Failure modes and where they show</h2>
+<table>
+<tr><th>What goes wrong</th><th>What A does</th><th>Where you see it</th></tr>
+<tr><td>Wrong noun phrase (H9)</td><td>Query finds nothing → <code>FAILED</code> → planner may try other words</td><td><code>look.found[q] = []</code>, detection event fails</td></tr>
+<tr><td>Object out of reach</td><td>Named, no position; planner should tell the user</td><td>transform event <code>out_of_reach_reason</code></td></tr>
+<tr><td>Invented or stale coordinate</td><td>Refused, back to the model</td><td>planning event, REJECTED in the history</td></tr>
+<tr><td>Grasp closed on air</td><td>Skill FAILED (width under 5 mm)</td><td>execution event</td></tr>
+<tr><td>Width said held, object on table (13 Oct)</td><td>Camera check FAILED</td><td>execution <code>verify.at_gripper: false</code></td></tr>
+<tr><td>Object dropped during lift</td><td>Skill FAILED (second close under 5 mm)</td><td>execution event</td></tr>
+<tr><td>Object stuck in the gripper after place</td><td>Camera check FAILED</td><td>execution <code>verify</code></td></tr>
+<tr><td>Ambiguous instruction</td><td>ask_user, then perceive with the answer</td><td>clarify event, <code>Outcome.asked</code></td></tr>
+<tr><td>Model loops</td><td>Stops at 12 calls</td><td>summary "gave up" or "plan rejected"</td></tr>
+<tr><td>Camera or RTDE error</td><td>Exception, run ends</td><td>the stage that raised, with traceback</td></tr>
+</table>
+
+<!-- ================================================================ 16 -->
+<h2 id="config">16. Config values that shape A (<code>config/config.yaml</code>)</h2>
+<table>
+<tr><th>Key</th><th>Value</th><th>Effect</th></tr>
+<tr><td><code>architecture_a.planner.model</code></td><td>claude-sonnet-5-5</td><td>The planner model</td></tr>
+<tr><td><code>architecture_a.planner.max_tokens</code></td><td>2048</td><td>Cap per reply</td></tr>
+<tr><td><code>architecture_a.planner.max_turns</code></td><td>12</td><td>Model calls per instruction, refused ones too</td></tr>
+<tr><td><code>architecture_a.grounding.max_queries</code></td><td>8</td><td>Most phrases in one perceive</td></tr>
+<tr><td><code>architecture_a.detector.threshold</code></td><td>0.3</td><td>OWLv2 score floor</td></tr>
+<tr><td><code>architecture_a.detector.nms_iou</code></td><td>0.5</td><td>Overlap that counts as one object</td></tr>
+<tr><td><code>architecture_a.detector.max_per_query</code></td><td>4</td><td>Cap on the planner's top-K</td></tr>
+<tr><td><code>architecture_a.perception.localiser</code></td><td>mask_ray</td><td>How a box becomes a 3D point</td></tr>
+<tr><td><code>architecture_a.perception.depth_frames</code></td><td>5</td><td>Frames in the depth median</td></tr>
+<tr><td><code>architecture_a.verify.enabled</code></td><td>true</td><td>Camera check after pick and place</td></tr>
+<tr><td><code>architecture_a.verify.tolerance_mm</code></td><td>50</td><td>"At the gripper", ID matching, and the pick target rule</td></tr>
+<tr><td><code>architecture_a.verify.settle_s</code></td><td>0.3</td><td>Wait before the look after a skill</td></tr>
+<tr><td><code>architecture_a.skills.approach_height</code> / <code>retreat_height</code></td><td>0.12 / 0.15 m</td><td>Above the target</td></tr>
+<tr><td><code>architecture_a.skills.grasp_depth_offset</code></td><td>0.028 m</td><td>Grasp below the centre</td></tr>
+<tr><td><code>architecture_a.skills.min_grasp_width_mm</code></td><td>5</td><td>Under this, nothing is held</td></tr>
+<tr><td><code>architecture_a.calibration.table_z</code></td><td>0.176 m</td><td>Table surface, base frame</td></tr>
+</table>
+<p>One value, <code>tolerance_mm</code>, has three jobs now: the check, ID matching and the pick target rule. If you tighten it after the reach test, all three change together.</p>
+
+<!-- ================================================================ 17 -->
+<h2 id="limits">17. Not yet verified, and known limits</h2>
+<div class="note bad"><b>Nothing in this page has run on the arm.</b> Before T2, one spoken Tier 0 command must confirm these points in the trace:</div>
+<ul>
+<li>The API accepts <code>disable_parallel_tool_use</code> with <code>between_tools</code> on our key. The docs say yes. Our account has not sent it yet.</li>
+<li>The model writes an intent line and calls <code>perceive</code> first, without needing a refusal.</li>
+<li>One call per turn in practice; the token count per run compared with the old A.</li>
+<li>The check names the object by ID (<code>verified: orange_1 …</code>).</li>
+<li>Latency: one capture per skill now, and a perceive turn adds one model call.</li>
+</ul>
+<p>Known limits:</p>
+<ul>
+<li><b><code>max_per_query</code> above 1 is untested on real frames.</b> A second box can be a false detection. Check this before the Tier 2 trials.</li>
+<li><b>An unverified place counts as OK.</b> After the fingers open they cannot hide the object, so "not seen" may need to become FAILED. You decided to keep it for now.</li>
+<li><b>No check exists for pour, open_drawer or home.</b> The look still updates the state.</li>
+<li><b>The place check asks only "is it away from the gripper".</b> It does not test "fully inside the container", which is the Tier 0 success rule.</li>
+<li><b><code>outcome.ok</code> is True on a refusal</b> such as "the box is out of reach". Harmless while success is the operator's y/N.</li>
+<li><b>The planner does not see the image.</b> With two bottles it can tell them apart only by position and words. Giving it the image would change what A is, and that needs its own ADR.</li>
+<li>Trials before 26 Oct 2026 cannot be compared with trials after it (ADR 0012).</li>
+</ul>
+
+<!-- ================================================================ 18 -->
+<h2 id="files">18. File map</h2>
+<table>
+<tr><th>File</th><th>Job</th></tr>
+<tr><td><code>src/fyp/architecture_a/pipeline.py</code></td><td><code>ArchitectureA.run</code>: the loop, <code>perceive</code>, <code>act</code>, <code>_check</code>, <code>Outcome</code></td></tr>
+<tr><td><code>src/fyp/architecture_a/planner.py</code></td><td>System prompt, API call, one-call rule, <code>validate_call</code>, rejections</td></tr>
+<tr><td><code>src/fyp/architecture_a/state.py</code></td><td><code>WorldState</code>, ID matching, render</td></tr>
+<tr><td><code>src/fyp/architecture_a/tools.py</code></td><td>The 7 tool schemas and the schema/signature check</td></tr>
+<tr><td><code>src/fyp/architecture_a/skills.py</code></td><td>pick, place, pour, open_drawer, home</td></tr>
+<tr><td><code>src/fyp/architecture_a/trace.py</code></td><td>Stages, JSONL writer, look and verdict records</td></tr>
+<tr><td><code>src/fyp/architecture_a/perception/</code></td><td>detector (OWLv2), filters (threshold, NMS, top-K), segmenter (SAM), localiser, pixel_to_3d, scene (<code>Perception.see</code>)</td></tr>
+<tr><td><code>src/fyp/architecture_a/calibration/</code></td><td><code>T_base_cam</code> store and hand-eye</td></tr>
+<tr><td><code>src/fyp/shared/</code></td><td>speech, controller, camera, safety envelope, config</td></tr>
+<tr><td><code>scripts/run_architecture_a.py</code></td><td>The bench session, speech only</td></tr>
+<tr><td><code>scripts/run_evaluation.py</code></td><td>The 20-trial harness run</td></tr>
+<tr><td><code>docs/adr/0012-…</code></td><td>Why A is this loop</td></tr>
+<tr><td><code>tests/unit/test_architecture_a.py</code>, <code>test_end_to_end.py</code></td><td>Validation, state, turn loop; the whole chain with fakes</td></tr>
+</table>
+
+<p style="color:var(--muted);font-size:13px;margin-top:40px">Written 26 Oct 2026 from commit <code>3b0eb59</code> on branch <code>agentic-loop-a</code>. If the code and this page disagree, the code is correct.</p>
+</main>
+</div>
+<script>
+(function(){
+  var b=document.getElementById('t'), r=document.documentElement;
+  try{var s=localStorage.getItem('theme'); if(s) r.setAttribute('data-theme',s);}catch(e){}
+  b.addEventListener('click',function(){
+    var dark = r.getAttribute('data-theme')==='dark' ||
+      (!r.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
+    var n = dark ? 'light' : 'dark';
+    r.setAttribute('data-theme', n);
+    try{localStorage.setItem('theme', n);}catch(e){}
+  });
+})();
+</script>
+</body>
+</html>
